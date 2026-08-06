@@ -37,6 +37,14 @@ target-version = "py312"
 select = ["A", "ASYNC", "B", "E", "F", "I", "N", "RUF", "UP", "W"]
 ignore = ["B008"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/instruments/domain/normalization.py" = ["RUF001"]
+"src/instruments/infrastructure/seed.py" = ["RUF001"]
+"tests/integration/test_instrument_api.py" = ["RUF001"]
+"tests/unit/test_instrument_matcher.py" = ["RUF001"]
+"tests/unit/test_instrument_normalization.py" = ["RUF001"]
+"tests/unit/test_instrument_performance.py" = ["RUF001"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"

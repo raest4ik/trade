@@ -6,12 +6,22 @@ The application is a modular monolith split by feature and layer.
 
 - `news.domain` owns the `NewsItem` entity, timestamp normalization, content hash
   calculation, and validation rules that are independent of frameworks.
-- `news.application` contains use cases and repository protocols. It coordinates
-  domain behavior without knowing how persistence is implemented.
+- `news.application` contains news use cases and repository protocols.
 - `news.infrastructure` contains SQLAlchemy table mappings and repository code.
 - `news.presentation` contains FastAPI routes and Pydantic request/response
   schemas.
+- `instruments.domain` owns `Instrument`, `IssuerAlias`, text normalization, and
+  deterministic matching rules.
+- `instruments.application` coordinates instrument creation, alias creation, and
+  news-to-instrument matching.
+- `instruments.infrastructure` stores instruments, aliases, seed data, and saved
+  `NewsInstrumentMatch` rows.
+- `instruments.presentation` exposes MVP endpoints for registry maintenance and
+  matching.
 - `shared` contains reusable configuration, database, and logging infrastructure.
+
+Domain code does not import FastAPI, SQLAlchemy, Alembic, or any concrete
+database driver.
 
 ## Create News Flow
 
@@ -26,9 +36,10 @@ The application is a modular monolith split by feature and layer.
    existing row with the same idempotency key.
 7. The API returns `201 Created` for a new row or `200 OK` for an existing row.
 
-## Deduplication
+## News Deduplication
 
-The database owns the final deduplication guarantee. The unique constraint covers:
+The database owns the final news deduplication guarantee. The unique constraint
+covers:
 
 - `source_id`
 - `source_url`
@@ -37,16 +48,51 @@ The database owns the final deduplication guarantee. The unique constraint cover
 The repository intentionally does not rely on only a preliminary select, so two
 concurrent identical requests cannot create duplicate rows.
 
-## Domain Boundary
+## Instrument Matching Flow
 
-Domain code does not import FastAPI, SQLAlchemy, Alembic, or any concrete database
-driver. That keeps future event extraction, issuer recognition, and prediction
-logic testable without HTTP or database setup.
+1. `POST /api/v1/news/{news_id}/match-instruments` loads the stored news item.
+2. The instrument repository loads active instruments and active aliases.
+3. The domain normalizer creates a normalized text representation while keeping a
+   map back to original character positions.
+4. `InstrumentMatcher` checks exact ticker and exact alias token-boundary
+   matches.
+5. If one alias maps to more than one active instrument, all candidates are
+   returned with `is_ambiguous=true`.
+6. Repeated mentions of the same instrument are merged. The current rule keeps
+   the highest-confidence match, then the lower alias priority, then the earliest
+   original-text position.
+7. Saved matches are replaced for the same `news_id` and matcher version, making
+   reruns idempotent while keeping matcher versions explicit.
+
+## Matching Confidence
+
+Confidence is rule-based:
+
+- `EXACT_TICKER`: `1.00`
+- `OFFICIAL_NAME`: `0.98`
+- `LEGAL_NAME`: `0.97`
+- `SHORT_NAME`: `0.95`
+- `BRAND`: `0.92`
+- `MANUAL`: `0.90`
+
+These values are deterministic metadata, not model probabilities.
+
+## Database Deletion Rules
+
+- `issuer_aliases.instrument_id` uses `ON DELETE CASCADE` because aliases have no
+  meaning without their instrument.
+- `news_instrument_matches.news_id` uses `ON DELETE CASCADE` because matches are
+  analysis artifacts of one news row.
+- `news_instrument_matches.instrument_id` uses `ON DELETE RESTRICT` to preserve
+  explainability of historical matches and avoid silently orphaning analysis.
 
 ## Future Expansion
 
-Later phases can add workers for source ingestion, issuer and ticker extraction,
-event classification, market data ingestion, prediction storage, and evaluation.
-Those additions should keep facts, extracted values, model estimates, and
-explanations separate so later market-reaction analysis avoids look-ahead bias.
+Later phases can add workers for source ingestion, a separate issuer registry,
+MOEX reference data import, event classification, market data ingestion,
+prediction storage, and evaluation. Issuers and instruments should eventually be
+separate entities because one issuer can have common stock, preferred stock,
+bonds, depositary receipts, or renamed instruments. Those additions should keep
+facts, extracted values, model estimates, and explanations separate so later
+market-reaction analysis avoids look-ahead bias.
 

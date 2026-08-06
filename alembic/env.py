@@ -5,6 +5,11 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from src.instruments.infrastructure.models import (
+    InstrumentRecord,
+    IssuerAliasRecord,
+    NewsInstrumentMatchRecord,
+)
 from src.news.infrastructure.models import NewsItemRecord
 from src.shared.config.settings import get_settings
 from src.shared.database.base import Base
@@ -54,4 +59,4 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-_ = NewsItemRecord
+_ = (InstrumentRecord, IssuerAliasRecord, NewsInstrumentMatchRecord, NewsItemRecord)

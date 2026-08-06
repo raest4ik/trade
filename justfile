@@ -22,6 +22,9 @@ test-integration:
 migrate:
     uv run alembic upgrade head
 
+seed:
+    uv run python -m apps.api.seed_instruments
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 
@@ -33,4 +36,3 @@ docker-up:
 
 docker-down:
     docker compose down
-

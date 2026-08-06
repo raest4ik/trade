@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.instruments.infrastructure.repositories import SqlAlchemyInstrumentRepository
 from src.news.infrastructure.repositories import SqlAlchemyNewsRepository
 
 
@@ -18,3 +19,9 @@ def get_news_repository(
     session: AsyncSession = Depends(get_session),
 ) -> SqlAlchemyNewsRepository:
     return SqlAlchemyNewsRepository(session)
+
+
+def get_instrument_repository(
+    session: AsyncSession = Depends(get_session),
+) -> SqlAlchemyInstrumentRepository:
+    return SqlAlchemyInstrumentRepository(session)
