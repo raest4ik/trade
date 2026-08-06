@@ -18,6 +18,15 @@ The application is a modular monolith split by feature and layer.
   `NewsInstrumentMatch` rows.
 - `instruments.presentation` exposes MVP endpoints for registry maintenance and
   matching.
+- `market_data.domain` owns immutable OHLCV candle entities and import audit
+  records.
+- `market_data.infrastructure` owns the MOEX ISS HTTP adapter and SQLAlchemy
+  candle storage.
+- `market_data.presentation` exposes backfill, candle listing, and import audit
+  endpoints.
+- `reactions.domain` owns historical news market reaction labels.
+- `reactions.application` calculates labels from saved news, saved instrument
+  matches, and saved candles without rerunning the matcher.
 - `shared` contains reusable configuration, database, and logging infrastructure.
 
 Domain code does not import FastAPI, SQLAlchemy, Alembic, or any concrete
@@ -85,6 +94,67 @@ These values are deterministic metadata, not model probabilities.
   analysis artifacts of one news row.
 - `news_instrument_matches.instrument_id` uses `ON DELETE RESTRICT` to preserve
   explainability of historical matches and avoid silently orphaning analysis.
+- `market_candles.instrument_id`, `market_data_imports.instrument_id`, and
+  `news_market_reactions.instrument_id` use `ON DELETE RESTRICT` because candles
+  and labels are historical facts tied to the instrument identity used at import
+  or calculation time.
+- `news_market_reactions.news_id` uses `ON DELETE CASCADE` because reactions are
+  analysis artifacts of one stored news row.
+- `reaction_points.reaction_id` uses `ON DELETE CASCADE` because points have no
+  meaning without their parent reaction version.
+
+## Market Data Flow
+
+1. `POST /api/v1/instruments/{instrument_id}/candles/backfill` loads the
+   instrument.
+2. The use case requires a ticker and `primary_board`; seeded MOEX shares use
+   `TQBR`, but the field is nullable for existing and future non-share data.
+3. A `MarketDataImport` row is created with status `RUNNING`.
+4. `MoexIssClient` requests historical minute candles from MOEX ISS with
+   bounded pagination and bounded retry.
+5. The adapter maps `candles.columns` to indexes, validates each row, converts
+   MOEX Moscow-local timestamps to UTC, and returns valid candles plus rejected
+   row counts.
+6. The repository saves candles in a batch and relies on the unique candle key to
+   make repeated or concurrent imports idempotent.
+7. The import record finishes as `SUCCEEDED`, `PARTIAL`, or `FAILED` with
+   counters and an error code, never a stack trace.
+
+Indexes:
+
+- `instrument_id + interval_minutes + begin_at` supports range reads and reaction
+  lookup for one instrument.
+- `provider + board + begin_at` supports provider/board auditing and future
+  maintenance queries.
+- Import indexes by instrument/provider and `started_at` support operational
+  status pages without scanning the audit table.
+
+## Time Rules
+
+All domain and database datetimes are timezone-aware. MOEX ISS candle `begin` and
+`end` values are interpreted by the adapter as `Europe/Moscow` because the ISS
+response does not include offsets. They are converted to UTC before domain
+entities are created. News `published_at` and `received_at` are not modified.
+
+## Reaction Calculation Flow
+
+1. `POST /api/v1/news/{news_id}/calculate-reactions` loads the saved news item.
+2. Saved `NewsInstrumentMatch` rows are loaded; the matcher is not run again.
+3. For each matched instrument, baseline is the close of the last candle with
+   `end_at <= published_at`.
+4. Effective event time is the first candle `begin_at` with
+   `begin_at >= published_at`. Exact equality means the just-started candle is
+   the first post-publication candle.
+5. For horizons `1`, `5`, `15`, `30`, and `60`, target time is calendar elapsed
+   time `effective_event_at + horizon`, and target price is the close of the
+   first candle with `end_at >= target_at`.
+6. Simple and log returns are calculated with `Decimal`.
+7. Missing baseline, effective candle, or target candles are stored explicitly as
+   data-quality statuses.
+
+This prevents look-ahead bias because baseline cannot use a candle ending after
+publication. Ambiguous instrument matches are not collapsed; SBER and SBERP get
+separate reaction rows with `is_ambiguous_instrument=true`.
 
 ## Future Expansion
 
@@ -95,4 +165,3 @@ separate entities because one issuer can have common stock, preferred stock,
 bonds, depositary receipts, or renamed instruments. Those additions should keep
 facts, extracted values, model estimates, and explanations separate so later
 market-reaction analysis avoids look-ahead bias.
-

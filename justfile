@@ -25,6 +25,12 @@ migrate:
 seed:
     uv run python -m apps.api.seed_instruments
 
+backfill-candles:
+    uv run python -m apps.cli.backfill_candles --ticker SBER --from 2026-07-01 --till 2026-07-07 --interval 1
+
+moex-smoke:
+    uv run python -m apps.cli.moex_smoke
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 

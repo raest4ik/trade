@@ -20,6 +20,7 @@ class SeedInstrument:
     issuer_name: str
     instrument_type: InstrumentType
     aliases: tuple[SeedAlias, ...]
+    primary_board: str = "TQBR"
 
 
 SEED_INSTRUMENTS: tuple[SeedInstrument, ...] = (

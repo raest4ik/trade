@@ -11,7 +11,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from src.instruments.presentation.routes import router as instruments_router
+from src.market_data.presentation.routes import router as market_data_router
 from src.news.presentation.routes import router as news_router
+from src.reactions.presentation.routes import router as reactions_router
 from src.shared.config.settings import Settings, get_settings
 from src.shared.database.session import create_engine, create_session_factory
 from src.shared.logging.middleware import RequestLoggingMiddleware
@@ -45,6 +47,8 @@ def create_app(
     app.add_middleware(RequestLoggingMiddleware)
     app.include_router(news_router, prefix="/api/v1")
     app.include_router(instruments_router, prefix="/api/v1")
+    app.include_router(market_data_router, prefix="/api/v1")
+    app.include_router(reactions_router, prefix="/api/v1")
 
     @app.get("/health")
     async def health() -> dict[str, str]:

@@ -27,6 +27,7 @@ async def seed() -> None:
                     exchange="MOEX",
                     currency="RUB",
                     instrument_type=seed_instrument.instrument_type,
+                    primary_board=seed_instrument.primary_board,
                 )
             )
             for seed_alias in seed_instrument.aliases:

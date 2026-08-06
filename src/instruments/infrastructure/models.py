@@ -29,6 +29,7 @@ class InstrumentRecord(Base):
     exchange: Mapped[str] = mapped_column(String(32), index=True)
     currency: Mapped[str] = mapped_column(String(8))
     instrument_type: Mapped[str] = mapped_column(String(32))
+    primary_board: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, index=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime())
     updated_at: Mapped[datetime] = mapped_column(UtcDateTime())
@@ -46,6 +47,7 @@ class InstrumentRecord(Base):
             exchange=instrument.exchange,
             currency=instrument.currency,
             instrument_type=instrument.instrument_type.value,
+            primary_board=instrument.primary_board,
             is_active=instrument.is_active,
             created_at=instrument.created_at,
             updated_at=instrument.updated_at,
@@ -63,6 +65,7 @@ class InstrumentRecord(Base):
             exchange=self.exchange,
             currency=self.currency,
             instrument_type=InstrumentType(self.instrument_type),
+            primary_board=self.primary_board,
             is_active=self.is_active,
             created_at=self.created_at,
             updated_at=self.updated_at,

@@ -21,6 +21,7 @@ class InstrumentCreateRequest(BaseModel):
     exchange: str = Field(default="MOEX", min_length=1, max_length=32)
     currency: str = Field(default="RUB", min_length=1, max_length=8)
     instrument_type: InstrumentType
+    primary_board: str | None = Field(default=None, min_length=1, max_length=32)
     is_active: bool = True
 
     def to_command(self) -> CreateInstrumentCommand:
@@ -34,6 +35,7 @@ class InstrumentCreateRequest(BaseModel):
             exchange=self.exchange,
             currency=self.currency,
             instrument_type=self.instrument_type,
+            primary_board=self.primary_board,
             is_active=self.is_active,
         )
 
@@ -49,6 +51,7 @@ class InstrumentResponse(BaseModel):
     exchange: str
     currency: str
     instrument_type: InstrumentType
+    primary_board: str | None
     is_active: bool
     created_at: datetime
     updated_at: datetime

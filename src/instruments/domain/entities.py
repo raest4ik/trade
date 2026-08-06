@@ -25,6 +25,7 @@ class Instrument:
     exchange: str
     currency: str
     instrument_type: InstrumentType
+    primary_board: str | None
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -42,6 +43,7 @@ class Instrument:
         exchange: str,
         currency: str,
         instrument_type: InstrumentType,
+        primary_board: str | None = None,
         is_active: bool = True,
     ) -> Instrument:
         normalized_ticker = ticker.strip().upper()
@@ -65,6 +67,7 @@ class Instrument:
             exchange=exchange.strip().upper(),
             currency=currency.strip().upper(),
             instrument_type=instrument_type,
+            primary_board=_blank_to_none(primary_board.upper() if primary_board else None),
             is_active=is_active,
             created_at=now,
             updated_at=now,
