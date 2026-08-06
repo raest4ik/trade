@@ -30,7 +30,7 @@ rule versions can coexist with old analyses.
 created time, and analyzed time.
 
 `detected_events` stores event type, confidence metadata, matched rule id,
-evidence text, and character offsets.
+stable rule id, evidence text, and character offsets.
 
 `extracted_financial_facts` stores metric, raw value, normalized value, unit,
 currency, scale, period fields, fact role, comparison type, change direction,
