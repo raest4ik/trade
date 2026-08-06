@@ -143,10 +143,11 @@ entities are created. News `published_at` and `received_at` are not modified.
 3. For each matched instrument, baseline is the close of the last candle with
    `end_at <= published_at`.
 4. Effective event time is the first candle `begin_at` with
-   `begin_at > published_at`.
-5. For horizons `1`, `5`, `15`, `30`, and `60`, target time is
-   `effective_event_at + horizon`, and target price is the close of the first
-   candle with `end_at >= target_at`.
+   `begin_at >= published_at`. Exact equality means the just-started candle is
+   the first post-publication candle.
+5. For horizons `1`, `5`, `15`, `30`, and `60`, target time is calendar elapsed
+   time `effective_event_at + horizon`, and target price is the close of the
+   first candle with `end_at >= target_at`.
 6. Simple and log returns are calculated with `Decimal`.
 7. Missing baseline, effective candle, or target candles are stored explicitly as
    data-quality statuses.

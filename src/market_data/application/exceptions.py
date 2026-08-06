@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from src.market_data.domain.entities import MarketCandle
+
 
 class MarketDataApplicationError(Exception):
     """Base market data application error."""
@@ -19,6 +21,27 @@ class MarketDataProviderContractError(MarketDataProviderError):
 
 class MarketDataProviderUnavailableError(MarketDataProviderError):
     """Raised when the provider is temporarily unavailable."""
+
+
+class MarketDataPartialProviderError(MarketDataProviderError):
+    """Raised when the provider fails after returning usable rows."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        candles: list[MarketCandle],
+        pages_received: int,
+        rows_received: int,
+        rows_valid: int,
+        rows_rejected: int,
+    ) -> None:
+        super().__init__(message)
+        self.candles = candles
+        self.pages_received = pages_received
+        self.rows_received = rows_received
+        self.rows_valid = rows_valid
+        self.rows_rejected = rows_rejected
 
 
 class MarketDataValidationError(MarketDataApplicationError):

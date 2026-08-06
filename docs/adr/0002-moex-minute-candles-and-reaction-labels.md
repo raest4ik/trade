@@ -44,10 +44,13 @@ the matcher automatically, so the label calculation consumes persisted facts.
 ## Horizons
 
 Effective event time is the `begin_at` of the first saved candle with
-`begin_at > published_at`. Horizon target time is
-`effective_event_at + horizon_minutes`. For each horizon, target price is the
-close of the first candle with `end_at >= target_at`. The actual `observed_at` is
-stored because gaps in trading can move the observed candle away from the target.
+`begin_at >= published_at`. If the publication timestamp is exactly equal to a
+minute candle start, that candle is treated as the first post-publication candle.
+Horizon target time is calendar elapsed time
+`effective_event_at + horizon_minutes`; it is not “N trading minutes”. For each
+horizon, target price is the close of the first candle with `end_at >= target_at`.
+The actual `observed_at` is stored because gaps in trading can move the observed
+candle away from the target.
 
 ## Outside Session
 

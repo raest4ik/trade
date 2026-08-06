@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import uuid4
@@ -8,13 +9,17 @@ import httpx
 import pytest
 
 from src.market_data.application.exceptions import (
+    MarketDataPartialProviderError,
     MarketDataProviderContractError,
     MarketDataValidationError,
 )
 from src.market_data.infrastructure.moex_client import MoexIssClient
 
 
-def moex_payload(rows: list[list[object]], columns: list[str] | None = None) -> dict[str, object]:
+def moex_payload(
+    rows: Sequence[Sequence[object]],
+    columns: list[str] | None = None,
+) -> dict[str, object]:
     return {
         "candles": {
             "columns": columns
@@ -147,6 +152,55 @@ async def test_moex_client_retries_http_500_and_respects_retry_after() -> None:
 
     assert calls == 2
     assert result.rows_received == 0
+
+
+async def test_moex_client_raises_partial_error_after_later_page_failure() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            rows = [
+                [
+                    "2026-07-01 10:00:00",
+                    "2026-07-01 10:00:59",
+                    "100",
+                    "100",
+                    "100",
+                    "100",
+                    "1",
+                    "100",
+                ]
+                for _ in range(500)
+            ]
+            return httpx.Response(200, json=moex_payload(rows))
+        return httpx.Response(500, json={})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = MoexIssClient(
+            base_url="https://iss.moex.com/iss",
+            timeout_seconds=1,
+            max_retries=0,
+            max_pages=10,
+            user_agent="tests",
+            client=http_client,
+            sleep=False,
+        )
+        with pytest.raises(MarketDataPartialProviderError) as exc_info:
+            await client.fetch_candles_with_rejections(
+                instrument_id=uuid4(),
+                ticker="SBER",
+                board="TQBR",
+                date_from=date(2026, 7, 1),
+                date_till=date(2026, 7, 1),
+                interval_minutes=1,
+            )
+
+    assert calls == 2
+    assert len(exc_info.value.candles) == 500
+    assert exc_info.value.pages_received == 1
+    assert exc_info.value.rows_valid == 500
 
 
 async def test_moex_client_rejects_bad_path_values_and_large_ranges() -> None:

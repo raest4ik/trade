@@ -63,7 +63,7 @@ class CalculateNewsMarketReactions:
                 interval_minutes=1,
                 at=news_item.published_at,
             )
-            effective = await self._market_data_repository.get_first_candle_beginning_after(
+            effective = await self._market_data_repository.get_first_candle_beginning_at_or_after(
                 instrument_id=match.instrument_id,
                 interval_minutes=1,
                 at=news_item.published_at,

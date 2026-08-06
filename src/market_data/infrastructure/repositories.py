@@ -144,7 +144,7 @@ class SqlAlchemyMarketDataRepository:
             .order_by(MarketCandleRecord.end_at.desc())
         )
 
-    async def get_first_candle_beginning_after(
+    async def get_first_candle_beginning_at_or_after(
         self,
         *,
         instrument_id: UUID,
@@ -156,7 +156,7 @@ class SqlAlchemyMarketDataRepository:
             .where(
                 MarketCandleRecord.instrument_id == instrument_id,
                 MarketCandleRecord.interval_minutes == interval_minutes,
-                MarketCandleRecord.begin_at > at,
+                MarketCandleRecord.begin_at >= at,
             )
             .order_by(MarketCandleRecord.begin_at)
         )

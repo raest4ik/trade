@@ -8,6 +8,7 @@ from src.instruments.application.ports import InstrumentRepository
 from src.market_data.application.exceptions import (
     InstrumentMarketDataConflictError,
     InstrumentMarketDataNotFoundError,
+    MarketDataPartialProviderError,
     MarketDataProviderError,
     MarketDataStorageError,
     MarketDataValidationError,
@@ -86,6 +87,18 @@ class BackfillInstrumentCandles:
                 rows_rejected=rejected,
                 rows_inserted=save_result.inserted,
                 rows_existing=save_result.existing,
+            )
+        except MarketDataPartialProviderError as exc:
+            save_result = await self._market_data_repository.save_candles(exc.candles)
+            finished = started.finish(
+                status=MarketDataImportStatus.PARTIAL,
+                pages_received=exc.pages_received,
+                rows_received=exc.rows_received,
+                rows_valid=exc.rows_valid,
+                rows_rejected=exc.rows_rejected,
+                rows_inserted=save_result.inserted,
+                rows_existing=save_result.existing,
+                error_code="PROVIDER_PARTIAL",
             )
         except MarketDataProviderError:
             finished = started.finish(

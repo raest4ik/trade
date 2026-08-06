@@ -39,7 +39,7 @@ class MarketDataRepository(Protocol):
         at: datetime,
     ) -> MarketCandle | None: ...
 
-    async def get_first_candle_beginning_after(
+    async def get_first_candle_beginning_at_or_after(
         self,
         *,
         instrument_id: UUID,

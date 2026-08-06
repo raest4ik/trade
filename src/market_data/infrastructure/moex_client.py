@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from src.market_data.application.exceptions import (
+    MarketDataPartialProviderError,
     MarketDataProviderContractError,
     MarketDataProviderUnavailableError,
     MarketDataValidationError,
@@ -129,15 +130,27 @@ class MoexIssClient:
         pages_received = 0
 
         for page in range(self._max_pages):
-            payload = await self._request_page(
-                ticker=ticker,
-                board=board,
-                date_from=date_from,
-                date_till=date_till,
-                interval_minutes=interval_minutes,
-                start=start,
-                page=page,
-            )
+            try:
+                payload = await self._request_page(
+                    ticker=ticker,
+                    board=board,
+                    date_from=date_from,
+                    date_till=date_till,
+                    interval_minutes=interval_minutes,
+                    start=start,
+                    page=page,
+                )
+            except MarketDataProviderUnavailableError as exc:
+                if pages_received == 0:
+                    raise
+                raise MarketDataPartialProviderError(
+                    "MOEX failed after returning partial candle data",
+                    candles=candles,
+                    pages_received=pages_received,
+                    rows_received=rows_received,
+                    rows_valid=rows_valid,
+                    rows_rejected=rows_rejected,
+                ) from exc
             parsed = _parse_page(
                 payload,
                 instrument_id=instrument_id,

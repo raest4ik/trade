@@ -295,14 +295,17 @@ does not write to the production database.
 measure ingestion latency. Baseline is the `close` of the last fully completed
 minute candle whose `end_at <= published_at`, which prevents using market data
 after the event. The effective event time is the `begin_at` of the first saved
-candle whose `begin_at > published_at`.
+candle whose `begin_at >= published_at`. If publication happens exactly at a
+minute boundary, that just-started candle is the first post-publication candle.
 
 For horizons `1`, `5`, `15`, `30`, and `60` minutes, target time is
 `effective_event_at + horizon`. The target price is the `close` of the first
 candle whose `end_at >= target_at`; the actual `observed_at` is stored because
-trading gaps can shift it. Simple return is `target_price / baseline_price - 1`.
-Log return is `ln(target_price / baseline_price)`. Decimal arithmetic is used for
-stored prices and returns.
+trading gaps can shift it. Horizons use calendar elapsed time from
+`effective_event_at`, not “N trading minutes”. Simple return is
+`target_price / baseline_price - 1`. Log return is
+`ln(target_price / baseline_price)`. Decimal arithmetic is used for stored prices
+and returns.
 
 Minute candles cannot identify the exact price at the second of publication. A
 news item can land inside a candle, and some movement between publication and the
