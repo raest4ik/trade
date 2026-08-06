@@ -1,0 +1,8 @@
+[event]
+micro_f1 = 0.80
+primary_accuracy = 0.80
+
+[fact]
+strict_f1 = 0.75
+value_f1 = 0.80
+metric_f1 = 0.85

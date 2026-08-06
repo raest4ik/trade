@@ -34,6 +34,12 @@ The application is a modular monolith split by feature and layer.
 - `events.infrastructure` stores event analyses, detected event rows, and
   extracted financial fact rows.
 - `events.presentation` exposes event analysis endpoints and explicit warnings.
+- `evaluation.domain` owns gold annotation validation and deterministic metrics.
+- `evaluation.application` coordinates dataset import, evaluation runs, and
+  report writing.
+- `evaluation.infrastructure` stores evaluation datasets, examples, gold labels,
+  and run audit rows.
+- `evaluation.presentation` exposes dataset and run endpoints.
 - `shared` contains reusable configuration, database, and logging infrastructure.
 
 Domain code does not import FastAPI, SQLAlchemy, Alembic, or any concrete
@@ -191,6 +197,28 @@ Event and fact rows store `rule_id` plus evidence spans, and child tables have
 exact-span uniqueness constraints. Concurrent reruns still rely on database
 uniqueness for the parent `news_id + analysis_version` key rather than only a
 preliminary read.
+
+## Evaluation Flow
+
+1. `create_annotation_batch` selects stored news, reruns the deterministic
+   extractor, and writes `event-gold-v1` JSONL with empty gold labels for manual
+   review.
+2. `validate_annotation_dataset` checks JSONL shape, schema version, UUIDs,
+   splits, review statuses, duplicate news ids, raw-content hashes, Decimal
+   strings, and evidence spans when raw content is available.
+3. `import_annotation_dataset` persists reviewed files into
+   `evaluation_datasets`, `evaluation_examples`, `gold_events`, and
+   `gold_financial_facts`. Imports are idempotent by source file hash.
+4. `assign_temporal_split` assigns train, validation, and test splits by
+   publication date and records the split boundaries on the dataset.
+5. `evaluate_event_extraction` reruns the current analyzer on stored raw news,
+   computes event and fact metrics, writes report artifacts, and appends an
+   `evaluation_runs` audit row.
+
+Event metrics include micro/macro precision, recall, F1, per-class support,
+primary-event accuracy, coverage, unknown rate, ambiguous rate, and a
+primary-event confusion matrix. Financial fact metrics use deterministic
+one-to-one matching and report strict, value, metric, and field-level quality.
 
 ## Future Expansion
 

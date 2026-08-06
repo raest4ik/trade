@@ -5,6 +5,13 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from src.evaluation.infrastructure.models import (
+    EvaluationDatasetRecord,
+    EvaluationExampleRecord,
+    EvaluationRunRecord,
+    GoldEventRecord,
+    GoldFinancialFactRecord,
+)
 from src.events.infrastructure.models import (
     DetectedEventRecord,
     ExtractedFinancialFactRecord,
@@ -78,4 +85,9 @@ _ = (
     NewsEventAnalysisRecord,
     DetectedEventRecord,
     ExtractedFinancialFactRecord,
+    EvaluationDatasetRecord,
+    EvaluationExampleRecord,
+    GoldEventRecord,
+    GoldFinancialFactRecord,
+    EvaluationRunRecord,
 )

@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from src.evaluation.presentation.routes import router as evaluation_router
 from src.events.presentation.routes import router as events_router
 from src.instruments.presentation.routes import router as instruments_router
 from src.market_data.presentation.routes import router as market_data_router
@@ -51,6 +52,7 @@ def create_app(
     app.include_router(market_data_router, prefix="/api/v1")
     app.include_router(reactions_router, prefix="/api/v1")
     app.include_router(events_router, prefix="/api/v1")
+    app.include_router(evaluation_router, prefix="/api/v1")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
