@@ -65,6 +65,19 @@ class SqlAlchemyInstrumentRepository:
         record = result.scalar_one_or_none()
         return None if record is None else record.to_entity()
 
+    async def get_instrument_by_ticker(self, ticker: str) -> Instrument | None:
+        try:
+            result = await self._session.execute(
+                select(InstrumentRecord).where(
+                    InstrumentRecord.exchange == "MOEX",
+                    InstrumentRecord.ticker == ticker.strip().upper(),
+                )
+            )
+        except SQLAlchemyError as exc:
+            raise InstrumentStorageError("could not read instrument") from exc
+        record = result.scalar_one_or_none()
+        return None if record is None else record.to_entity()
+
     async def save_alias(self, alias: IssuerAlias) -> SaveIssuerAliasResult:
         record = IssuerAliasRecord.from_entity(alias)
         self._session.add(record)

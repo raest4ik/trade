@@ -10,7 +10,9 @@ from src.instruments.infrastructure.models import (
     IssuerAliasRecord,
     NewsInstrumentMatchRecord,
 )
+from src.market_data.infrastructure.models import MarketCandleRecord, MarketDataImportRecord
 from src.news.infrastructure.models import NewsItemRecord
+from src.reactions.infrastructure.models import NewsMarketReactionRecord, ReactionPointRecord
 from src.shared.config.settings import get_settings
 from src.shared.database.base import Base
 
@@ -59,4 +61,13 @@ if context.is_offline_mode():
 else:
     run_migrations_online()
 
-_ = (InstrumentRecord, IssuerAliasRecord, NewsInstrumentMatchRecord, NewsItemRecord)
+_ = (
+    InstrumentRecord,
+    IssuerAliasRecord,
+    NewsInstrumentMatchRecord,
+    MarketCandleRecord,
+    MarketDataImportRecord,
+    NewsItemRecord,
+    NewsMarketReactionRecord,
+    ReactionPointRecord,
+)

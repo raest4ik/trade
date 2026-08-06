@@ -36,6 +36,7 @@ class CreateInstrumentCommand:
     currency: str
     instrument_type: InstrumentType
     is_active: bool
+    primary_board: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +70,7 @@ class CreateInstrument:
             exchange=command.exchange,
             currency=command.currency,
             instrument_type=command.instrument_type,
+            primary_board=command.primary_board,
             is_active=command.is_active,
         )
         return await self._repository.save_instrument(instrument)

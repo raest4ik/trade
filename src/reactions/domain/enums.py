@@ -1,0 +1,17 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class ReactionStatus(StrEnum):
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    OUTSIDE_SESSION = "OUTSIDE_SESSION"
+    AMBIGUOUS_INSTRUMENT = "AMBIGUOUS_INSTRUMENT"
+
+
+class ReactionPointStatus(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    MISSING_CANDLE = "MISSING_CANDLE"
+    OUTSIDE_AVAILABLE_RANGE = "OUTSIDE_AVAILABLE_RANGE"
