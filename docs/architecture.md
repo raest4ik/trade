@@ -27,6 +27,13 @@ The application is a modular monolith split by feature and layer.
 - `reactions.domain` owns historical news market reaction labels.
 - `reactions.application` calculates labels from saved news, saved instrument
   matches, and saved candles without rerunning the matcher.
+- `events.domain` owns deterministic corporate-event classification and
+  financial fact extraction rules.
+- `events.application` coordinates stored news loading, analysis, and versioned
+  event analysis persistence.
+- `events.infrastructure` stores event analyses, detected event rows, and
+  extracted financial fact rows.
+- `events.presentation` exposes event analysis endpoints and explicit warnings.
 - `shared` contains reusable configuration, database, and logging infrastructure.
 
 Domain code does not import FastAPI, SQLAlchemy, Alembic, or any concrete
@@ -102,6 +109,11 @@ These values are deterministic metadata, not model probabilities.
   analysis artifacts of one stored news row.
 - `reaction_points.reaction_id` uses `ON DELETE CASCADE` because points have no
   meaning without their parent reaction version.
+- `news_event_analyses.news_id` uses `ON DELETE CASCADE` because event analyses
+  are reproducible artifacts of one stored news row.
+- `detected_events.analysis_id` and `extracted_financial_facts.analysis_id` use
+  `ON DELETE CASCADE` because children have no meaning without their exact
+  parent analysis version.
 
 ## Market Data Flow
 
@@ -156,10 +168,29 @@ This prevents look-ahead bias because baseline cannot use a candle ending after
 publication. Ambiguous instrument matches are not collapsed; SBER and SBERP get
 separate reaction rows with `is_ambiguous_instrument=true`.
 
+## Event Analysis Flow
+
+1. `POST /api/v1/news/{news_id}/analyze-event` loads the saved news item.
+2. `EventAnalyzer` applies deterministic rule set `event-rules-v1` to the
+   original `raw_content`.
+3. Event rules classify corporate events by explicit keyword and phrase
+   patterns. Numeric fact rules extract values near supported metric names and
+   normalize scale, currency, unit, period, role, comparison, and direction.
+4. The repository replaces the saved analysis for the same `news_id` and
+   `analysis_version`, keeping reruns idempotent and future rule versions
+   coexistable.
+5. `GET /api/v1/news/{news_id}/event-analysis` returns the saved result, with
+   warnings for no event, no facts, missing periods, unknown metrics, and
+   low-confidence facts.
+
+The analyzer does not use LLMs, ML models, embeddings, fuzzy matching, sentiment
+analysis, external AI APIs, or price data. It produces explainable extraction
+metadata and stores evidence spans for later validation datasets.
+
 ## Future Expansion
 
 Later phases can add workers for source ingestion, a separate issuer registry,
-MOEX reference data import, event classification, market data ingestion,
+MOEX reference data import, broader event rules, market data ingestion,
 prediction storage, and evaluation. Issuers and instruments should eventually be
 separate entities because one issuer can have common stock, preferred stock,
 bonds, depositary receipts, or renamed instruments. Those additions should keep

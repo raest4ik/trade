@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from src.events.infrastructure.repositories import SqlAlchemyEventAnalysisRepository
 from src.instruments.infrastructure.repositories import SqlAlchemyInstrumentRepository
 from src.market_data.infrastructure.moex_client import MoexIssClient
 from src.market_data.infrastructure.repositories import SqlAlchemyMarketDataRepository
@@ -40,6 +41,12 @@ def get_reaction_repository(
     session: AsyncSession = Depends(get_session),
 ) -> SqlAlchemyReactionRepository:
     return SqlAlchemyReactionRepository(session)
+
+
+def get_event_analysis_repository(
+    session: AsyncSession = Depends(get_session),
+) -> SqlAlchemyEventAnalysisRepository:
+    return SqlAlchemyEventAnalysisRepository(session)
 
 
 async def get_moex_client(request: Request) -> AsyncIterator[MoexIssClient]:

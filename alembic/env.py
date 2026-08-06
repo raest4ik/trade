@@ -5,6 +5,11 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from src.events.infrastructure.models import (
+    DetectedEventRecord,
+    ExtractedFinancialFactRecord,
+    NewsEventAnalysisRecord,
+)
 from src.instruments.infrastructure.models import (
     InstrumentRecord,
     IssuerAliasRecord,
@@ -70,4 +75,7 @@ _ = (
     NewsItemRecord,
     NewsMarketReactionRecord,
     ReactionPointRecord,
+    NewsEventAnalysisRecord,
+    DetectedEventRecord,
+    ExtractedFinancialFactRecord,
 )

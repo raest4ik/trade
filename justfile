@@ -31,6 +31,9 @@ backfill-candles:
 moex-smoke:
     uv run python -m apps.cli.moex_smoke
 
+export-event-dataset:
+    uv run python -m apps.cli.export_event_dataset --output artifacts/event-dataset.jsonl
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 

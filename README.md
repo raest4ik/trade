@@ -10,6 +10,12 @@ mentioned in stored news. Matching is based on an explicit local instrument and
 issuer alias registry. It does not use LLMs, embeddings, fuzzy matching, MOEX
 connectors, external AI APIs, or trading automation.
 
+Stored news can also be analyzed by deterministic corporate-event and financial
+fact rules. Version `event-rules-v1` classifies supported corporate event types
+and extracts numeric facts with metric, period, unit, currency, scale, role,
+comparison, evidence text, and character positions. This layer also avoids LLMs,
+ML models, embeddings, sentiment scoring, and market-impact prediction.
+
 ## Architecture
 
 The codebase is a modular monolith:
@@ -32,6 +38,10 @@ src/reactions/domain/             News market reaction labels
 src/reactions/application/        Reaction calculation use cases
 src/reactions/infrastructure/     SQLAlchemy reaction storage
 src/reactions/presentation/       Reaction HTTP schemas and routes
+src/events/domain/                Deterministic event and fact extraction
+src/events/application/           Event analysis use cases and repository ports
+src/events/infrastructure/        SQLAlchemy event analysis storage
+src/events/presentation/          Event analysis HTTP schemas and routes
 src/shared/config/                Environment-driven settings
 src/shared/database/              Async SQLAlchemy engine and sessions
 src/shared/logging/               JSON structured logging
@@ -108,6 +118,7 @@ just migrate
 just seed
 just backfill-candles
 just moex-smoke
+just export-event-dataset
 just run
 just docker-up
 just docker-down
@@ -228,6 +239,21 @@ curl -X POST http://localhost:8000/api/v1/news/<news-id>/calculate-reactions
 curl http://localhost:8000/api/v1/news/<news-id>/reactions
 ```
 
+Analyze and read deterministic corporate events and financial facts:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/news/<news-id>/analyze-event?debug=true"
+curl http://localhost:8000/api/v1/news/<news-id>/event-analysis
+```
+
+Export a JSONL dataset that links stored news, event analysis, instrument
+matches, and market reactions:
+
+```bash
+uv run python -m apps.cli.export_event_dataset --output artifacts/event-dataset.jsonl
+uv run python -m apps.cli.export_event_dataset --output artifacts/event-dataset.jsonl --include-raw-content
+```
+
 ## Idempotency
 
 News ingestion deduplication is enforced by a unique database constraint across
@@ -245,6 +271,10 @@ duplicates.
 Reaction calculation is idempotent by `news_id`, `instrument_id`, and
 `reaction_version`. Version `reaction-v1-minute-candles` is replaced for the same
 news item while future versions can coexist.
+
+Event analysis is idempotent by `news_id` and `analysis_version`. Version
+`event-rules-v1` is replaced for the same news item while future rule versions
+can coexist.
 
 ## Instrument Matching
 
@@ -311,11 +341,31 @@ Minute candles cannot identify the exact price at the second of publication. A
 news item can land inside a candle, and some movement between publication and the
 next minute boundary cannot be separated without trade-level data.
 
+## Deterministic Event And Fact Extraction
+
+`POST /api/v1/news/{news_id}/analyze-event` loads the stored raw news text,
+applies deterministic regex rules, replaces the saved `event-rules-v1` analysis,
+and returns detected events plus extracted facts. `GET
+/api/v1/news/{news_id}/event-analysis` returns the saved result.
+
+Event types include financial results, dividends, guidance, M&A, buyback,
+management change, major contract, production update, sanctions, credit rating,
+debt financing, and additional reserved enum values for future rules. Extracted
+facts store metric, raw and normalized value, unit, currency, scale, period,
+fact role, comparison type, change direction, evidence text, character offsets,
+confidence metadata, and matched rule id. Confidence values are deterministic
+rule metadata, not model probabilities.
+
+The analyzer is intentionally conservative. Unknown numbers are kept with
+`metric=OTHER`; missing periods are explicit through `period_type=UNKNOWN`; and
+API responses include warnings for absent events, absent facts, low-confidence
+facts, and facts without periods.
+
 ## MVP Limitations
 
 - No news source connectors.
 - No separate issuer registry yet; issuer fields currently live on instruments.
-- No event classification, impact scoring, LLM usage, or market reaction prediction.
+- No impact scoring, LLM usage, sentiment analysis, or market reaction prediction.
 - No real-time polling, WebSocket, trades, order book, market-adjusted return, or
   forecasting.
 - No Redis, Kafka, Elasticsearch, frontend, user authentication, or broker integration.
