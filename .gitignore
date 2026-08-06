@@ -6,9 +6,9 @@ __pycache__/
 .pyright/
 htmlcov/
 .coverage
+artifacts/
 *.pyc
 *.pyo
 *.pyd
 *.sqlite3
 *.db
-

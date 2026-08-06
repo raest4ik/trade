@@ -1,0 +1,1 @@
+"""Event analysis infrastructure adapters."""
