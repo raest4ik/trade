@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from time import perf_counter
 from uuid import uuid4
 
 import pytest
@@ -232,31 +233,31 @@ def test_period_detection_scenarios(
             "Выручка за 2025 год выросла на 15% г/г.",
             FactRole.CHANGE,
             ComparisonType.YEAR_OVER_YEAR,
-            ChangeDirection.INCREASE,
+            ChangeDirection.UP,
         ),
         (
             "Чистая прибыль за 2025 год снизилась на 8% год к году.",
             FactRole.CHANGE,
             ComparisonType.YEAR_OVER_YEAR,
-            ChangeDirection.DECREASE,
+            ChangeDirection.DOWN,
         ),
         (
             "Прогноз EBITDA на 2026 год составляет 100 млрд руб.",
             FactRole.FORECAST,
             ComparisonType.NONE,
-            ChangeDirection.NONE,
+            ChangeDirection.UNCHANGED,
         ),
         (
             "Консенсус по выручке на 2026 год составляет 1 трлн руб.",
             FactRole.CONSENSUS,
             ComparisonType.NONE,
-            ChangeDirection.NONE,
+            ChangeDirection.UNCHANGED,
         ),
         (
             "Выручка годом ранее составляла 900 млрд руб.",
             FactRole.PREVIOUS,
             ComparisonType.VERSUS_PREVIOUS,
-            ChangeDirection.NONE,
+            ChangeDirection.UNCHANGED,
         ),
     ],
 )
@@ -291,3 +292,159 @@ def test_analysis_links_child_records_to_analysis_id() -> None:
 
     assert all(event.analysis_id == analysis.id for event in analysis.events)
     assert all(fact.analysis_id == analysis.id for fact in analysis.financial_facts)
+
+
+@pytest.mark.parametrize(
+    ("text", "raw_value", "normalized", "currency", "scale"),
+    [
+        (
+            "Выручка составила 12.5 млрд руб.",
+            Decimal("12.5"),
+            Decimal("12500000000.0"),
+            Currency.RUB,
+            ValueScale.BILLION,
+        ),
+        (
+            "Выручка составила ₽12,5 млрд.",
+            Decimal("12.5"),
+            Decimal("12500000000.0"),
+            Currency.RUB,
+            ValueScale.BILLION,
+        ),
+        (
+            "Выручка составила 1 250 млн рублей.",
+            Decimal("1250"),
+            Decimal("1250000000"),
+            Currency.RUB,
+            ValueScale.MILLION,
+        ),
+        (
+            "Выручка составила 2,4 млрд долларов.",
+            Decimal("2.4"),
+            Decimal("2400000000.0"),
+            Currency.USD,
+            ValueScale.BILLION,
+        ),
+        (
+            "Выручка составила -3,5 млрд рублей.",
+            Decimal("-3.5"),
+            Decimal("-3500000000.0"),
+            Currency.RUB,
+            ValueScale.BILLION,
+        ),
+        (
+            "Revenue amounted to 7 thousand RUB.",
+            Decimal("7"),
+            Decimal("7000"),
+            Currency.RUB,
+            ValueScale.THOUSAND,
+        ),
+        (
+            "Revenue amounted to 4 million CNY.",
+            Decimal("4"),
+            Decimal("4000000"),
+            Currency.CNY,
+            ValueScale.MILLION,
+        ),
+        (
+            "Revenue amounted to 5 million евро.",
+            Decimal("5"),
+            Decimal("5000000"),
+            Currency.EUR,
+            ValueScale.MILLION,
+        ),
+    ],
+)
+def test_required_number_formats(
+    text: str,
+    raw_value: Decimal,
+    normalized: Decimal,
+    currency: Currency,
+    scale: ValueScale,
+) -> None:
+    fact = EventAnalyzer().analyze(news_id=uuid4(), raw_content=text).financial_facts[0]
+
+    assert fact.raw_value == raw_value
+    assert fact.normalized_value == normalized
+    assert fact.currency == currency
+    assert fact.scale == scale
+    assert fact.extractor_version == "financial-facts-v1"
+    assert fact.rule_id
+
+
+def test_dates_years_uuid_http_status_and_ticker_are_not_financial_values() -> None:
+    text = (
+        "Документ № 15 от 01.02.2026. UUID 123e4567-e89b-12d3-a456-426614174000. "
+        "HTTP status 404. Ticker SBER."
+    )
+
+    analysis = EventAnalyzer().analyze(news_id=uuid4(), raw_content=text)
+
+    assert analysis.financial_facts == []
+
+
+def test_two_metrics_and_two_values_in_one_sentence_are_linked_locally() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content="Выручка составила 120 млрд рублей, чистая прибыль — 15 млрд рублей.",
+    )
+
+    values_by_metric = {fact.metric: fact.raw_value for fact in analysis.financial_facts}
+    assert values_by_metric[FinancialMetric.REVENUE] == Decimal("120")
+    assert values_by_metric[FinancialMetric.NET_PROFIT] == Decimal("15")
+
+
+def test_change_on_vs_target_to_are_distinguished() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content="Рентабельность выросла на 3 п.п. до 15%.",
+    )
+
+    change, target = analysis.financial_facts
+    assert change.fact_role == FactRole.CHANGE
+    assert change.change_direction == ChangeDirection.UP
+    assert change.change_value == Decimal("3")
+    assert target.fact_role == FactRole.ACTUAL
+    assert target.change_value is None
+
+
+def test_multiple_events_are_preserved_and_mark_analysis_ambiguous() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content="Компания раскрыла финансовые результаты и рекомендовала дивиденды.",
+    )
+
+    assert {event.event_type for event in analysis.events} == {
+        EventType.FINANCIAL_RESULTS,
+        EventType.DIVIDEND,
+    }
+    assert analysis.status == EventAnalysisStatus.AMBIGUOUS
+
+
+def test_evidence_spans_point_to_original_raw_content() -> None:
+    raw_content = (
+        "Сбербанк сообщил, что чистая прибыль по МСФО за 2025 год "
+        "выросла на 18% до 850 млрд рублей."
+    )
+
+    analysis = EventAnalyzer().analyze(news_id=uuid4(), raw_content=raw_content)
+
+    for event in analysis.events:
+        assert raw_content[event.start_position : event.end_position] == event.evidence_text
+        assert event.rule_id == event.matched_rule
+    for fact in analysis.financial_facts:
+        assert raw_content[fact.start_position : fact.end_position] == fact.evidence_text
+        assert fact.rule_id == fact.matched_rule
+
+
+def test_long_text_regression_stays_linear_enough() -> None:
+    sentence = "Выручка составила 1 млрд рублей, EBITDA составила 2 млрд рублей. "
+    raw_content = sentence * 320
+
+    started = perf_counter()
+    analysis = EventAnalyzer().analyze(news_id=uuid4(), raw_content=raw_content)
+    elapsed = perf_counter() - started
+
+    assert len(raw_content) > 10_000
+    assert len(analysis.financial_facts) >= 100
+    assert elapsed < 5

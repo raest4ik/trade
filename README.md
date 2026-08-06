@@ -118,6 +118,7 @@ just migrate
 just seed
 just backfill-candles
 just moex-smoke
+just analyze-event <news-id>
 just export-event-dataset
 just run
 just docker-up
@@ -356,10 +357,20 @@ fact role, comparison type, change direction, evidence text, character offsets,
 confidence metadata, and matched rule id. Confidence values are deterministic
 rule metadata, not model probabilities.
 
+The analysis version is `event-rules-v1`; financial facts store extractor
+version `financial-facts-v1`. Event and fact rows include stable `rule_id`
+values so later datasets can trace each label back to a deterministic rule.
+
 The analyzer is intentionally conservative. Unknown numbers are kept with
 `metric=OTHER`; missing periods are explicit through `period_type=UNKNOWN`; and
 API responses include warnings for absent events, absent facts, low-confidence
 facts, and facts without periods.
+
+Supported number formats include comma and dot decimals, spaced thousands,
+negative values, `%`, `п.п.`, Russian and English scales from thousands through
+trillions, and RUB/USD/EUR/CNY symbols or names. Period extraction supports
+year, half-year, quarter including Roman numerals and `Q1`, nine months, month,
+and `FY2025`/`1H 2026` forms.
 
 ## MVP Limitations
 

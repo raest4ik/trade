@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from src.events.domain.entities import (
     EVENT_ANALYSIS_VERSION,
+    FINANCIAL_FACTS_VERSION,
     DetectedEvent,
     ExtractedFinancialFact,
     NewsEventAnalysis,
@@ -28,8 +29,8 @@ from src.events.domain.rules import EVENT_RULES, METRIC_RULES, MetricRule
 
 _NUMBER_PATTERN = re.compile(
     r"(?P<prefix>[$€¥₽])?\s*(?P<number>-?\d[\d\s]*(?:[,.]\d+)?)\s*"
-    r"(?P<suffix>%|процентн(?:ых|ого|ые)?\s+пункт\w*|п\.п\.|pp|млн|млрд|трлн|тыс\.?|million|billion|trillion)?\s*"
-    r"(?P<currency>руб\.?|рублей|₽|доллар\w*|долл\.?|usd|\$|eur|€|юан\w*|cny|тонн\w*|tons?|tonnes?|баррел\w*|barrels?|акци\w*|shares?|куб\.?\s*м(?:етр\w*)?)?",
+    r"(?P<suffix>%|процентн(?:ых|ого|ые)?\s+пункт\w*|п\.п\.|pp|млн|млрд|трлн|тыс\.?|thousand|million|billion|trillion)?\s*"
+    r"(?P<currency>руб\.?|рублей|rub|₽|доллар\w*|долл\.?|usd|\$|eur|евро|€|юан\w*|cny|тонн\w*|tons?|tonnes?|баррел\w*|barrels?|акци\w*|shares?|куб\.?\s*м(?:етр\w*)?)?",
     flags=re.IGNORECASE | re.UNICODE,
 )
 
@@ -86,6 +87,7 @@ class EventAnalyzer:
                 analysis_id=UUID(int=0),
                 event_type=rule.event_type,
                 confidence=Decimal(rule.confidence),
+                rule_id=rule.rule_id,
                 matched_rule=rule.rule_id,
                 evidence_text=evidence,
                 start_position=match.start(),
@@ -114,14 +116,28 @@ class EventAnalyzer:
                 value_end = sentence.start + match.end()
                 metric_rule = _nearest_metric(metric_matches, match.start())
                 metric = FinancialMetric.OTHER if metric_rule is None else metric_rule.metric
-                role = _fact_role(sentence.text, match.start())
                 unit = _unit(match)
                 currency = _currency(match)
                 scale = _scale(match)
+                if _should_ignore_untyped_number(
+                    sentence.text,
+                    match.start(),
+                    match.end(),
+                    metric_rule,
+                    unit,
+                    scale,
+                ):
+                    continue
+                role = _fact_role(sentence.text, match.start())
                 normalized = _normalize_value(parsed, scale)
                 comparison = _comparison_type(sentence.text)
                 direction = _change_direction(sentence.text, match.start())
                 confidence = _fact_confidence(metric_rule, period, role)
+                rule_id = (
+                    f"{metric_rule.rule_id}.value_proximity"
+                    if metric_rule is not None
+                    else "metric.unknown.value"
+                )
                 facts.append(
                     ExtractedFinancialFact(
                         id=uuid4(),
@@ -145,13 +161,12 @@ class EventAnalyzer:
                         change_value=parsed if role == FactRole.CHANGE else None,
                         change_unit=unit if role == FactRole.CHANGE else None,
                         confidence=confidence,
+                        rule_id=rule_id,
                         evidence_text=raw_content[value_start:value_end],
                         start_position=value_start,
                         end_position=value_end,
-                        extractor_version=self._analysis_version,
-                        matched_rule="metric.proximity"
-                        if metric_rule is not None
-                        else "metric.unknown",
+                        extractor_version=FINANCIAL_FACTS_VERSION,
+                        matched_rule=rule_id,
                     )
                 )
         return facts
@@ -199,7 +214,10 @@ def _looks_like_date_or_year(sentence: str, start: int, end: int, raw_number: st
     stripped = raw_number.replace(" ", "")
     before = sentence[max(0, start - 18) : start]
     after = sentence[end : min(len(sentence), end + 24)]
-    if _YEAR_ONLY_PATTERN.fullmatch(stripped):
+    around = before + stripped + after
+    if _YEAR_ONLY_PATTERN.fullmatch(stripped) and 1900 <= int(stripped) <= 2099:
+        return True
+    if re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}", around, re.I):
         return True
     if stripped in {"1", "2", "3", "4"} and (
         re.search(r"(?:квартал|quarter)", after, re.I)
@@ -207,6 +225,29 @@ def _looks_like_date_or_year(sentence: str, start: int, end: int, raw_number: st
     ):
         return True
     return bool(re.search(r"\d[./-]$", before) or re.search(r"^[./-]\d", after))
+
+
+def _should_ignore_untyped_number(
+    sentence: str,
+    start: int,
+    end: int,
+    metric_rule: MetricRule | None,
+    unit: FactUnit,
+    scale: ValueScale,
+) -> bool:
+    if metric_rule is not None or unit != FactUnit.UNSPECIFIED or scale != ValueScale.ONE:
+        return False
+    stripped_digits = re.sub(r"\D", "", sentence[start:end])
+    if len(stripped_digits) >= 8:
+        return True
+    context = sentence[max(0, start - 16) : min(len(sentence), end + 16)].lower()
+    return bool(
+        re.search(
+            r"(http\s+status|status\s+code|uuid|документ\w*\s+№|номер\s+документ)",
+            context,
+            re.I,
+        )
+    )
 
 
 def _unit(match: re.Match[str]) -> FactUnit:
@@ -232,11 +273,11 @@ def _unit(match: re.Match[str]) -> FactUnit:
 
 def _currency(match: re.Match[str]) -> Currency:
     text = f"{match.group('prefix') or ''} {match.group('currency') or ''}".lower()
-    if "₽" in text or "руб" in text:
+    if "₽" in text or "руб" in text or "rub" in text:
         return Currency.RUB
     if "$" in text or "usd" in text or "дол" in text:
         return Currency.USD
-    if "€" in text or "eur" in text:
+    if "€" in text or "eur" in text or "евро" in text:
         return Currency.EUR
     if "cny" in text or "юан" in text:
         return Currency.CNY
@@ -244,7 +285,7 @@ def _currency(match: re.Match[str]) -> Currency:
 
 
 def _is_currency_text(text: str) -> bool:
-    return bool(re.search(r"(₽|руб|\$|usd|дол|€|eur|юан|cny)", text, re.I))
+    return bool(re.search(r"(₽|руб|rub|\$|usd|дол|€|eur|евро|юан|cny)", text, re.I))
 
 
 def _scale(match: re.Match[str]) -> ValueScale:
@@ -255,7 +296,7 @@ def _scale(match: re.Match[str]) -> ValueScale:
         return ValueScale.BILLION
     if "млн" in suffix or "million" in suffix:
         return ValueScale.MILLION
-    if "тыс" in suffix:
+    if "тыс" in suffix or "thousand" in suffix:
         return ValueScale.THOUSAND
     return ValueScale.ONE
 
@@ -273,6 +314,8 @@ def _normalize_value(value: Decimal, scale: ValueScale) -> Decimal:
 
 def _fact_role(sentence: str, value_start: int) -> FactRole:
     prefix = sentence[max(0, value_start - 60) : value_start].lower()
+    if re.search(r"(?:до|to)\s*$", prefix):
+        return FactRole.ACTUAL
     if re.search(r"(прогноз|forecast|guidance|ожидает|outlook)", prefix):
         return FactRole.FORECAST
     if re.search(r"(консенсус|consensus)", prefix):
@@ -282,7 +325,7 @@ def _fact_role(sentence: str, value_start: int) -> FactRole:
     if re.search(r"(вырос\w*|увеличил\w*|снизил\w*|сократил\w*|выше|ниже)\s+(?:на|в)", prefix):
         return FactRole.CHANGE
     if re.search(r"(вырос\w*|увеличил\w*|снизил\w*|сократил\w*)\s+до", prefix):
-        return FactRole.TARGET
+        return FactRole.ACTUAL
     return FactRole.ACTUAL
 
 
@@ -296,6 +339,8 @@ def _comparison_type(sentence: str) -> ComparisonType:
         return ComparisonType.MONTH_OVER_MONTH
     if re.search(r"(выше\s+прогноз|ниже\s+прогноз|versus\s+forecast)", text):
         return ComparisonType.VERSUS_FORECAST
+    if re.search(r"(выше\s+консенсус|ниже\s+консенсус|versus\s+consensus)", text):
+        return ComparisonType.VERSUS_FORECAST
     if re.search(r"(годом ранее|previous)", text):
         return ComparisonType.VERSUS_PREVIOUS
     return ComparisonType.NONE
@@ -304,10 +349,10 @@ def _comparison_type(sentence: str) -> ComparisonType:
 def _change_direction(sentence: str, value_start: int) -> ChangeDirection:
     prefix = sentence[max(0, value_start - 50) : value_start].lower()
     if re.search(r"(вырос\w*|увеличил\w*|повысил\w*|выше)", prefix):
-        return ChangeDirection.INCREASE
+        return ChangeDirection.UP
     if re.search(r"(снизил\w*|сократил\w*|понизил\w*|ниже)", prefix):
-        return ChangeDirection.DECREASE
-    return ChangeDirection.NONE
+        return ChangeDirection.DOWN
+    return ChangeDirection.UNCHANGED
 
 
 def _extract_period(sentence: str) -> Period:
@@ -417,7 +462,15 @@ def _analysis_status(
 def _primary_event_type(events: list[DetectedEvent]) -> EventType:
     if not events:
         return EventType.UNKNOWN
-    return sorted(events, key=lambda item: (-item.confidence, item.start_position))[0].event_type
+    return sorted(
+        events,
+        key=lambda item: (
+            -item.confidence,
+            _rule_priority(item.rule_id),
+            -(item.end_position - item.start_position),
+            item.start_position,
+        ),
+    )[0].event_type
 
 
 def _rule_priority(rule_id: str) -> int:

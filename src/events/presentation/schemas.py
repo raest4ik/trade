@@ -26,6 +26,7 @@ class DetectedEventResponse(BaseModel):
     analysis_id: UUID
     event_type: EventType
     confidence: Decimal
+    rule_id: str
     matched_rule: str
     evidence_text: str
     start_position: int
@@ -38,6 +39,7 @@ class DetectedEventResponse(BaseModel):
             analysis_id=event.analysis_id,
             event_type=event.event_type,
             confidence=event.confidence,
+            rule_id=event.rule_id,
             matched_rule=event.matched_rule,
             evidence_text=event.evidence_text,
             start_position=event.start_position,
@@ -55,11 +57,11 @@ class ExtractedFinancialFactResponse(BaseModel):
     currency: Currency
     scale: ValueScale
     period_type: PeriodType
-    year: int | None
-    quarter: int | None
-    month: int | None
-    date_from: date | None
-    date_to: date | None
+    period_year: int | None
+    period_quarter: int | None
+    period_month: int | None
+    period_date_from: date | None
+    period_date_to: date | None
     raw_period: str | None
     comparison_type: ComparisonType
     fact_role: FactRole
@@ -67,6 +69,7 @@ class ExtractedFinancialFactResponse(BaseModel):
     change_value: Decimal | None
     change_unit: FactUnit | None
     confidence: Decimal
+    rule_id: str
     evidence_text: str
     start_position: int
     end_position: int
@@ -85,11 +88,11 @@ class ExtractedFinancialFactResponse(BaseModel):
             currency=fact.currency,
             scale=fact.scale,
             period_type=fact.period_type,
-            year=fact.year,
-            quarter=fact.quarter,
-            month=fact.month,
-            date_from=fact.date_from,
-            date_to=fact.date_to,
+            period_year=fact.year,
+            period_quarter=fact.quarter,
+            period_month=fact.month,
+            period_date_from=fact.date_from,
+            period_date_to=fact.date_to,
             raw_period=fact.raw_period,
             comparison_type=fact.comparison_type,
             fact_role=fact.fact_role,
@@ -97,6 +100,7 @@ class ExtractedFinancialFactResponse(BaseModel):
             change_value=fact.change_value,
             change_unit=fact.change_unit,
             confidence=fact.confidence,
+            rule_id=fact.rule_id,
             evidence_text=fact.evidence_text,
             start_position=fact.start_position,
             end_position=fact.end_position,
@@ -162,8 +166,8 @@ def _analysis_warnings(analysis: NewsEventAnalysis) -> list[str]:
 def _debug_payload(analysis: NewsEventAnalysis) -> dict[str, object]:
     return {
         "rules_version": analysis.analysis_version,
-        "event_rule_ids": [event.matched_rule for event in analysis.events],
-        "fact_rule_ids": [fact.matched_rule for fact in analysis.financial_facts],
+        "event_rule_ids": [event.rule_id for event in analysis.events],
+        "fact_rule_ids": [fact.rule_id for fact in analysis.financial_facts],
         "fact_count": len(analysis.financial_facts),
         "event_count": len(analysis.events),
     }

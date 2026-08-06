@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from httpx import AsyncClient
 
 
@@ -60,3 +62,22 @@ async def test_analyze_event_replaces_same_version_idempotently(client: AsyncCli
     assert second.status_code == 200
     assert second.json()["analysis_version"] == "event-rules-v1"
     assert len(second.json()["financial_facts"]) == len(first.json()["financial_facts"])
+
+
+async def test_concurrent_event_analysis_does_not_create_conflicting_results(
+    client: AsyncClient,
+) -> None:
+    created = await client.post(
+        "/api/v1/news",
+        json=payload(source_id="event-source-004", source_url="https://example.com/event/4"),
+    )
+    news_id = created.json()["id"]
+
+    responses = await asyncio.gather(
+        *(client.post(f"/api/v1/news/{news_id}/analyze-event") for _ in range(5))
+    )
+    fetched = await client.get(f"/api/v1/news/{news_id}/event-analysis")
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200, 200]
+    assert fetched.status_code == 200
+    assert fetched.json()["analysis_version"] == "event-rules-v1"

@@ -31,6 +31,9 @@ backfill-candles:
 moex-smoke:
     uv run python -m apps.cli.moex_smoke
 
+analyze-event news_id:
+    curl -X POST "http://localhost:8000/api/v1/news/{{news_id}}/analyze-event?debug=true"
+
 export-event-dataset:
     uv run python -m apps.cli.export_event_dataset --output artifacts/event-dataset.jsonl
 

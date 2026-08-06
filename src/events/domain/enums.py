@@ -105,7 +105,7 @@ class PeriodType(StrEnum):
 
 
 class ChangeDirection(StrEnum):
-    INCREASE = "INCREASE"
-    DECREASE = "DECREASE"
-    NONE = "NONE"
+    UP = "UP"
+    DOWN = "DOWN"
+    UNCHANGED = "UNCHANGED"
     UNKNOWN = "UNKNOWN"

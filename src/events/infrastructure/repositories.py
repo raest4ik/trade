@@ -28,6 +28,12 @@ class SqlAlchemyEventAnalysisRepository:
             await self._session.commit()
         except IntegrityError as exc:
             await self._session.rollback()
+            saved = await self.get_by_news_id(
+                news_id=analysis.news_id,
+                analysis_version=analysis.analysis_version,
+            )
+            if saved is not None:
+                return saved
             raise EventAnalysisStorageError("could not replace event analysis") from exc
         except SQLAlchemyError as exc:
             await self._session.rollback()

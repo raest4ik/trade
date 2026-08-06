@@ -46,22 +46,28 @@ async def run(args: argparse.Namespace) -> int:
                     )
                 )
             ).scalar_one_or_none()
-            matches = (
-                await session.execute(
-                    select(NewsInstrumentMatchRecord)
-                    .where(NewsInstrumentMatchRecord.news_id == news.id)
-                    .order_by(NewsInstrumentMatchRecord.start_position)
-                )
-            ).scalars()
-            reactions = (
-                await session.execute(
-                    select(NewsMarketReactionRecord)
-                    .where(NewsMarketReactionRecord.news_id == news.id)
-                    .options(selectinload(NewsMarketReactionRecord.points))
-                    .order_by(NewsMarketReactionRecord.created_at)
-                )
-            ).scalars()
+            matches_result = await session.execute(
+                select(NewsInstrumentMatchRecord)
+                .where(NewsInstrumentMatchRecord.news_id == news.id)
+                .order_by(NewsInstrumentMatchRecord.start_position)
+            )
+            matches = list(matches_result.scalars())
+            reactions_result = await session.execute(
+                select(NewsMarketReactionRecord)
+                .where(NewsMarketReactionRecord.news_id == news.id)
+                .options(selectinload(NewsMarketReactionRecord.points))
+                .order_by(NewsMarketReactionRecord.created_at)
+            )
+            reactions = list(reactions_result.scalars())
             payload = {
+                "news_id": news.id,
+                "published_at": news.published_at,
+                "raw_content_hash": news.raw_content_hash,
+                "analysis_version": None if analysis is None else analysis.analysis_version,
+                "event_types": []
+                if analysis is None
+                else [event.event_type for event in analysis.events],
+                "reaction_versions": sorted({reaction.reaction_version for reaction in reactions}),
                 "news": _news_payload(news, include_raw_content=args.include_raw_content),
                 "event_analysis": None if analysis is None else _analysis_payload(analysis),
                 "instrument_matches": [_match_payload(match) for match in matches],
@@ -106,6 +112,7 @@ def _analysis_payload(analysis: NewsEventAnalysisRecord) -> dict[str, object]:
                 "id": event.id,
                 "event_type": event.event_type,
                 "confidence": event.confidence,
+                "rule_id": event.rule_id,
                 "matched_rule": event.matched_rule,
                 "evidence_text": event.evidence_text,
                 "start_position": event.start_position,
@@ -123,11 +130,11 @@ def _analysis_payload(analysis: NewsEventAnalysisRecord) -> dict[str, object]:
                 "currency": fact.currency,
                 "scale": fact.scale,
                 "period_type": fact.period_type,
-                "year": fact.year,
-                "quarter": fact.quarter,
-                "month": fact.month,
-                "date_from": fact.date_from,
-                "date_to": fact.date_to,
+                "period_year": fact.year,
+                "period_quarter": fact.quarter,
+                "period_month": fact.month,
+                "period_date_from": fact.date_from,
+                "period_date_to": fact.date_to,
                 "raw_period": fact.raw_period,
                 "comparison_type": fact.comparison_type,
                 "fact_role": fact.fact_role,
@@ -135,6 +142,7 @@ def _analysis_payload(analysis: NewsEventAnalysisRecord) -> dict[str, object]:
                 "change_value": fact.change_value,
                 "change_unit": fact.change_unit,
                 "confidence": fact.confidence,
+                "rule_id": fact.rule_id,
                 "evidence_text": fact.evidence_text,
                 "start_position": fact.start_position,
                 "end_position": fact.end_position,

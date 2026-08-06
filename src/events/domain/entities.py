@@ -20,6 +20,7 @@ from src.events.domain.enums import (
 from src.news.domain.time import utc_now
 
 EVENT_ANALYSIS_VERSION = "event-rules-v1"
+FINANCIAL_FACTS_VERSION = "financial-facts-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,7 @@ class DetectedEvent:
     analysis_id: UUID
     event_type: EventType
     confidence: Decimal
+    rule_id: str
     matched_rule: str
     evidence_text: str
     start_position: int
@@ -57,6 +59,7 @@ class ExtractedFinancialFact:
     change_value: Decimal | None
     change_unit: FactUnit | None
     confidence: Decimal
+    rule_id: str
     evidence_text: str
     start_position: int
     end_position: int
@@ -103,6 +106,7 @@ class NewsEventAnalysis:
                     analysis_id=analysis_id,
                     event_type=event.event_type,
                     confidence=event.confidence,
+                    rule_id=event.rule_id,
                     matched_rule=event.matched_rule,
                     evidence_text=event.evidence_text,
                     start_position=event.start_position,
@@ -133,6 +137,7 @@ class NewsEventAnalysis:
                     change_value=fact.change_value,
                     change_unit=fact.change_unit,
                     confidence=fact.confidence,
+                    rule_id=fact.rule_id,
                     evidence_text=fact.evidence_text,
                     start_position=fact.start_position,
                     end_position=fact.end_position,

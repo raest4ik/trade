@@ -93,6 +93,14 @@ class DetectedEventRecord(Base):
     __table_args__ = (
         Index("ix_detected_events_analysis_type", "analysis_id", "event_type"),
         Index("ix_detected_events_type", "event_type"),
+        UniqueConstraint(
+            "analysis_id",
+            "event_type",
+            "rule_id",
+            "start_position",
+            "end_position",
+            name="uq_detected_events_exact_span",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
@@ -101,6 +109,7 @@ class DetectedEventRecord(Base):
     )
     event_type: Mapped[str] = mapped_column(String(64))
     confidence: Mapped[Decimal] = mapped_column(Numeric(10, 6))
+    rule_id: Mapped[str] = mapped_column(String(128))
     matched_rule: Mapped[str] = mapped_column(String(128))
     evidence_text: Mapped[str] = mapped_column(String(1000))
     start_position: Mapped[int] = mapped_column(Integer)
@@ -115,6 +124,7 @@ class DetectedEventRecord(Base):
             analysis_id=event.analysis_id,
             event_type=event.event_type.value,
             confidence=event.confidence,
+            rule_id=event.rule_id,
             matched_rule=event.matched_rule,
             evidence_text=event.evidence_text,
             start_position=event.start_position,
@@ -127,6 +137,7 @@ class DetectedEventRecord(Base):
             analysis_id=self.analysis_id,
             event_type=EventType(self.event_type),
             confidence=self.confidence,
+            rule_id=self.rule_id,
             matched_rule=self.matched_rule,
             evidence_text=self.evidence_text,
             start_position=self.start_position,
@@ -139,6 +150,14 @@ class ExtractedFinancialFactRecord(Base):
     __table_args__ = (
         Index("ix_extracted_financial_facts_analysis_metric", "analysis_id", "metric"),
         Index("ix_extracted_financial_facts_metric", "metric"),
+        UniqueConstraint(
+            "analysis_id",
+            "metric",
+            "rule_id",
+            "start_position",
+            "end_position",
+            name="uq_extracted_financial_facts_exact_span",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
@@ -164,6 +183,7 @@ class ExtractedFinancialFactRecord(Base):
     change_value: Mapped[Decimal | None] = mapped_column(Numeric(28, 10), nullable=True)
     change_unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     confidence: Mapped[Decimal] = mapped_column(Numeric(10, 6))
+    rule_id: Mapped[str] = mapped_column(String(128))
     evidence_text: Mapped[str] = mapped_column(String(1000))
     start_position: Mapped[int] = mapped_column(Integer)
     end_position: Mapped[int] = mapped_column(Integer)
@@ -196,6 +216,7 @@ class ExtractedFinancialFactRecord(Base):
             change_value=fact.change_value,
             change_unit=None if fact.change_unit is None else fact.change_unit.value,
             confidence=fact.confidence,
+            rule_id=fact.rule_id,
             evidence_text=fact.evidence_text,
             start_position=fact.start_position,
             end_position=fact.end_position,
@@ -226,6 +247,7 @@ class ExtractedFinancialFactRecord(Base):
             change_value=self.change_value,
             change_unit=None if self.change_unit is None else FactUnit(self.change_unit),
             confidence=self.confidence,
+            rule_id=self.rule_id,
             evidence_text=self.evidence_text,
             start_position=self.start_position,
             end_position=self.end_position,
