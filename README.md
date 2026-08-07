@@ -42,6 +42,10 @@ src/events/domain/                Deterministic event and fact extraction
 src/events/application/           Event analysis use cases and repository ports
 src/events/infrastructure/        SQLAlchemy event analysis storage
 src/events/presentation/          Event analysis HTTP schemas and routes
+src/evaluation/domain/            Gold event dataset validation and metrics
+src/evaluation/application/       Dataset import and evaluation use cases
+src/evaluation/infrastructure/    Evaluation dataset and run storage
+src/evaluation/presentation/      Evaluation HTTP schemas and routes
 src/shared/config/                Environment-driven settings
 src/shared/database/              Async SQLAlchemy engine and sessions
 src/shared/logging/               JSON structured logging
@@ -120,6 +124,11 @@ just backfill-candles
 just moex-smoke
 just analyze-event <news-id>
 just export-event-dataset
+just create-annotation-batch
+just validate-annotation-dataset <file>
+just import-annotation-dataset <file> <name>
+just assign-temporal-split <dataset-id> <train-until> <validation-until>
+just evaluate-event-extraction <dataset-id>
 just run
 just docker-up
 just docker-down
@@ -255,6 +264,27 @@ uv run python -m apps.cli.export_event_dataset --output artifacts/event-dataset.
 uv run python -m apps.cli.export_event_dataset --output artifacts/event-dataset.jsonl --include-raw-content
 ```
 
+Create, validate, import, split, and evaluate a reviewed gold annotation dataset:
+
+```bash
+uv run python -m apps.cli.create_annotation_batch --output artifacts/annotation-batch.jsonl --include-raw-content
+uv run python -m apps.cli.validate_annotation_dataset --input artifacts/annotation-batch.jsonl --strict
+uv run python -m apps.cli.import_annotation_dataset --input artifacts/annotation-batch.jsonl --name "manual-v1"
+uv run python -m apps.cli.assign_temporal_split --dataset-id <dataset-id> --train-until 2026-07-31 --validation-until 2026-08-15
+uv run python -m apps.cli.evaluate_event_extraction --dataset-id <dataset-id> --split TEST --fail-below-thresholds
+```
+
+Evaluation API:
+
+```bash
+curl http://localhost:8000/api/v1/evaluation/datasets
+curl http://localhost:8000/api/v1/evaluation/datasets/<dataset-id>
+curl -X POST http://localhost:8000/api/v1/evaluation/datasets/<dataset-id>/runs \
+  -H "Content-Type: application/json" \
+  -d '{"split":"TEST"}'
+curl http://localhost:8000/api/v1/evaluation/runs/<run-id>
+```
+
 ## Idempotency
 
 News ingestion deduplication is enforced by a unique database constraint across
@@ -276,6 +306,10 @@ news item while future versions can coexist.
 Event analysis is idempotent by `news_id` and `analysis_version`. Version
 `event-rules-v1` is replaced for the same news item while future rule versions
 can coexist.
+
+Evaluation dataset import is idempotent by the SHA-256 hash of the source JSONL
+file. Evaluation runs are append-only audit records tied to a dataset, split,
+extractor versions, thresholds, and Git commit SHA.
 
 ## Instrument Matching
 

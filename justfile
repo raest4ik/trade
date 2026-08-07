@@ -37,6 +37,21 @@ analyze-event news_id:
 export-event-dataset:
     uv run python -m apps.cli.export_event_dataset --output artifacts/event-dataset.jsonl
 
+create-annotation-batch:
+    uv run python -m apps.cli.create_annotation_batch --output artifacts/annotation-batch.jsonl
+
+validate-annotation-dataset file:
+    uv run python -m apps.cli.validate_annotation_dataset --input {{file}}
+
+import-annotation-dataset file name:
+    uv run python -m apps.cli.import_annotation_dataset --input {{file}} --name "{{name}}"
+
+assign-temporal-split dataset_id train_until validation_until:
+    uv run python -m apps.cli.assign_temporal_split --dataset-id {{dataset_id}} --train-until {{train_until}} --validation-until {{validation_until}}
+
+evaluate-event-extraction dataset_id:
+    uv run python -m apps.cli.evaluate_event_extraction --dataset-id {{dataset_id}} --fail-below-thresholds
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 
