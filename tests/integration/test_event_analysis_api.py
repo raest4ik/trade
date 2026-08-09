@@ -29,9 +29,9 @@ async def test_analyze_event_persists_and_gets_result(client: AsyncClient) -> No
 
     assert analyzed.status_code == 200
     body = analyzed.json()
-    assert body["analysis_version"] == "event-rules-v1"
+    assert body["analysis_version"] == "event-rules-v2"
     assert body["primary_event_type"] == "FINANCIAL_RESULTS"
-    assert body["debug"]["rules_version"] == "event-rules-v1"
+    assert body["debug"]["rules_version"] == "event-rules-v2"
     assert {fact["metric"] for fact in body["financial_facts"]} >= {"REVENUE", "EBITDA"}
     assert fetched.status_code == 200
     assert fetched.json()["id"] == body["id"]
@@ -60,7 +60,7 @@ async def test_analyze_event_replaces_same_version_idempotently(client: AsyncCli
 
     assert first.status_code == 200
     assert second.status_code == 200
-    assert second.json()["analysis_version"] == "event-rules-v1"
+    assert second.json()["analysis_version"] == "event-rules-v2"
     assert len(second.json()["financial_facts"]) == len(first.json()["financial_facts"])
 
 
@@ -80,4 +80,4 @@ async def test_concurrent_event_analysis_does_not_create_conflicting_results(
 
     assert [response.status_code for response in responses] == [200, 200, 200, 200, 200]
     assert fetched.status_code == 200
-    assert fetched.json()["analysis_version"] == "event-rules-v1"
+    assert fetched.json()["analysis_version"] == "event-rules-v2"

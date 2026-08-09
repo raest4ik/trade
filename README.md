@@ -11,7 +11,7 @@ issuer alias registry. It does not use LLMs, embeddings, fuzzy matching, MOEX
 connectors, external AI APIs, or trading automation.
 
 Stored news can also be analyzed by deterministic corporate-event and financial
-fact rules. Version `event-rules-v1` classifies supported corporate event types
+fact rules. Version `event-rules-v2` classifies supported corporate event types
 and extracts numeric facts with metric, period, unit, currency, scale, role,
 comparison, evidence text, and character positions. This layer also avoids LLMs,
 ML models, embeddings, sentiment scoring, and market-impact prediction.
@@ -319,7 +319,7 @@ Reaction calculation is idempotent by `news_id`, `instrument_id`, and
 news item while future versions can coexist.
 
 Event analysis is idempotent by `news_id` and `analysis_version`. Version
-`event-rules-v1` is replaced for the same news item while future rule versions
+`event-rules-v2` is replaced for the same news item while historical rule versions
 can coexist.
 
 Evaluation dataset import is idempotent by the SHA-256 hash of the source JSONL
@@ -394,7 +394,7 @@ next minute boundary cannot be separated without trade-level data.
 ## Deterministic Event And Fact Extraction
 
 `POST /api/v1/news/{news_id}/analyze-event` loads the stored raw news text,
-applies deterministic regex rules, replaces the saved `event-rules-v1` analysis,
+applies deterministic regex rules, replaces the saved `event-rules-v2` analysis,
 and returns detected events plus extracted facts. `GET
 /api/v1/news/{news_id}/event-analysis` returns the saved result.
 
@@ -406,12 +406,13 @@ fact role, comparison type, change direction, evidence text, character offsets,
 confidence metadata, and matched rule id. Confidence values are deterministic
 rule metadata, not model probabilities.
 
-The analysis version is `event-rules-v1`; financial facts store extractor
-version `financial-facts-v1`. Event and fact rows include stable `rule_id`
+The analysis version is `event-rules-v2`; financial facts store extractor
+version `financial-facts-v2`. Event and fact rows include stable `rule_id`
 values so later datasets can trace each label back to a deterministic rule.
 
-The analyzer is intentionally conservative. Unknown numbers are kept with
-`metric=OTHER`; missing periods are explicit through `period_type=UNKNOWN`; and
+The analyzer is intentionally conservative. Unsupported untyped numbers are ignored,
+while typed values for supported business KPIs can use `metric=OTHER`; missing periods
+are explicit through `period_type=UNKNOWN`; and
 API responses include warnings for absent events, absent facts, low-confidence
 facts, and facts without periods.
 

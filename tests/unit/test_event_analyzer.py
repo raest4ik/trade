@@ -242,22 +242,28 @@ def test_period_detection_scenarios(
             ChangeDirection.DOWN,
         ),
         (
+            "Чистая прибыль снизилась на 8% относительно 2024 года.",
+            FactRole.CHANGE,
+            ComparisonType.YEAR_OVER_YEAR,
+            ChangeDirection.DOWN,
+        ),
+        (
             "Прогноз EBITDA на 2026 год составляет 100 млрд руб.",
             FactRole.FORECAST,
             ComparisonType.NONE,
-            ChangeDirection.UNCHANGED,
+            ChangeDirection.UNKNOWN,
         ),
         (
             "Консенсус по выручке на 2026 год составляет 1 трлн руб.",
             FactRole.CONSENSUS,
             ComparisonType.NONE,
-            ChangeDirection.UNCHANGED,
+            ChangeDirection.UNKNOWN,
         ),
         (
             "Выручка годом ранее составляла 900 млрд руб.",
             FactRole.PREVIOUS,
             ComparisonType.VERSUS_PREVIOUS,
-            ChangeDirection.UNCHANGED,
+            ChangeDirection.UNKNOWN,
         ),
     ],
 )
@@ -368,7 +374,7 @@ def test_required_number_formats(
     assert fact.normalized_value == normalized
     assert fact.currency == currency
     assert fact.scale == scale
-    assert fact.extractor_version == "financial-facts-v1"
+    assert fact.extractor_version == "financial-facts-v2"
     assert fact.rule_id
 
 
@@ -448,3 +454,142 @@ def test_long_text_regression_stays_linear_enough() -> None:
     assert len(raw_content) > 10_000
     assert len(analysis.financial_facts) >= 100
     assert elapsed < 5
+
+
+def test_change_direction_defaults_to_unknown_and_requires_explicit_unchanged_text() -> None:
+    ordinary = EventAnalyzer().analyze(
+        news_id=uuid4(), raw_content="Выручка составила 10 млрд рублей."
+    )
+    unchanged = EventAnalyzer().analyze(
+        news_id=uuid4(), raw_content="Выручка осталась на уровне 10 млрд рублей."
+    )
+
+    assert ordinary.financial_facts[0].change_direction == ChangeDirection.UNKNOWN
+    assert ordinary.financial_facts[0].change_value is None
+    assert ordinary.financial_facts[0].change_unit is None
+    assert unchanged.financial_facts[0].change_direction == ChangeDirection.UNCHANGED
+
+
+@pytest.mark.parametrize(
+    ("verb", "expected"),
+    [("увеличившись", ChangeDirection.UP), ("снизившись", ChangeDirection.DOWN)],
+)
+def test_percentage_change_is_attached_to_main_fact_without_duplicate(
+    verb: str, expected: ChangeDirection
+) -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content=(f"Чистая прибыль составила 141,2 млрд руб., {verb} на 15,4% год к году."),
+    )
+
+    assert len(analysis.financial_facts) == 1
+    fact = analysis.financial_facts[0]
+    assert fact.metric == FinancialMetric.NET_PROFIT
+    assert fact.normalized_value == Decimal("141200000000.0")
+    assert fact.fact_role == FactRole.ACTUAL
+    assert fact.change_direction == expected
+    assert fact.change_value == Decimal("15.4")
+    assert fact.change_unit == FactUnit.PERCENT
+
+
+@pytest.mark.parametrize(
+    ("period_text", "expected"),
+    [
+        ("за первое полугодие 2025 года", PeriodType.HALF_YEAR),
+        ("за девять месяцев 2025 года", PeriodType.NINE_MONTHS),
+        ("по итогам 2025 года", PeriodType.YEAR),
+    ],
+)
+def test_period_is_propagated_to_following_financial_sentence(
+    period_text: str, expected: PeriodType
+) -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content=(
+            f"Компания представила результаты {period_text}. "
+            "Выручка составила 80 млрд руб., EBITDA — 20 млрд руб."
+        ),
+    )
+
+    assert len(analysis.financial_facts) == 2
+    assert {fact.period_type for fact in analysis.financial_facts} == {expected}
+    assert {fact.year for fact in analysis.financial_facts} == {2025}
+
+
+@pytest.mark.parametrize(
+    ("actor", "expected_role"),
+    [
+        ("Совет директоров рекомендовал", FactRole.FORECAST),
+        ("Общее собрание акционеров утвердило", FactRole.ACTUAL),
+    ],
+)
+def test_dividend_per_share_context_and_role(actor: str, expected_role: FactRole) -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content=f"{actor} дивиденды 35 руб. на акцию за 2025 год.",
+    )
+
+    fact = analysis.financial_facts[0]
+    assert fact.metric == FinancialMetric.DIVIDEND_PER_SHARE
+    assert fact.fact_role == expected_role
+    assert fact.change_direction == ChangeDirection.UNKNOWN
+
+
+def test_dividend_total_is_distinguished_from_per_share_value() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content="Общая сумма дивидендов составит 70 млрд руб.",
+    )
+
+    assert analysis.financial_facts[0].metric == FinancialMetric.DIVIDEND_TOTAL
+
+
+def test_future_financial_target_is_guidance_and_forecast() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content="Менеджмент обозначил ориентир чистой прибыли около 600 млрд руб. на 2027 год.",
+    )
+
+    assert analysis.primary_event_type == EventType.GUIDANCE
+    assert {event.event_type for event in analysis.events} >= {
+        EventType.GUIDANCE,
+        EventType.FINANCIAL_RESULTS,
+    }
+    assert analysis.financial_facts[0].fact_role == FactRole.FORECAST
+
+
+def test_production_update_extracts_all_operational_volumes() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content=(
+            "За первое полугодие 2025 года компания добыла 20,5 млрд куб. м газа "
+            "и 3,2 млн тонн жидких углеводородов."
+        ),
+    )
+
+    assert EventType.PRODUCTION_UPDATE in {event.event_type for event in analysis.events}
+    assert len(analysis.financial_facts) == 2
+    assert {fact.metric for fact in analysis.financial_facts} == {FinancialMetric.PRODUCTION_VOLUME}
+    assert {fact.period_type for fact in analysis.financial_facts} == {PeriodType.HALF_YEAR}
+
+
+def test_planned_share_consolidation_is_acquisition_target() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content="Холдинг сообщил о планах консолидировать до 75% акций дочерней компании.",
+    )
+
+    assert EventType.MERGER_ACQUISITION in {event.event_type for event in analysis.events}
+    fact = analysis.financial_facts[0]
+    assert fact.metric == FinancialMetric.OWNERSHIP_PERCENT
+    assert fact.fact_role == FactRole.TARGET
+
+
+def test_sanctions_package_and_calendar_date_are_not_financial_facts() -> None:
+    analysis = EventAnalyzer().analyze(
+        news_id=uuid4(),
+        raw_content="Регулятор утвердил 19-й пакет санкций 15 октября 2025 года.",
+    )
+
+    assert EventType.SANCTIONS in {event.event_type for event in analysis.events}
+    assert analysis.financial_facts == []

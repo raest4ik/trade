@@ -60,16 +60,16 @@ EVENT_RULES: tuple[EventRule, ...] = (
         "event.guidance",
         EventType.GUIDANCE,
         compile_rule(
-            r"(?<![\w])(?:прогноз\w*|ожидает\s+по\s+итогам\s+года|пересмотрел\w*\s+прогноз|повысил\w*\s+прогноз|понизил\w*\s+прогноз|guidance|forecast|outlook)(?![\w])"
+            r"(?<![\w])(?:прогноз\w*|ориентир\w*|цел\w*|ожидает\w*|планирует\w*|подтвердил\w*\s+прогноз|пересмотрел\w*\s+прогноз|повысил\w*\s+прогноз|понизил\w*\s+прогноз|улучшил\w*\s+прогноз|guidance|forecast|outlook)(?![\w])"
         ),
-        40,
-        "0.92",
+        5,
+        "0.98",
     ),
     EventRule(
         "event.ma",
         EventType.MERGER_ACQUISITION,
         compile_rule(
-            r"(?<![\w])(?:приобретени\w*|покупк\w+\s+дол[ии]|продаж\w+\s+актив\w*|слияни\w*|поглощени\w*|acquisition|merger)(?![\w])"
+            r"(?<![\w])(?:приобретени\w*|покупк\w+\s+дол[ии]|продаж\w+\s+актив\w*|слияни\w*|поглощени\w*|консолидир\w+\s+(?:до\s+)?\d+(?:[,.]\d+)?%?|acquisition|merger)(?![\w])"
         ),
         50,
         "0.93",
@@ -107,7 +107,7 @@ EVENT_RULES: tuple[EventRule, ...] = (
     EventRule(
         "event.production",
         EventType.PRODUCTION_UPDATE,
-        compile_rule(r"(?<![\w])(?:производств\w*|добыч\w*|production|output)(?![\w])"),
+        compile_rule(r"(?<![\w])(?:производств\w*|добыч\w*|добы[лт]\w*|production|output)(?![\w])"),
         100,
         "0.88",
     ),
@@ -175,7 +175,9 @@ METRIC_RULES: tuple[MetricRule, ...] = (
     MetricRule(
         "metric.net_profit",
         FinancialMetric.NET_PROFIT,
-        compile_rule(r"(?<![\w])(?:чист\w+\s+прибыл\w*|net\s+profit)(?![\w])"),
+        compile_rule(
+            r"(?<![\w])(?:чист\w+\s+прибыл\w*|(?:нормализованн\w+\s+)?прибыл\w+\s+акционер\w*|net\s+profit)(?![\w])"
+        ),
         20,
     ),
     MetricRule(
@@ -220,7 +222,7 @@ METRIC_RULES: tuple[MetricRule, ...] = (
     MetricRule(
         "metric.production",
         FinancialMetric.PRODUCTION_VOLUME,
-        compile_rule(r"(?<![\w])(?:производств\w*|добыч\w*|production|output)(?![\w])"),
+        compile_rule(r"(?<![\w])(?:производств\w*|добыч\w*|добы[лт]\w*|production|output)(?![\w])"),
         100,
     ),
     MetricRule(
