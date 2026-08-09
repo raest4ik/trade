@@ -174,6 +174,7 @@ def _failed_thresholds(
     fact_metrics = _dict(metrics.get("facts"))
     event_micro = _dict(event_metrics.get("micro"))
     fact_strict = _dict(fact_metrics.get("strict"))
+    fact_semantic_strict = _dict(fact_metrics.get("semantic_strict"))
     fact_value = _dict(fact_metrics.get("value"))
     fact_metric = _dict(fact_metrics.get("metric"))
     checks = (
@@ -184,6 +185,11 @@ def _failed_thresholds(
             event_thresholds.get("primary_accuracy"),
         ),
         ("fact.strict_f1", fact_strict.get("f1"), fact_thresholds.get("strict_f1")),
+        (
+            "fact.semantic_strict_f1",
+            fact_semantic_strict.get("f1"),
+            fact_thresholds.get("semantic_strict_f1"),
+        ),
         ("fact.value_f1", fact_value.get("f1"), fact_thresholds.get("value_f1")),
         ("fact.metric_f1", fact_metric.get("f1"), fact_thresholds.get("metric_f1")),
     )

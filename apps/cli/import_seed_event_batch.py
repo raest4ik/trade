@@ -83,6 +83,7 @@ def _result_payload(result: SeedProcessingResult) -> dict[str, object]:
         "records_with_predicted_facts": stats.records_with_predicted_facts,
         "category_counts": stats.category_counts,
         "source_review_required": stats.source_review_required,
+        "ontology_review_required": stats.ontology_review_required,
         "review_jsonl_path": str(result.review_jsonl_path),
         "mapping_path": str(result.mapping_path),
         "comparison_dir": str(result.comparison_dir),

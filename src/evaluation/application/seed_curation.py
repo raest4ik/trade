@@ -18,6 +18,7 @@ from src.evaluation.domain.entities import (
 )
 from src.evaluation.domain.enums import DatasetSplit, ReviewStatus
 from src.evaluation.domain.metrics import (
+    EvaluationMetricResult,
     EventEvaluationInput,
     FactEvaluationInput,
     evaluate_event_predictions,
@@ -109,6 +110,7 @@ class SeedProcessingStats:
     records_with_predicted_facts: int
     category_counts: dict[str, int]
     source_review_required: list[str]
+    ontology_review_required: list[str]
     baseline_metrics: dict[str, object]
     validation_errors: list[str]
 
@@ -132,6 +134,7 @@ class ProcessedSeedRecord:
     category: str
     review_reasons: list[str]
     source_review_required: bool
+    ontology_review_required: bool
 
 
 def validate_seed_file(path: Path) -> SeedValidationResult:
@@ -216,12 +219,15 @@ async def process_seed_batch(
                 event_repository=event_repository,
             ).execute(save_result.item.id)
         ).analysis
-        source_review_required, source_reasons = _source_review(record)
+        source_review_required, ontology_review_required, manual_review_reasons = (
+            _manual_review_requirements(record)
+        )
         category, review_reasons = _review_category(
             record=record,
             analysis=analysis,
             source_review_required=source_review_required,
-            source_reasons=source_reasons,
+            ontology_review_required=ontology_review_required,
+            manual_review_reasons=manual_review_reasons,
         )
         processed.append(
             ProcessedSeedRecord(
@@ -233,6 +239,7 @@ async def process_seed_batch(
                 category=category,
                 review_reasons=review_reasons,
                 source_review_required=source_review_required,
+                ontology_review_required=ontology_review_required,
             )
         )
     await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
@@ -255,6 +262,7 @@ async def process_seed_batch(
             records_with_predicted_facts=0,
             category_counts={},
             source_review_required=[],
+            ontology_review_required=[],
             baseline_metrics={},
             validation_errors=[],
         )
@@ -388,21 +396,31 @@ def _seed_title(record: SeedEventRecord) -> str:
     )
 
 
-def _source_review(record: SeedEventRecord) -> tuple[bool, list[str]]:
-    reasons: list[str] = []
+def _manual_review_requirements(record: SeedEventRecord) -> tuple[bool, bool, list[str]]:
+    source_reasons: list[str] = []
+    ontology_reasons: list[str] = []
     parsed = urlparse(record.source.url)
     if record.source.tier in SECONDARY_SOURCE_TIERS:
-        reasons.append("SOURCE_REVIEW_REQUIRED: secondary source")
+        source_reasons.append("SOURCE_REVIEW_REQUIRED: secondary source")
     if not parsed.netloc or parsed.path in {"", "/"}:
-        reasons.append("SOURCE_REVIEW_REQUIRED: general or non-specific URL")
-    if record.notes and any(
-        marker in record.notes.lower()
-        for marker in ("source", "confirm", "confirmation", "conflict", "incomplete")
+        source_reasons.append("SOURCE_REVIEW_REQUIRED: general or non-specific URL")
+    note_text = (record.notes or "").lower()
+    if note_text and any(marker in note_text for marker in ("source", "confirm", "incomplete")):
+        source_reasons.append("SOURCE_REVIEW_REQUIRED: seed notes require source confirmation")
+    if note_text and any(
+        marker in note_text
+        for marker in ("label", "ontology", "event", "fact", "metric", "conflict")
     ):
-        reasons.append("SOURCE_REVIEW_REQUIRED: seed notes require source/label confirmation")
+        ontology_reasons.append(
+            "ONTOLOGY_REVIEW_REQUIRED: seed notes require label/schema confirmation"
+        )
     if any(fact.notes for fact in record.gold_financial_facts):
-        reasons.append("SOURCE_REVIEW_REQUIRED: financial fact notes require review")
-    return bool(reasons), reasons
+        ontology_reasons.append("ONTOLOGY_REVIEW_REQUIRED: financial fact notes require review")
+    return (
+        bool(source_reasons),
+        bool(ontology_reasons),
+        source_reasons + ontology_reasons,
+    )
 
 
 def _review_category(
@@ -410,9 +428,10 @@ def _review_category(
     record: SeedEventRecord,
     analysis: NewsEventAnalysis,
     source_review_required: bool,
-    source_reasons: list[str],
+    ontology_review_required: bool,
+    manual_review_reasons: list[str],
 ) -> tuple[str, list[str]]:
-    reasons: list[str] = list(source_reasons)
+    reasons: list[str] = list(manual_review_reasons)
     gold_events = {event.event_type for event in record.gold_events}
     predicted_events = {event.event_type for event in analysis.events}
     event_match = (
@@ -422,20 +441,48 @@ def _review_category(
     fact_result = evaluate_fact_predictions(
         [FactEvaluationInput(record.gold_financial_facts, analysis.financial_facts)]
     )
-    strict_metrics = cast("dict[str, float]", fact_result.metrics["strict"])
-    perfect_fact_match = strict_metrics["f1"] == 1.0
     if source_review_required:
-        return "E", reasons
+        return "SOURCE_REVIEW_REQUIRED", reasons
+    if ontology_review_required:
+        return "ONTOLOGY_REVIEW_REQUIRED", reasons
     if len(predicted_events) > 1 or analysis.status.value == "AMBIGUOUS" or len(gold_events) > 1:
         reasons.append("multiple or ambiguous events")
-        return "D", reasons
+        return "D_AMBIGUOUS_EVENT", reasons
     if not event_match:
         reasons.append("event mismatch")
-        return "C", reasons
-    if not perfect_fact_match:
-        reasons.append("minor fact mismatch")
-        return "B", reasons
+        return "C_EVENT_MISMATCH", reasons
+    fact_category = _fact_review_category(fact_result)
+    if fact_category is not None:
+        reasons.append(fact_category.replace("_", " ").lower())
+        return fact_category, reasons
     return "A", ["extractor and preliminary seed labels agree"]
+
+
+def _fact_review_category(fact_result: EvaluationMetricResult) -> str | None:
+    metrics = fact_result.metrics
+    semantic_strict = cast("dict[str, float]", metrics["semantic_strict"])
+    if semantic_strict["f1"] == 1.0:
+        if float(cast("float", metrics["evidence_span_accuracy"])) < 1.0:
+            return "SPAN_REVIEW_REQUIRED"
+        return None
+    error_types = {str(error["type"]) for error in fact_result.errors}
+    if "MISSED_FACT" in error_types:
+        return "B_MISSED_FACT"
+    if "EXTRA_FACT" in error_types:
+        return "B_EXTRA_FACT"
+    if "WRONG_METRIC" in error_types:
+        return "B_WRONG_METRIC"
+    if "WRONG_VALUE" in error_types:
+        return "B_WRONG_VALUE"
+    if "WRONG_PERIOD" in error_types:
+        return "B_WRONG_PERIOD"
+    if {"WRONG_CHANGE_DIRECTION", "WRONG_CHANGE_VALUE", "WRONG_CHANGE_UNIT"} & error_types:
+        return "B_WRONG_CHANGE"
+    if "WRONG_ROLE" in error_types:
+        return "B_WRONG_ROLE"
+    if {"WRONG_CURRENCY", "WRONG_SCALE"} & error_types:
+        return "B_WRONG_UNIT_CURRENCY_SCALE"
+    return "B_OTHER_FACT_MISMATCH"
 
 
 def _primary_gold_event(record: SeedEventRecord) -> EventType | None:
@@ -517,6 +564,12 @@ def _comparison_metrics(
             "perfect_event_match": sum(1 for item in per_record if item["perfect_event_match"]),
             "event_mismatch": sum(1 for item in per_record if item["event_mismatch"]),
             "perfect_fact_match": sum(1 for item in per_record if item["perfect_fact_match"]),
+            "perfect_exact_fact_match": sum(
+                1 for item in per_record if item["perfect_exact_fact_match"]
+            ),
+            "evidence_span_mismatch": sum(
+                1 for item in per_record if item["evidence_span_mismatch"]
+            ),
             "requiring_human_review": sum(1 for item in processed if item.category != "A"),
         },
         "categories": dict(sorted(Counter(item.category for item in processed).items())),
@@ -555,6 +608,11 @@ def _write_comparison_report(
         "",
         f"- records: {len(processed)}",
         f"- categories: {dict(sorted(Counter(item.category for item in processed).items()))}",
+        f"- source review required: {sum(1 for item in processed if item.source_review_required)}",
+        (
+            "- ontology review required: "
+            f"{sum(1 for item in processed if item.ontology_review_required)}"
+        ),
         f"- errors: {len(errors)}",
         "- market reactions: not calculated",
         "- review status: DRAFT only",
@@ -568,11 +626,26 @@ def _write_comparison_report(
 
 
 def _write_review_queue(path: Path, processed: list[ProcessedSeedRecord]) -> None:
-    grouped: dict[str, list[ProcessedSeedRecord]] = {
-        category: [] for category in ("A", "B", "C", "D", "E")
-    }
+    category_order = (
+        "A",
+        "B_MISSED_FACT",
+        "B_EXTRA_FACT",
+        "B_WRONG_METRIC",
+        "B_WRONG_VALUE",
+        "B_WRONG_PERIOD",
+        "B_WRONG_CHANGE",
+        "B_WRONG_ROLE",
+        "B_WRONG_UNIT_CURRENCY_SCALE",
+        "B_OTHER_FACT_MISMATCH",
+        "SPAN_REVIEW_REQUIRED",
+        "C_EVENT_MISMATCH",
+        "D_AMBIGUOUS_EVENT",
+        "SOURCE_REVIEW_REQUIRED",
+        "ONTOLOGY_REVIEW_REQUIRED",
+    )
+    grouped: dict[str, list[ProcessedSeedRecord]] = {category: [] for category in category_order}
     for item in processed:
-        grouped[item.category].append(item)
+        grouped.setdefault(item.category, []).append(item)
     lines = [
         "# Batch 001 Human Review Queue",
         "",
@@ -581,14 +654,25 @@ def _write_review_queue(path: Path, processed: list[ProcessedSeedRecord]) -> Non
     ]
     headings = {
         "A": "A - extractor and seed gold fully agree",
-        "B": "B - minor fact mismatch",
-        "C": "C - event mismatch",
-        "D": "D - multiple/ambiguous events",
-        "E": "E - source/date/label requires manual verification",
+        "B_MISSED_FACT": "B - missing fact",
+        "B_EXTRA_FACT": "B - extra fact",
+        "B_WRONG_METRIC": "B - wrong metric",
+        "B_WRONG_VALUE": "B - wrong value",
+        "B_WRONG_PERIOD": "B - wrong period",
+        "B_WRONG_CHANGE": "B - wrong change direction/value/unit",
+        "B_WRONG_ROLE": "B - wrong fact role",
+        "B_WRONG_UNIT_CURRENCY_SCALE": "B - wrong unit/currency/scale",
+        "B_OTHER_FACT_MISMATCH": "B - other fact mismatch",
+        "SPAN_REVIEW_REQUIRED": "Evidence span review required",
+        "C_EVENT_MISMATCH": "C - event mismatch",
+        "D_AMBIGUOUS_EVENT": "D - multiple/ambiguous events",
+        "SOURCE_REVIEW_REQUIRED": "SOURCE_REVIEW_REQUIRED",
+        "ONTOLOGY_REVIEW_REQUIRED": "ONTOLOGY_REVIEW_REQUIRED",
     }
-    for category in ("A", "B", "C", "D", "E"):
-        lines.extend([f"## {headings[category]}", "", f"Count: {len(grouped[category])}", ""])
-        for item in grouped[category]:
+    for category in category_order:
+        items = grouped.get(category, [])
+        lines.extend([f"## {headings[category]}", "", f"Count: {len(items)}", ""])
+        for item in items:
             if category == "A":
                 lines.append(
                     f"- `{item.seed.record_id}` {item.seed.company} "
@@ -631,6 +715,9 @@ def _stats(
     source_review_required = [
         item.seed.record_id for item in processed if item.source_review_required
     ]
+    ontology_review_required = [
+        item.seed.record_id for item in processed if item.ontology_review_required
+    ]
     return SeedProcessingStats(
         records_total=records_total,
         created=created,
@@ -651,6 +738,7 @@ def _stats(
         records_with_predicted_facts=sum(1 for item in processed if item.analysis.financial_facts),
         category_counts=dict(sorted(Counter(item.category for item in processed).items())),
         source_review_required=source_review_required,
+        ontology_review_required=ontology_review_required,
         baseline_metrics=baseline_metrics,
         validation_errors=validation_errors,
     )
@@ -666,12 +754,16 @@ def _record_summary(item: ProcessedSeedRecord) -> dict[str, bool]:
     fact_result = evaluate_fact_predictions(
         [FactEvaluationInput(item.seed.gold_financial_facts, item.analysis.financial_facts)]
     )
+    semantic_strict_metrics = cast("dict[str, float]", fact_result.metrics["semantic_strict"])
     strict_metrics = cast("dict[str, float]", fact_result.metrics["strict"])
-    perfect_fact = strict_metrics["f1"] == 1.0
+    evidence_span_accuracy = float(cast("float", fact_result.metrics["evidence_span_accuracy"]))
+    perfect_fact = semantic_strict_metrics["f1"] == 1.0
     return {
         "perfect_event_match": perfect_event,
         "event_mismatch": not perfect_event,
         "perfect_fact_match": perfect_fact,
+        "perfect_exact_fact_match": strict_metrics["f1"] == 1.0,
+        "evidence_span_mismatch": evidence_span_accuracy < 1.0,
     }
 
 
