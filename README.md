@@ -129,6 +129,7 @@ just validate-annotation-dataset <file>
 just import-annotation-dataset <file> <name>
 just assign-temporal-split <dataset-id> <train-until> <validation-until>
 just evaluate-event-extraction <dataset-id>
+just import-seed-event-batch
 just run
 just docker-up
 just docker-down
@@ -273,6 +274,20 @@ uv run python -m apps.cli.import_annotation_dataset --input artifacts/annotation
 uv run python -m apps.cli.assign_temporal_split --dataset-id <dataset-id> --train-until 2026-07-31 --validation-until 2026-08-15
 uv run python -m apps.cli.evaluate_event_extraction --dataset-id <dataset-id> --split TEST --fail-below-thresholds
 ```
+
+Run the batch-001 seed curation workflow without creating final gold labels:
+
+```bash
+uv run python -m apps.cli.import_seed_event_batch --input artifacts/seed/ru_corporate_events_seed_50.jsonl --dry-run
+uv run python -m apps.cli.import_seed_event_batch --input artifacts/seed/ru_corporate_events_seed_50.jsonl
+```
+
+The seed importer validates `event-seed-v1`, creates research `NewsItem` rows
+with `DATE_ONLY / DO_NOT_USE_FOR_REACTION` in the title and review notes, runs
+instrument matching and deterministic event analysis, then writes review
+artifacts under `artifacts/seed/`. It keeps examples in `DRAFT`, leaves split
+assignment as `UNASSIGNED`, does not calculate market reactions, and does not
+import the records as a final gold dataset.
 
 Evaluation API:
 

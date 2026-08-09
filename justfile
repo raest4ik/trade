@@ -52,6 +52,9 @@ assign-temporal-split dataset_id train_until validation_until:
 evaluate-event-extraction dataset_id:
     uv run python -m apps.cli.evaluate_event_extraction --dataset-id {{dataset_id}} --fail-below-thresholds
 
+import-seed-event-batch:
+    uv run python -m apps.cli.import_seed_event_batch --input artifacts/seed/ru_corporate_events_seed_50.jsonl
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 

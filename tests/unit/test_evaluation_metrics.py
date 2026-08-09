@@ -84,8 +84,11 @@ def test_fact_metrics_are_strict_exact_and_report_field_errors() -> None:
     result = evaluate_fact_predictions([FactEvaluationInput([gold], [predicted])])
 
     assert result.metrics["strict"] == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    assert result.metrics["semantic_strict"] == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    assert result.metrics["semantic_strict_f1"] == 1.0
     assert result.metrics["value"] == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
     assert result.metrics["metric"] == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    assert result.metrics["evidence_span_accuracy"] == 1.0
     assert result.errors == []
 
 
@@ -105,7 +108,9 @@ def test_fact_metrics_use_deterministic_one_to_one_matching() -> None:
 
     assert result.metrics["matched_pair_count"] == 2
     strict_metrics = cast("dict[str, float]", result.metrics["strict"])
+    semantic_strict_metrics = cast("dict[str, float]", result.metrics["semantic_strict"])
     assert strict_metrics["f1"] == 1.0
+    assert semantic_strict_metrics["f1"] == 1.0
 
 
 def test_fact_metrics_distinguish_period_role_currency_scale_and_span_errors() -> None:
@@ -147,6 +152,70 @@ def test_fact_metrics_distinguish_period_role_currency_scale_and_span_errors() -
     }
 
 
+def test_fact_metrics_treat_empty_fact_sets_as_perfect_match() -> None:
+    result = evaluate_fact_predictions([FactEvaluationInput([], [])])
+
+    assert result.metrics["strict"] == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    assert result.metrics["semantic_strict"] == {"precision": 1.0, "recall": 1.0, "f1": 1.0}
+    assert result.metrics["semantic_strict_f1"] == 1.0
+    assert result.metrics["evidence_span_accuracy"] == 1.0
+    assert result.errors == []
+
+
+def test_fact_metrics_count_semantic_strict_without_exact_evidence_span() -> None:
+    gold = _gold_fact(
+        metric=FinancialMetric.REVENUE,
+        value=Decimal("100"),
+        start=10,
+        end=13,
+    )
+    predicted = _predicted_fact(
+        metric=FinancialMetric.REVENUE,
+        value=Decimal("100"),
+        start=11,
+        end=14,
+    )
+
+    result = evaluate_fact_predictions([FactEvaluationInput([gold], [predicted])])
+
+    strict_metrics = cast("dict[str, float]", result.metrics["strict"])
+    semantic_strict_metrics = cast("dict[str, float]", result.metrics["semantic_strict"])
+    field_accuracy = cast("dict[str, float]", result.metrics["field_accuracy"])
+    assert strict_metrics["f1"] == 0.0
+    assert semantic_strict_metrics["f1"] == 1.0
+    assert result.metrics["semantic_strict_f1"] == 1.0
+    assert result.metrics["evidence_span_accuracy"] == 0.0
+    assert "evidence_span" not in field_accuracy
+    assert {error["type"] for error in result.errors} == {"WRONG_EVIDENCE_SPAN"}
+
+
+def test_fact_metrics_include_change_value_and_unit() -> None:
+    gold = _gold_fact(
+        metric=FinancialMetric.REVENUE,
+        value=Decimal("15"),
+        change_value=Decimal("15"),
+        change_unit=FactUnit.PERCENT,
+    )
+    predicted = _predicted_fact(
+        metric=FinancialMetric.REVENUE,
+        value=Decimal("15"),
+        change_value=Decimal("12"),
+        change_unit=FactUnit.MONEY,
+    )
+
+    result = evaluate_fact_predictions([FactEvaluationInput([gold], [predicted])])
+
+    semantic_strict_metrics = cast("dict[str, float]", result.metrics["semantic_strict"])
+    field_accuracy = cast("dict[str, float]", result.metrics["field_accuracy"])
+    assert semantic_strict_metrics["f1"] == 0.0
+    assert field_accuracy["change_value"] == 0.0
+    assert field_accuracy["change_unit"] == 0.0
+    assert {error["type"] for error in result.errors} >= {
+        "WRONG_CHANGE_VALUE",
+        "WRONG_CHANGE_UNIT",
+    }
+
+
 def _gold_event(event_type: EventType) -> GoldEvent:
     return GoldEvent(
         event_type=event_type,
@@ -181,6 +250,8 @@ def _gold_fact(
     role: FactRole = FactRole.ACTUAL,
     start: int = 10,
     end: int = 13,
+    change_value: Decimal | None = None,
+    change_unit: FactUnit | None = None,
 ) -> GoldFinancialFact:
     return GoldFinancialFact(
         metric=metric,
@@ -196,9 +267,9 @@ def _gold_fact(
         raw_period=None if year is None else str(year),
         fact_role=role,
         comparison_type=ComparisonType.NONE,
-        change_direction=ChangeDirection.UNCHANGED,
-        change_value=None,
-        change_unit=None,
+        change_direction=ChangeDirection.UNCHANGED if change_value is None else ChangeDirection.UP,
+        change_value=change_value,
+        change_unit=change_unit,
         evidence_text=str(value),
         start_position=start,
         end_position=end,
@@ -215,6 +286,8 @@ def _predicted_fact(
     role: FactRole = FactRole.ACTUAL,
     start: int = 10,
     end: int = 13,
+    change_value: Decimal | None = None,
+    change_unit: FactUnit | None = None,
 ) -> ExtractedFinancialFact:
     return ExtractedFinancialFact(
         id=uuid4(),
@@ -234,9 +307,9 @@ def _predicted_fact(
         raw_period=None if year is None else str(year),
         comparison_type=ComparisonType.NONE,
         fact_role=role,
-        change_direction=ChangeDirection.UNCHANGED,
-        change_value=None,
-        change_unit=None,
+        change_direction=ChangeDirection.UNCHANGED if change_value is None else ChangeDirection.UP,
+        change_value=change_value,
+        change_unit=change_unit,
         confidence=Decimal("0.91"),
         rule_id="metric.test",
         evidence_text=str(value),

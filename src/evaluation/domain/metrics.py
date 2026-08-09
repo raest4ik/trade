@@ -46,6 +46,8 @@ class NormalizedFact:
     fact_role: str
     comparison_type: str
     change_direction: str
+    change_value: Decimal | None
+    change_unit: str | None
     evidence_text: str
     start_position: int
     end_position: int
@@ -56,6 +58,7 @@ class FactMatch:
     gold_index: int
     prediction_index: int
     strict: bool
+    semantic_strict: bool
     value: bool
     metric: bool
     evidence_overlap: Decimal
@@ -174,6 +177,7 @@ def evaluate_fact_predictions(
     examples: Sequence[FactEvaluationInput],
 ) -> EvaluationMetricResult:
     strict_tp = 0
+    semantic_strict_tp = 0
     value_tp = 0
     metric_tp = 0
     gold_total = 0
@@ -193,6 +197,7 @@ def evaluate_fact_predictions(
         matched_gold = {match.gold_index for match in matches}
         matched_predictions = {match.prediction_index for match in matches}
         strict_tp += sum(1 for match in matches if match.strict)
+        semantic_strict_tp += sum(1 for match in matches if match.semantic_strict)
         value_tp += sum(1 for match in matches if match.value)
         metric_tp += sum(1 for match in matches if match.metric)
         for match in matches:
@@ -219,17 +224,32 @@ def evaluate_fact_predictions(
                 }
             )
 
+    strict_metrics = _binary_metrics(strict_tp, prediction_total, gold_total)
+    semantic_strict_metrics = _binary_metrics(
+        semantic_strict_tp,
+        prediction_total,
+        gold_total,
+    )
+    evidence_span_accuracy = _safe_ratio(
+        field_matches["evidence_span"],
+        field_totals["evidence_span"],
+        empty_value=1.0,
+    )
     metrics: dict[str, object] = {
         "example_count": len(examples),
         "gold_fact_count": gold_total,
         "predicted_fact_count": prediction_total,
         "matched_pair_count": matched_pairs,
-        "strict": _binary_metrics(strict_tp, prediction_total, gold_total),
+        "strict": strict_metrics,
+        "semantic_strict": semantic_strict_metrics,
+        "semantic_strict_f1": semantic_strict_metrics["f1"],
         "value": _binary_metrics(value_tp, prediction_total, gold_total),
         "metric": _binary_metrics(metric_tp, prediction_total, gold_total),
+        "evidence_span_accuracy": evidence_span_accuracy,
         "field_accuracy": {
             field: _safe_ratio(field_matches[field], total)
             for field, total in sorted(field_totals.items())
+            if field != "evidence_span"
         },
     }
     return EvaluationMetricResult(metrics=metrics, errors=errors)
@@ -257,6 +277,8 @@ def _gold_fact(fact: GoldFinancialFact) -> NormalizedFact:
         fact_role=fact.fact_role.value,
         comparison_type=fact.comparison_type.value,
         change_direction=fact.change_direction.value,
+        change_value=fact.change_value,
+        change_unit=None if fact.change_unit is None else fact.change_unit.value,
         evidence_text=fact.evidence_text,
         start_position=fact.start_position,
         end_position=fact.end_position,
@@ -277,6 +299,8 @@ def _predicted_fact(fact: ExtractedFinancialFact) -> NormalizedFact:
         fact_role=fact.fact_role.value,
         comparison_type=fact.comparison_type.value,
         change_direction=fact.change_direction.value,
+        change_value=fact.change_value,
+        change_unit=None if fact.change_unit is None else fact.change_unit.value,
         evidence_text=fact.evidence_text,
         start_position=fact.start_position,
         end_position=fact.end_position,
@@ -327,6 +351,7 @@ def _match_facts(
                 gold_index=gold_index,
                 prediction_index=prediction_index,
                 strict=_strict_fact_match(gold_fact, predicted_fact),
+                semantic_strict=_semantic_strict_fact_match(gold_fact, predicted_fact),
                 value=_value_match(gold_fact, predicted_fact),
                 metric=gold_fact.metric == predicted_fact.metric,
                 evidence_overlap=_span_overlap(gold_fact, predicted_fact),
@@ -367,6 +392,14 @@ def _fact_score(gold: NormalizedFact, predicted: NormalizedFact) -> int:
 
 def _strict_fact_match(gold: NormalizedFact, predicted: NormalizedFact) -> bool:
     return (
+        _semantic_strict_fact_match(gold, predicted)
+        and gold.start_position == predicted.start_position
+        and gold.end_position == predicted.end_position
+    )
+
+
+def _semantic_strict_fact_match(gold: NormalizedFact, predicted: NormalizedFact) -> bool:
+    return (
         gold.metric == predicted.metric
         and _value_match(gold, predicted)
         and gold.unit == predicted.unit
@@ -379,8 +412,8 @@ def _strict_fact_match(gold: NormalizedFact, predicted: NormalizedFact) -> bool:
         and gold.fact_role == predicted.fact_role
         and gold.comparison_type == predicted.comparison_type
         and gold.change_direction == predicted.change_direction
-        and gold.start_position == predicted.start_position
-        and gold.end_position == predicted.end_position
+        and gold.change_value == predicted.change_value
+        and gold.change_unit == predicted.change_unit
     )
 
 
@@ -419,6 +452,8 @@ def _count_fact_fields(
         "fact_role",
         "comparison_type",
         "change_direction",
+        "change_value",
+        "change_unit",
     )
     for field in fields:
         totals[field] += 1
@@ -451,6 +486,14 @@ def _fact_errors(
             gold.change_direction == predicted.change_direction,
         ),
         (
+            EvaluationErrorType.WRONG_CHANGE_VALUE.value,
+            gold.change_value == predicted.change_value,
+        ),
+        (
+            EvaluationErrorType.WRONG_CHANGE_UNIT.value,
+            gold.change_unit == predicted.change_unit,
+        ),
+        (
             EvaluationErrorType.WRONG_EVIDENCE_SPAN.value,
             gold.start_position == predicted.start_position
             and gold.end_position == predicted.end_position,
@@ -480,6 +523,8 @@ def _period_match(gold: NormalizedFact, predicted: NormalizedFact) -> bool:
 
 
 def _binary_metrics(true_positive: int, predicted_total: int, gold_total: int) -> dict[str, float]:
+    if predicted_total == 0 and gold_total == 0:
+        return {"precision": 1.0, "recall": 1.0, "f1": 1.0}
     precision = _safe_ratio(true_positive, predicted_total)
     recall = _safe_ratio(true_positive, gold_total)
     return {
@@ -501,9 +546,9 @@ def _f1(precision: float, recall: float) -> float:
     return round(2 * precision * recall / (precision + recall), 6)
 
 
-def _safe_ratio(numerator: int, denominator: int) -> float:
+def _safe_ratio(numerator: int, denominator: int, *, empty_value: float = 0.0) -> float:
     if denominator == 0:
-        return 0.0
+        return empty_value
     return round(numerator / denominator, 6)
 
 
