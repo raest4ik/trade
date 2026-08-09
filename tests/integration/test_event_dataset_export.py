@@ -62,7 +62,7 @@ async def test_export_event_dataset_writes_jsonl_without_raw_content_by_default(
     assert "raw_content" not in record["news"]
     assert record["news"]["raw_content_hash"]
     assert record["news_id"] == record["news"]["id"]
-    assert record["analysis_version"] == "event-rules-v1"
+    assert record["analysis_version"] == "event-rules-v2"
     assert record["event_types"] == ["FINANCIAL_RESULTS"]
     assert record["event_analysis"]["primary_event_type"] == "FINANCIAL_RESULTS"
     assert record["event_analysis"]["financial_facts"][0]["metric"] == "REVENUE"
@@ -103,11 +103,11 @@ async def test_event_analysis_versions_can_coexist(tmp_path: Path) -> None:
         first = await AnalyzeNewsEvent(
             news_repository=news_repository,
             event_repository=event_repository,
+            analyzer=EventAnalyzer(analysis_version="event-rules-v1"),
         ).execute(news.id)
         second = await AnalyzeNewsEvent(
             news_repository=news_repository,
             event_repository=event_repository,
-            analyzer=EventAnalyzer(analysis_version="event-rules-v2"),
         ).execute(news.id)
         saved_first = await event_repository.get_by_news_id(
             news_id=news.id,

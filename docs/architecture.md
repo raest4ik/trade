@@ -177,8 +177,8 @@ separate reaction rows with `is_ambiguous_instrument=true`.
 ## Event Analysis Flow
 
 1. `POST /api/v1/news/{news_id}/analyze-event` loads the saved news item.
-2. `EventAnalyzer` applies deterministic rule set `event-rules-v1` and fact
-   extractor version `financial-facts-v1` to the original `raw_content`.
+2. `EventAnalyzer` applies deterministic rule set `event-rules-v2` and fact
+   extractor version `financial-facts-v2` to the original `raw_content`.
 3. Event rules classify corporate events by explicit keyword and phrase
    patterns. Numeric fact rules extract values near supported metric names and
    normalize scale, currency, unit, period, role, comparison, and direction.

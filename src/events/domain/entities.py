@@ -19,8 +19,8 @@ from src.events.domain.enums import (
 )
 from src.news.domain.time import utc_now
 
-EVENT_ANALYSIS_VERSION = "event-rules-v1"
-FINANCIAL_FACTS_VERSION = "financial-facts-v1"
+EVENT_ANALYSIS_VERSION = "event-rules-v2"
+FINANCIAL_FACTS_VERSION = "financial-facts-v2"
 
 
 @dataclass(frozen=True, slots=True)

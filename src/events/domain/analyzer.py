@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID, uuid4
@@ -35,6 +35,9 @@ _NUMBER_PATTERN = re.compile(
 )
 
 _SENTENCE_PATTERN = re.compile(r".+?(?:[.!?](?=\s|$)|\n|$)", flags=re.UNICODE)
+_INLINE_ABBREVIATION_PATTERN = re.compile(
+    r"(?i)\b(?:руб|долл|тыс|куб|кв)\.(?=\s*[,а-яё])|\bп\.п\.(?=\s*[,а-яё])"
+)
 _YEAR_ONLY_PATTERN = re.compile(r"^\d{4}$")
 
 
@@ -102,9 +105,15 @@ class EventAnalyzer:
 
     def _extract_facts(self, raw_content: str) -> list[ExtractedFinancialFact]:
         facts: list[ExtractedFinancialFact] = []
+        active_period: Period | None = None
         for sentence in _sentences(raw_content):
             period = _extract_period(sentence.text)
+            if period.period_type == PeriodType.UNKNOWN and active_period is not None:
+                period = active_period
+            elif period.period_type != PeriodType.UNKNOWN:
+                active_period = period
             metric_matches = _metric_matches(sentence.text)
+            sentence_facts: list[ExtractedFinancialFact] = []
             for match in _NUMBER_PATTERN.finditer(sentence.text):
                 raw_number = match.group("number")
                 if _looks_like_date_or_year(sentence.text, match.start(), match.end(), raw_number):
@@ -115,30 +124,47 @@ class EventAnalyzer:
                 value_start = sentence.start + match.start()
                 value_end = sentence.start + match.end()
                 metric_rule = _nearest_metric(metric_matches, match.start())
-                metric = FinancialMetric.OTHER if metric_rule is None else metric_rule.metric
                 unit = _unit(match)
                 currency = _currency(match)
                 scale = _scale(match)
-                if _should_ignore_untyped_number(
+                metric, rule_id = _metric_for_value(
                     sentence.text,
                     match.start(),
                     match.end(),
                     metric_rule,
                     unit,
+                )
+                if _should_ignore_untyped_number(
+                    sentence.text,
+                    match.start(),
+                    match.end(),
+                    metric,
+                    unit,
                     scale,
                 ):
                     continue
-                role = _fact_role(sentence.text, match.start())
                 normalized = _normalize_value(parsed, scale)
                 comparison = _comparison_type(sentence.text)
                 direction = _change_direction(sentence.text, match.start())
-                confidence = _fact_confidence(metric_rule, period, role)
-                rule_id = (
-                    f"{metric_rule.rule_id}.value_proximity"
-                    if metric_rule is not None
-                    else "metric.unknown.value"
+                role = _fact_role(sentence.text, match.start(), metric, direction)
+                target_index = _attached_change_target(
+                    sentence_facts,
+                    metric=metric,
+                    role=role,
+                    direction=direction,
+                    unit=unit,
                 )
-                facts.append(
+                if target_index is not None:
+                    sentence_facts[target_index] = replace(
+                        sentence_facts[target_index],
+                        comparison_type=comparison,
+                        change_direction=direction,
+                        change_value=parsed,
+                        change_unit=unit,
+                    )
+                    continue
+                confidence = _fact_confidence(metric != FinancialMetric.OTHER, period, role)
+                sentence_facts.append(
                     ExtractedFinancialFact(
                         id=uuid4(),
                         analysis_id=UUID(int=0),
@@ -169,13 +195,21 @@ class EventAnalyzer:
                         matched_rule=rule_id,
                     )
                 )
+            facts.extend(sentence_facts)
         return facts
 
 
 def _sentences(raw_content: str) -> list[Sentence]:
+    shadow = _INLINE_ABBREVIATION_PATTERN.sub(
+        lambda match: match.group(0).replace(".", "\0"), raw_content
+    )
     return [
-        Sentence(text=match.group(0), start=match.start(), end=match.end())
-        for match in _SENTENCE_PATTERN.finditer(raw_content)
+        Sentence(
+            text=raw_content[match.start() : match.end()],
+            start=match.start(),
+            end=match.end(),
+        )
+        for match in _SENTENCE_PATTERN.finditer(shadow)
         if match.group(0).strip()
     ]
 
@@ -202,6 +236,55 @@ def _nearest_metric(
     return sorted(nearby, key=lambda item: (item[0], item[1].priority))[0][1]
 
 
+def _metric_for_value(
+    sentence: str,
+    value_start: int,
+    value_end: int,
+    metric_rule: MetricRule | None,
+    unit: FactUnit,
+) -> tuple[FinancialMetric, str]:
+    text = sentence.lower()
+    after = text[value_end : min(len(text), value_end + 36)]
+    around = text[max(0, value_start - 80) : min(len(text), value_end + 36)]
+    if "дивиденд" in text and re.search(r"(?:на\s+акци\w*|per\s+share)", after):
+        return FinancialMetric.DIVIDEND_PER_SHARE, "metric.dividend_per_share.context"
+    if "дивиденд" in text and re.search(r"(?:общ\w+\s+сумм\w+|всего\s+выплат)", text):
+        return FinancialMetric.DIVIDEND_TOTAL, "metric.dividend_total.context"
+    if unit in {FactUnit.TONNES, FactUnit.BARRELS, FactUnit.CUBIC_METERS} and re.search(
+        r"(?:производств\w*|добыч\w*|добы[лт]\w*|production|output)", text
+    ):
+        return FinancialMetric.PRODUCTION_VOLUME, "metric.production.unit_context"
+    if unit == FactUnit.PERCENT and re.search(r"(?:акци\w*|дол[яи]|ownership|stake)", around):
+        return FinancialMetric.OWNERSHIP_PERCENT, "metric.ownership.share_context"
+    if metric_rule is not None:
+        return metric_rule.metric, f"{metric_rule.rule_id}.value_proximity"
+    return FinancialMetric.OTHER, "metric.unknown.value"
+
+
+def _attached_change_target(
+    facts: list[ExtractedFinancialFact],
+    *,
+    metric: FinancialMetric,
+    role: FactRole,
+    direction: ChangeDirection,
+    unit: FactUnit,
+) -> int | None:
+    if (
+        role != FactRole.CHANGE
+        or direction not in {ChangeDirection.UP, ChangeDirection.DOWN}
+        or unit not in {FactUnit.PERCENT, FactUnit.PERCENTAGE_POINTS}
+    ):
+        return None
+    candidates = [
+        index
+        for index, fact in enumerate(facts)
+        if fact.fact_role != FactRole.CHANGE
+        and fact.change_value is None
+        and (metric == FinancialMetric.OTHER or fact.metric == metric)
+    ]
+    return candidates[-1] if candidates else None
+
+
 def _parse_number(raw: str) -> Decimal | None:
     normalized = raw.replace(" ", "").replace(",", ".")
     try:
@@ -224,6 +307,12 @@ def _looks_like_date_or_year(sentence: str, start: int, end: int, raw_number: st
         or re.search(r"(?:q|кв\.?)\s*$", before, re.I)
     ):
         return True
+    if re.search(
+        r"^(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)",
+        after.strip(),
+        re.I,
+    ):
+        return True
     return bool(re.search(r"\d[./-]$", before) or re.search(r"^[./-]\d", after))
 
 
@@ -231,23 +320,20 @@ def _should_ignore_untyped_number(
     sentence: str,
     start: int,
     end: int,
-    metric_rule: MetricRule | None,
+    metric: FinancialMetric,
     unit: FactUnit,
     scale: ValueScale,
 ) -> bool:
-    if metric_rule is not None or unit != FactUnit.UNSPECIFIED or scale != ValueScale.ONE:
+    if metric != FinancialMetric.OTHER:
+        return False
+    if unit in {FactUnit.TONNES, FactUnit.BARRELS, FactUnit.CUBIC_METERS, FactUnit.SHARES}:
+        return True
+    if unit != FactUnit.UNSPECIFIED or scale != ValueScale.ONE:
         return False
     stripped_digits = re.sub(r"\D", "", sentence[start:end])
     if len(stripped_digits) >= 8:
         return True
-    context = sentence[max(0, start - 16) : min(len(sentence), end + 16)].lower()
-    return bool(
-        re.search(
-            r"(http\s+status|status\s+code|uuid|документ\w*\s+№|номер\s+документ)",
-            context,
-            re.I,
-        )
-    )
+    return True
 
 
 def _unit(match: re.Match[str]) -> FactUnit:
@@ -312,17 +398,29 @@ def _normalize_value(value: Decimal, scale: ValueScale) -> Decimal:
     return value * multipliers[scale]
 
 
-def _fact_role(sentence: str, value_start: int) -> FactRole:
-    prefix = sentence[max(0, value_start - 60) : value_start].lower()
-    if re.search(r"(?:до|to)\s*$", prefix):
-        return FactRole.ACTUAL
-    if re.search(r"(прогноз|forecast|guidance|ожидает|outlook)", prefix):
+def _fact_role(
+    sentence: str,
+    value_start: int,
+    metric: FinancialMetric,
+    direction: ChangeDirection,
+) -> FactRole:
+    prefix = sentence[max(0, value_start - 140) : value_start].lower()
+    if metric == FinancialMetric.OWNERSHIP_PERCENT and re.search(
+        r"(?:план\w*|намер\w*|цел\w*|консолидир\w*).*(?:до|не\s+менее)\s*$", prefix
+    ):
+        return FactRole.TARGET
+    if re.search(
+        r"(прогноз|forecast|guidance|ожидает|outlook|ориентир|цел\w*|планиру\w*|намерен\w*|рекомендовал\w*)",
+        prefix,
+    ):
         return FactRole.FORECAST
     if re.search(r"(консенсус|consensus)", prefix):
         return FactRole.CONSENSUS
     if re.search(r"(годом ранее|ранее|previous)", prefix):
         return FactRole.PREVIOUS
-    if re.search(r"(вырос\w*|увеличил\w*|снизил\w*|сократил\w*|выше|ниже)\s+(?:на|в)", prefix):
+    if direction in {ChangeDirection.UP, ChangeDirection.DOWN} and re.search(
+        r"(?:на|by)\s*$", prefix
+    ):
         return FactRole.CHANGE
     if re.search(r"(вырос\w*|увеличил\w*|снизил\w*|сократил\w*)\s+до", prefix):
         return FactRole.ACTUAL
@@ -331,7 +429,10 @@ def _fact_role(sentence: str, value_start: int) -> FactRole:
 
 def _comparison_type(sentence: str) -> ComparisonType:
     text = sentence.lower()
-    if re.search(r"(г/г|год\s+к\s+году|year[-\s]?over[-\s]?year)", text):
+    if re.search(
+        r"(г/г|год\s+к\s+году|относительно\s+20\d{2}\s+год\w*|year[-\s]?over[-\s]?year)",
+        text,
+    ):
         return ComparisonType.YEAR_OVER_YEAR
     if re.search(r"(кв/кв|квартал\s+к\s+кварталу|quarter[-\s]?over[-\s]?quarter)", text):
         return ComparisonType.QUARTER_OVER_QUARTER
@@ -347,12 +448,17 @@ def _comparison_type(sentence: str) -> ComparisonType:
 
 
 def _change_direction(sentence: str, value_start: int) -> ChangeDirection:
-    prefix = sentence[max(0, value_start - 50) : value_start].lower()
-    if re.search(r"(вырос\w*|увеличил\w*|повысил\w*|выше)", prefix):
+    prefix = sentence[max(0, value_start - 80) : value_start].lower()
+    if re.search(r"(вырос\w*|увелич\w*|повысил\w*|поднял\w*|grew|increased|rose)", prefix):
         return ChangeDirection.UP
-    if re.search(r"(снизил\w*|сократил\w*|понизил\w*|ниже)", prefix):
+    if re.search(r"(сниз\w*|сократил\w*|понизил\w*|упал\w*|decreased|fell|declined)", prefix):
         return ChangeDirection.DOWN
-    return ChangeDirection.UNCHANGED
+    if re.search(
+        r"(без\s+изменени\w*|не\s+изменил\w*|остал\w*\s+на\s+уровне|сохранил\w*\s+на\s+уровне|unchanged|flat)",
+        prefix,
+    ):
+        return ChangeDirection.UNCHANGED
+    return ChangeDirection.UNKNOWN
 
 
 def _extract_period(sentence: str) -> Period:
@@ -366,12 +472,22 @@ def _extract_period(sentence: str) -> Period:
         (PeriodType.QUARTER, re.compile(r"(?P<raw>Q(?P<q>[1-4])\s*(?P<year>20\d{2}))", re.I)),
         (
             PeriodType.HALF_YEAR,
-            re.compile(r"(?P<raw>(?:перв\w+\s+полугоди\w+|1H)\s*(?P<year>20\d{2}))", re.I),
+            re.compile(
+                r"(?P<raw>(?:(?:за\s+)?перв\w+\s+полугоди\w+|1H)"
+                r"\s*(?P<year>20\d{2}))",
+                re.I,
+            ),
         ),
-        (PeriodType.NINE_MONTHS, re.compile(r"(?P<raw>9\s+месяц\w+\s+(?P<year>20\d{2}))", re.I)),
+        (
+            PeriodType.NINE_MONTHS,
+            re.compile(r"(?P<raw>(?:9|девят\w+)\s+месяц\w+\s+(?P<year>20\d{2}))", re.I),
+        ),
         (
             PeriodType.YEAR,
-            re.compile(r"(?P<raw>(?:за|в|FY)\s*(?P<year>20\d{2})\s*(?:год\w*)?)", re.I),
+            re.compile(
+                r"(?P<raw>(?:(?:за|в|на|FY)\s*|по\s+итогам\s+)(?P<year>20\d{2})\s*(?:год\w*)?)",
+                re.I,
+            ),
         ),
         (
             PeriodType.MONTH,
@@ -434,11 +550,11 @@ def _month(raw: str | None) -> int | None:
 
 
 def _fact_confidence(
-    metric_rule: MetricRule | None,
+    metric_known: bool,
     period: Period,
     role: FactRole,
 ) -> Decimal:
-    confidence = Decimal("0.72") if metric_rule is None else Decimal("0.91")
+    confidence = Decimal("0.91") if metric_known else Decimal("0.72")
     if period.period_type == PeriodType.UNKNOWN:
         confidence -= Decimal("0.08")
     if role in {FactRole.FORECAST, FactRole.CHANGE, FactRole.TARGET}:
