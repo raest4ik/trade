@@ -45,6 +45,22 @@ class SqlAlchemyNewsRepository:
         record = result.scalar_one_or_none()
         return None if record is None else record.to_entity()
 
+    async def get_by_source(self, source_name: str, source_id: str) -> NewsItem | None:
+        try:
+            result = await self._session.execute(
+                select(NewsItemRecord)
+                .where(
+                    NewsItemRecord.source_name == source_name,
+                    NewsItemRecord.source_id == source_id,
+                )
+                .order_by(NewsItemRecord.created_at.desc())
+            )
+        except SQLAlchemyError as exc:
+            raise NewsStorageError("could not read news item") from exc
+
+        record = result.scalars().first()
+        return None if record is None else record.to_entity()
+
     async def _get_by_unique_key(self, item: NewsItem) -> NewsItem | None:
         result = await self._session.execute(
             select(NewsItemRecord).where(
