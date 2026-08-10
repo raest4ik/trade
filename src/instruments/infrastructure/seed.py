@@ -87,7 +87,9 @@ SEED_INSTRUMENTS: tuple[SeedInstrument, ...] = (
         aliases=(
             SeedAlias("ROSN", AliasType.TICKER, 10),
             SeedAlias("Роснефть", AliasType.OFFICIAL_NAME, 20),
+            SeedAlias("Rosneft", AliasType.OFFICIAL_NAME, 20),
             SeedAlias("ПАО НК Роснефть", AliasType.LEGAL_NAME, 30),
+            SeedAlias("Rosneft Oil Company", AliasType.LEGAL_NAME, 30),
         ),
     ),
     SeedInstrument(

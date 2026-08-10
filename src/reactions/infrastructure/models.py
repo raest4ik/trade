@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import BigInteger, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.reactions.domain.entities import (
@@ -43,8 +43,8 @@ class NewsMarketReactionRecord(Base):
     effective_event_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     baseline_observed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
     baseline_price: Mapped[Decimal | None] = mapped_column(Numeric(24, 10), nullable=True)
-    publication_to_receipt_ms: Mapped[int] = mapped_column(Integer)
-    publication_to_effective_event_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    publication_to_receipt_ms: Mapped[int] = mapped_column(BigInteger)
+    publication_to_effective_event_ms: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     status: Mapped[str] = mapped_column(String(32), index=True)
     is_ambiguous_instrument: Mapped[bool] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(UtcDateTime())
