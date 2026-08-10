@@ -148,7 +148,12 @@ async def test_exact_timestamp_computes_aligned_abnormal_returns(tmp_path: Path)
         assert adjustment.abnormal_simple_return == Decimal("0.01")
         assert point.log_return is not None
         assert adjustment.log_return is not None
-        assert adjustment.abnormal_log_return == point.log_return - adjustment.log_return
+        # The three independently persisted NUMERIC(28, 18) values may round in opposite ways.
+        assert adjustment.abnormal_log_return is not None
+        persisted_identity_error = abs(
+            adjustment.abnormal_log_return - (point.log_return - adjustment.log_return)
+        )
+        assert persisted_identity_error <= Decimal("2e-18")
 
 
 async def test_missing_benchmark_keeps_abnormal_returns_null(tmp_path: Path) -> None:
