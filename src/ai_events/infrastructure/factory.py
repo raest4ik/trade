@@ -27,14 +27,17 @@ class AIProviderConfig:
 def resolve_ai_provider_config(
     settings: Settings,
     provider_override: str | None = None,
+    model_override: str | None = None,
 ) -> AIProviderConfig:
     value = provider_override or settings.ai_provider
     try:
         provider = AIProvider(value.lower())
     except ValueError as exc:
         raise AIConfigurationError(f"unsupported AI provider: {value}") from exc
+    if model_override is not None and not model_override.strip():
+        raise AIConfigurationError("model override must not be empty")
     if provider == AIProvider.OLLAMA:
-        model = settings.ollama_model
+        model = model_override or settings.ollama_model
         return AIProviderConfig(
             provider=provider,
             requested_model=model,
@@ -44,12 +47,13 @@ def resolve_ai_provider_config(
         )
     if settings.openai_api_key is None:
         raise AIConfigurationError("OPENAI_API_KEY is not configured")
+    model = model_override or settings.openai_model
     return AIProviderConfig(
         provider=provider,
-        requested_model=settings.openai_model,
+        requested_model=model,
         reasoning_effort=settings.ai_reasoning_effort,
         think=False,
-        artifact_slug=_artifact_slug(provider, settings.openai_model),
+        artifact_slug=_artifact_slug(provider, model),
     )
 
 
@@ -58,8 +62,9 @@ def create_ai_event_analyzer(
     *,
     cache_directory: Path = DEFAULT_AI_CACHE_DIRECTORY,
     provider_override: str | None = None,
+    model_override: str | None = None,
 ) -> AnalyzeAIEvent:
-    provider_config = resolve_ai_provider_config(settings, provider_override)
+    provider_config = resolve_ai_provider_config(settings, provider_override, model_override)
     if provider_config.provider == AIProvider.OLLAMA:
         client = OllamaEventModelClient(
             base_url=settings.ollama_base_url,

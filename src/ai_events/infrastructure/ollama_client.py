@@ -81,6 +81,7 @@ class OllamaEventModelClient:
                 raise TypeError("message.content must be a string")
             structured = json.loads(content)
             _canonicalize_null_change_units(structured)
+            _canonicalize_inapplicable_period_quarters(structured)
             parsed = AIEventOutput.model_validate(structured)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError, ValidationError) as exc:
             raise OllamaInvalidStructuredOutputError() from exc
@@ -147,5 +148,30 @@ def _canonicalize_null_change_units(payload: object) -> None:
     if canonicalized:
         warning_values.append(
             "canonicalized change_unit UNSPECIFIED to null because change_value is null "
+            f"for {canonicalized} fact(s)"
+        )
+
+
+def _canonicalize_inapplicable_period_quarters(payload: object) -> None:
+    if not isinstance(payload, dict):
+        return
+    structured = cast("dict[object, object]", payload)
+    facts = structured.get("financial_facts")
+    warnings = structured.get("warnings")
+    if not isinstance(facts, list) or not isinstance(warnings, list):
+        return
+    fact_values = cast("list[object]", facts)
+    warning_values = cast("list[object]", warnings)
+    canonicalized = 0
+    for value in fact_values:
+        if not isinstance(value, dict):
+            continue
+        fact = cast("dict[object, object]", value)
+        if fact.get("period_type") != "QUARTER" and fact.get("period_quarter") is not None:
+            fact["period_quarter"] = None
+            canonicalized += 1
+    if canonicalized:
+        warning_values.append(
+            "canonicalized period_quarter to null because period_type is not QUARTER "
             f"for {canonicalized} fact(s)"
         )

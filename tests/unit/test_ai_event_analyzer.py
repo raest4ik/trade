@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -10,6 +11,9 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from apps.cli.analyze_event_ai import build_parser as build_analyze_parser
+from apps.cli.evaluate_ai_event_extraction import build_parser as build_evaluation_parser
+from apps.cli.evaluate_ai_event_extraction import model_manifest_fields
 from src.ai_events.application.evaluation import evaluate_ai_metric_views, to_evaluation_inputs
 from src.ai_events.application.frozen_test import FrozenTestGuardError, validate_test_access
 from src.ai_events.application.ports import AIModelCompletion, AIModelRequest
@@ -513,6 +517,42 @@ def test_default_ollama_provider_needs_no_api_key() -> None:
     assert provider.requested_model == "qwen3:8b"
     assert provider.think is False
     create_ai_event_analyzer(settings)
+
+
+def test_generic_model_override_is_propagated_without_changing_default() -> None:
+    settings = Settings(openai_api_key=None)
+    provider = resolve_ai_provider_config(
+        settings,
+        provider_override="ollama",
+        model_override="qwen3.5:9b",
+    )
+    assert provider.requested_model == "qwen3.5:9b"
+    assert provider.artifact_slug == "ollama-qwen3-5-9b"
+    assert resolve_ai_provider_config(settings).requested_model == "qwen3:8b"
+    assert (
+        build_analyze_parser().parse_args(["--text", "synthetic", "--model", "qwen3.5:9b"]).model
+        == "qwen3.5:9b"
+    )
+    assert (
+        build_evaluation_parser()
+        .parse_args(["--dataset-id", str(uuid4()), "--model", "qwen3.5:9b"])
+        .model
+        == "qwen3.5:9b"
+    )
+
+
+def test_model_manifest_records_requested_and_actual_model() -> None:
+    provider = resolve_ai_provider_config(
+        Settings(openai_api_key=None),
+        provider_override="ollama",
+        model_override="qwen3.5:9b",
+    )
+    fields = model_manifest_fields(provider, Counter({"qwen3.5:9b": 3}))
+    assert fields == {
+        "requested_model": "qwen3.5:9b",
+        "actual_model": "qwen3.5:9b",
+        "actual_response_models": {"qwen3.5:9b": 3},
+    }
 
 
 def test_openai_provider_without_key_is_a_configuration_error() -> None:

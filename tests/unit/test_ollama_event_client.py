@@ -192,6 +192,55 @@ async def test_ollama_does_not_canonicalize_real_unit_without_change_value() -> 
 
 
 @pytest.mark.asyncio
+async def test_ollama_canonicalizes_quarter_for_non_quarter_period() -> None:
+    response = _success_response()
+    output = _valid_output()
+    fact = cast("list[dict[str, object]]", output["financial_facts"])[0]
+    fact["period_type"] = "YEAR"
+    fact["period_year"] = 2025
+    fact["period_quarter"] = 1
+    message = cast("dict[str, object]", response["message"])
+    message["content"] = json.dumps(output)
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = OllamaEventModelClient(
+            base_url="http://localhost:11434",
+            timeout_seconds=1,
+            http_client=http_client,
+        )
+        completion = await client.analyze(_request())
+
+    assert completion.output.financial_facts[0].period_quarter is None
+    assert "canonicalized period_quarter to null" in completion.output.warnings[0]
+
+
+@pytest.mark.asyncio
+async def test_ollama_still_rejects_quarter_period_without_quarter() -> None:
+    response = _success_response()
+    output = _valid_output()
+    fact = cast("list[dict[str, object]]", output["financial_facts"])[0]
+    fact["period_type"] = "QUARTER"
+    fact["period_quarter"] = None
+    message = cast("dict[str, object]", response["message"])
+    message["content"] = json.dumps(output)
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = OllamaEventModelClient(
+            base_url="http://localhost:11434",
+            timeout_seconds=1,
+            http_client=http_client,
+        )
+        with pytest.raises(OllamaInvalidStructuredOutputError):
+            await client.analyze(_request())
+
+
+@pytest.mark.asyncio
 async def test_ollama_unavailable_is_classified() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("offline", request=request)

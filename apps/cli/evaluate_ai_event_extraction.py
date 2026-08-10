@@ -61,11 +61,12 @@ async def run(args: argparse.Namespace) -> int:
         )
         return 2
     try:
-        provider = resolve_ai_provider_config(settings, args.provider)
+        provider = resolve_ai_provider_config(settings, args.provider, args.model)
         analyzer = create_ai_event_analyzer(
             settings,
             cache_directory=Path(args.cache_dir),
             provider_override=args.provider,
+            model_override=args.model,
         )
     except Exception as exc:
         failure = sanitize_failure(exc)
@@ -373,9 +374,7 @@ def _write_artifacts(
         "dataset_source_hash": dataset_hash,
         "split": split.value,
         "provider": provider.provider.value,
-        "requested_model": provider.requested_model,
-        "actual_model": next(iter(actual_models)) if len(actual_models) == 1 else None,
-        "actual_response_models": dict(sorted(actual_models.items())),
+        **model_manifest_fields(provider, actual_models),
         "prompt_version": PROMPT_VERSION,
         "prompt_sha256": prompt_hash(),
         "schema_version": SCHEMA_VERSION,
@@ -430,6 +429,17 @@ def _write_artifacts(
         provider=provider,
         target=output_dir.parent / f"comparison-{split.value.lower()}.md",
     )
+
+
+def model_manifest_fields(
+    provider: AIProviderConfig,
+    actual_models: Mapping[str, int],
+) -> dict[str, object]:
+    return {
+        "requested_model": provider.requested_model,
+        "actual_model": next(iter(actual_models)) if len(actual_models) == 1 else None,
+        "actual_response_models": dict(sorted(actual_models.items())),
+    }
 
 
 def _frozen_config(
@@ -750,6 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hardening-before-metrics")
     parser.add_argument("--hardening-comparison-output")
     parser.add_argument("--provider", choices=[item.value for item in AIProvider])
+    parser.add_argument("--model")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--force-refresh", action="store_true")
     parser.add_argument("--allow-frozen-test", action="store_true")

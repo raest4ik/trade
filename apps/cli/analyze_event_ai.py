@@ -34,8 +34,12 @@ async def run(args: argparse.Namespace) -> int:
         raw_content = news.raw_content
     assert raw_content is not None
     try:
-        provider = resolve_ai_provider_config(settings, args.provider)
-        analyzer = create_ai_event_analyzer(settings, provider_override=args.provider)
+        provider = resolve_ai_provider_config(settings, args.provider, args.model)
+        analyzer = create_ai_event_analyzer(
+            settings,
+            provider_override=args.provider,
+            model_override=args.model,
+        )
         result = await analyzer.execute(
             AnalyzeAIEventCommand(
                 provider=provider.provider.value,
@@ -64,6 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     source.add_argument("--news-id")
     parser.add_argument("--record-id")
     parser.add_argument("--provider", choices=[item.value for item in AIProvider])
+    parser.add_argument("--model")
     parser.add_argument("--force-refresh", action="store_true")
     return parser
 
