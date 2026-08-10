@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class FeatureDatasetRunStatus(StrEnum):
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
+
+
+class FeatureExclusionReason(StrEnum):
+    TIMESTAMP_NOT_EXACT = "TIMESTAMP_NOT_EXACT"
+    NO_INSTRUMENT_MATCH = "NO_INSTRUMENT_MATCH"
+    AMBIGUOUS_INSTRUMENT = "AMBIGUOUS_INSTRUMENT"
+    NO_EVENT_ANALYSIS = "NO_EVENT_ANALYSIS"
+    NO_REACTION_LABEL = "NO_REACTION_LABEL"
+    MARKET_DATA_MISSING = "MARKET_DATA_MISSING"
+    BENCHMARK_DATA_MISSING = "BENCHMARK_DATA_MISSING"
+    POINT_IN_TIME_VIOLATION = "POINT_IN_TIME_VIOLATION"
+
+
+class ClassificationLabel(StrEnum):
+    UP = "UP"
+    FLAT = "FLAT"
+    DOWN = "DOWN"

@@ -85,6 +85,18 @@ export-historical-corpus:
 historical-news-stats:
     uv run python -m apps.cli.historical_news_stats
 
+build-ml-feature-dataset date_from date_to:
+    uv run python -m apps.cli.build_ml_feature_dataset --from {{date_from}} --to {{date_to}}
+
+export-ml-feature-dataset date_from date_to:
+    uv run python -m apps.cli.export_ml_feature_dataset --from {{date_from}} --to {{date_to}}
+
+ml-feature-stats:
+    uv run python -m apps.cli.ml_feature_stats
+
+ml-feature-smoke:
+    uv run python -m apps.cli.ml_feature_dataset_smoke
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 
