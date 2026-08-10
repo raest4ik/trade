@@ -32,7 +32,7 @@ class AIModelCompletion:
 
 
 class AIEventModelClient(Protocol):
-    async def complete(self, request: AIModelRequest) -> AIModelCompletion: ...
+    async def analyze(self, request: AIModelRequest) -> AIModelCompletion: ...
 
 
 class AIEventCache(Protocol):

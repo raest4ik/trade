@@ -33,12 +33,12 @@ class ReliableAIEventModelClient:
         self._semaphore = asyncio.Semaphore(max_concurrency)
         self._sleep = sleep
 
-    async def complete(self, request: AIModelRequest) -> AIModelCompletion:
+    async def analyze(self, request: AIModelRequest) -> AIModelCompletion:
         async with self._semaphore:
             for attempt in range(self._max_retries + 1):
                 try:
                     async with asyncio.timeout(self._timeout_seconds):
-                        return await self._client.complete(request)
+                        return await self._client.analyze(request)
                 except TimeoutError as exc:
                     transient: AIModelTransientError = AIModelTransientError("AI request timed out")
                     transient.__cause__ = exc

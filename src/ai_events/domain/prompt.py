@@ -43,15 +43,20 @@ Rules:
 - normalized_value is the numeric value after applying scale semantics; keep unit, currency,
   and scale.
 - Use metric OTHER with a concise metric_name for unsupported named KPIs such as ROE or NIM.
+- A cooperation or partnership without a disclosed material commercial contract is OTHER,
+  not MAJOR_CONTRACT.
 - Use UNKNOWN for missing or uncertain fact_role, period_type, comparison_type, or change_direction.
 - Use UNCHANGED only when the evidence explicitly says the value did not change.
 - YEAR means a full year, HALF_YEAR six months, QUARTER one quarter, NINE_MONTHS nine months,
   MONTH one month, DATE_RANGE an explicit range. Do not infer a period from publication date.
+- Roman I/II/III/IV quarter wording maps to QUARTER. Apply a shared reporting period to all
+  listed metrics only when the grammar explicitly makes it common to them.
 - For dividends, a board recommendation is FORECAST; shareholder approval or a paid/declared
   historical amount is ACTUAL. Distinguish DIVIDEND_PER_SHARE from DIVIDEND_TOTAL.
 - Guidance, forecasts, targets, and outlook statements use event GUIDANCE and fact role FORECAST
   or TARGET as the wording supports. Historical results mentioned as context remain ACTUAL.
-- change_value/change_unit describe an explicit change, not the main normalized value.
+- Attach an explicit growth or decline amount to its main fact through change_direction,
+  change_value, and change_unit; do not create a separate numeric fact for the change.
 - Put non-fatal ambiguity notes in warnings. Never include hidden reasoning or chain-of-thought.
 """
 

@@ -19,13 +19,13 @@ from src.ai_events.domain.exceptions import AIModelError, AIModelTransientError
 from src.ai_events.domain.schema import AIEventOutput
 
 
-class OpenAIResponsesEventModelClient:
+class OpenAIEventModelClient:
     def __init__(self, *, api_key: str) -> None:
         if not api_key:
             raise ValueError("api_key must not be empty")
         self._client = AsyncOpenAI(api_key=api_key, max_retries=0)
 
-    async def complete(self, request: AIModelRequest) -> AIModelCompletion:
+    async def analyze(self, request: AIModelRequest) -> AIModelCompletion:
         started = time.perf_counter()
         reasoning: Reasoning | None = None
         if request.reasoning_effort is not None:

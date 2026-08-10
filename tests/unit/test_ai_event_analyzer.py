@@ -13,6 +13,7 @@ from src.ai_events.application.evaluation import to_evaluation_inputs
 from src.ai_events.application.frozen_test import FrozenTestGuardError, validate_test_access
 from src.ai_events.application.ports import AIModelCompletion, AIModelRequest
 from src.ai_events.application.reliability import ReliableAIEventModelClient
+from src.ai_events.application.serialization import analysis_result_to_json, failure_to_json
 from src.ai_events.application.use_cases import (
     AnalyzeAIEvent,
     AnalyzeAIEventCommand,
@@ -42,7 +43,7 @@ class FakeModelClient:
         self.output = output
         self.calls = 0
 
-    async def complete(self, request: AIModelRequest) -> AIModelCompletion:
+    async def analyze(self, request: AIModelRequest) -> AIModelCompletion:
         self.calls += 1
         return AIModelCompletion(
             output=self.output,
@@ -61,7 +62,7 @@ class TransientFakeClient:
         self.output = output
         self.calls = 0
 
-    async def complete(self, request: AIModelRequest) -> AIModelCompletion:
+    async def analyze(self, request: AIModelRequest) -> AIModelCompletion:
         self.calls += 1
         if self.calls <= self.failures:
             raise AIModelTransientError("temporary")
@@ -95,8 +96,8 @@ def _fact_payload(**changes: object) -> dict[str, object]:
         "scale": "MILLION",
         "fact_role": "ACTUAL",
         "period_type": "YEAR",
-        "year": 2025,
-        "quarter": None,
+        "period_year": 2025,
+        "period_quarter": None,
         "comparison_type": "NONE",
         "change_direction": "UNKNOWN",
         "change_value": None,
@@ -143,6 +144,11 @@ def test_structured_output_schema_is_strict_and_all_fields_are_required() -> Non
             required = cast("list[str]", definition["required"])
             properties = cast("dict[str, object]", definition["properties"])
             assert set(required) == set(properties)
+    fact_schema = cast("dict[str, object]", definitions["AIFinancialFactPrediction"])
+    fact_properties = cast("dict[str, object]", fact_schema["properties"])
+    assert "period_year" in fact_properties
+    assert "period_quarter" in fact_properties
+    assert "year" not in fact_properties
 
 
 def test_schema_rejects_extra_fields_and_invalid_enum() -> None:
@@ -182,6 +188,12 @@ def test_evidence_offsets_are_exact_and_duplicate_is_warned() -> None:
 def test_primary_event_constraint_and_zero_events() -> None:
     with pytest.raises(ValidationError):
         _output(events=[_event_payload(), _event_payload()])
+    secondary = {
+        **_event_payload(primary=False),
+        "event_type": "DIVIDEND",
+    }
+    multiple = _output(events=[_event_payload(), secondary])
+    assert sum(event.is_primary for event in multiple.events) == 1
     zero = AIEventOutput.model_validate({"events": [], "financial_facts": [], "warnings": []})
     assert zero.events == []
 
@@ -222,6 +234,12 @@ async def test_fake_client_and_file_cache_hit_miss(tmp_path: Path) -> None:
     assert refreshed.metadata.cached is False
     assert first.analysis.financial_facts[0].normalized_value == Decimal("100")
     assert first.analysis.events[0].start_position == 0
+    payload = analysis_result_to_json(first)
+    metadata = cast("dict[str, object]", payload["metadata"])
+    assert metadata["actual_response_model"] == "gpt-5-mini"
+    assert "prompt_sha256" in metadata
+    fact = cast("list[dict[str, object]]", payload["financial_facts"])[0]
+    assert fact["period_year"] == 2025
 
 
 def test_cache_key_changes_with_every_material_input() -> None:
@@ -244,6 +262,9 @@ def test_failure_is_sanitized() -> None:
     assert failure.error_code == "AIModelError"
     assert failure.message == "AI event analysis failed"
     assert "secret" not in failure.message
+    payload = failure_to_json(failure)
+    assert payload["status"] == "FAILED"
+    assert payload["error_type"] == "AIModelError"
 
 
 @pytest.mark.asyncio
@@ -260,7 +281,7 @@ async def test_retry_is_bounded_and_succeeds_after_transient_errors() -> None:
         max_concurrency=1,
         sleep=no_sleep,
     )
-    completion = await reliable.complete(build_model_request(_command()))
+    completion = await reliable.analyze(build_model_request(_command()))
     assert completion.response_id == "resp_retry"
     assert client.calls == 3
 
@@ -273,7 +294,7 @@ async def test_retry_is_bounded_and_succeeds_after_transient_errors() -> None:
         sleep=no_sleep,
     )
     with pytest.raises(AIModelError, match="bounded retries"):
-        await reliable_exhausted.complete(build_model_request(_command()))
+        await reliable_exhausted.analyze(build_model_request(_command()))
     assert exhausted.calls == 3
 
 

@@ -130,7 +130,12 @@ async def run(args: argparse.Namespace) -> int:
         if failures:
             print("error=cannot freeze a validation run with item failures")
             return 1
-        _write_json(Path(args.freeze_config_output), expected_frozen)
+        frozen = {
+            **expected_frozen,
+            "validation_metrics": _metric_snapshot(metrics),
+            "frozen_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        _write_json(Path(args.freeze_config_output), frozen)
     print(
         f"split={split.value} requested={len(rows)} succeeded={len(successes)} "
         f"failed={len(failures)} output_dir={output_dir}"
@@ -205,13 +210,16 @@ def _evaluate(
         "failed_example_count": len(failures),
         "events": event_result.metrics,
         "facts": fact_result.metrics,
+        "runtime": _runtime_metrics(successes, failures),
         "errors": errors,
     }
+    baseline = _default_baseline(split)
     if baseline_path is not None and baseline_path.is_file():
         baseline = cast(
             "dict[str, object]",
             json.loads(baseline_path.read_text(encoding="utf-8")),
         )
+    if baseline is not None:
         metrics["deterministic_baseline"] = baseline
         metrics["comparison"] = _comparison(metrics, baseline)
     return metrics
@@ -243,22 +251,21 @@ def _write_artifacts(
     output_dir.mkdir(parents=True, exist_ok=True)
     predictions: list[dict[str, object]] = []
     actual_models = Counter[str]()
-    input_tokens = 0
-    output_tokens = 0
     for row, result in successes:
         payload = analysis_result_to_json(result)
         payload["record_id"] = str(row.example.id)
         payload["news_id"] = str(row.news.id)
         predictions.append(payload)
         actual_models[result.metadata.actual_model] += 1
-        input_tokens += result.metadata.input_tokens or 0
-        output_tokens += result.metadata.output_tokens or 0
-    _write_jsonl(output_dir / "predictions.jsonl", predictions)
+    if split != DatasetSplit.TEST:
+        _write_jsonl(output_dir / "predictions.jsonl", predictions)
     public_metrics = {key: value for key, value in metrics.items() if key != "errors"}
     _write_json(output_dir / "metrics.json", public_metrics)
-    errors = cast("list[dict[str, object]]", metrics["errors"])
-    errors.extend({"type": "AI_ITEM_FAILURE", **failure_to_json(item)} for item in failures)
-    _write_jsonl(output_dir / "errors.jsonl", errors)
+    if split != DatasetSplit.TEST:
+        errors = cast("list[dict[str, object]]", metrics["errors"])
+        errors.extend({"type": "AI_ITEM_FAILURE", **failure_to_json(item)} for item in failures)
+        _write_jsonl(output_dir / "errors.jsonl", errors)
+    runtime = cast("dict[str, object]", public_metrics["runtime"])
     manifest = {
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "git_commit_sha": _git_commit_sha(),
@@ -266,20 +273,27 @@ def _write_artifacts(
         "dataset_source_hash": dataset_hash,
         "split": split.value,
         "requested_model": settings.openai_model,
-        "actual_models": dict(sorted(actual_models.items())),
+        "actual_response_models": dict(sorted(actual_models.items())),
         "prompt_version": PROMPT_VERSION,
-        "prompt_hash": prompt_hash(),
+        "prompt_sha256": prompt_hash(),
         "schema_version": SCHEMA_VERSION,
-        "schema_hash": schema_hash(),
+        "schema_sha256": schema_hash(),
         "analyzer_version": ANALYSIS_VERSION,
-        "fact_extractor_version": FACT_EXTRACTOR_VERSION,
+        "fact_version": FACT_EXTRACTOR_VERSION,
         "reasoning_effort": settings.ai_reasoning_effort,
         "max_output_tokens": settings.ai_max_output_tokens,
         "request_timeout_seconds": settings.ai_request_timeout_seconds,
         "max_retries": settings.ai_max_retries,
         "max_concurrency": settings.ai_max_concurrency,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "input_tokens": runtime["input_tokens"],
+        "output_tokens": runtime["output_tokens"],
+        "total_tokens": runtime["total_tokens"],
+        "api_calls": runtime["api_calls"],
+        "cache_hits": runtime["cache_hits"],
+        "failed_calls": runtime["failed_calls"],
+        "mean_latency_ms": runtime["mean_latency_ms"],
+        "p50_latency_ms": runtime["p50_latency_ms"],
+        "p95_latency_ms": runtime["p95_latency_ms"],
         "cache_directory": str(cache_directory),
     }
     _write_json(output_dir / "run-manifest.json", manifest)
@@ -298,6 +312,7 @@ def _write_artifacts(
         f"- fact semantic strict F1: {fact_semantic['f1']}",
     ]
     (output_dir / "summary.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
+    _write_comparison_markdown(public_metrics, split)
 
 
 def _frozen_config(
@@ -307,14 +322,14 @@ def _frozen_config(
 ) -> dict[str, object]:
     return {
         "dataset_id": str(dataset_id),
-        "dataset_source_hash": dataset_hash,
-        "requested_model": settings.openai_model,
+        "gold_dataset_sha256": dataset_hash,
+        "model_requested": settings.openai_model,
         "prompt_version": PROMPT_VERSION,
-        "prompt_hash": prompt_hash(),
+        "prompt_sha256": prompt_hash(),
         "schema_version": SCHEMA_VERSION,
-        "schema_hash": schema_hash(),
+        "schema_sha256": schema_hash(),
         "analyzer_version": ANALYSIS_VERSION,
-        "fact_extractor_version": FACT_EXTRACTOR_VERSION,
+        "fact_version": FACT_EXTRACTOR_VERSION,
         "reasoning_effort": settings.ai_reasoning_effort,
         "max_output_tokens": settings.ai_max_output_tokens,
     }
@@ -341,6 +356,115 @@ def _comparison(current: dict[str, object], baseline: dict[str, object]) -> dict
                 "delta": current_value - baseline_value,
             }
     return comparison
+
+
+def _runtime_metrics(
+    successes: list[tuple[EvaluationExampleWithNews, AIEventAnalysisResult]],
+    failures: list[AIItemFailure],
+) -> dict[str, object]:
+    live = [result for _, result in successes if not result.metadata.cached]
+    latencies = sorted(result.metadata.latency_ms for result in live)
+    input_tokens = sum(result.metadata.input_tokens or 0 for result in live)
+    output_tokens = sum(result.metadata.output_tokens or 0 for result in live)
+    total_tokens = sum(result.metadata.total_tokens or 0 for result in live)
+    return {
+        "api_calls": len(live) + len(failures),
+        "cache_hits": sum(result.metadata.cached for _, result in successes),
+        "failed_calls": len(failures),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "mean_latency_ms": 0.0 if not latencies else sum(latencies) / len(latencies),
+        "p50_latency_ms": _percentile(latencies, 0.50),
+        "p95_latency_ms": _percentile(latencies, 0.95),
+    }
+
+
+def _percentile(values: list[int], quantile: float) -> float:
+    if not values:
+        return 0.0
+    position = (len(values) - 1) * quantile
+    lower = int(position)
+    upper = min(lower + 1, len(values) - 1)
+    fraction = position - lower
+    return values[lower] + (values[upper] - values[lower]) * fraction
+
+
+def _default_baseline(split: DatasetSplit) -> dict[str, object] | None:
+    if split == DatasetSplit.VALIDATION:
+        event_f1 = primary = fact_value = fact_metric = semantic = 1.0
+    elif split == DatasetSplit.TEST:
+        event_f1 = 0.909091
+        primary = 0.909091
+        fact_value = 0.923077
+        fact_metric = 0.820513
+        semantic = 0.615385
+    else:
+        return None
+    return {
+        "events": {"micro": {"f1": event_f1}, "primary_accuracy": primary},
+        "facts": {
+            "value": {"f1": fact_value},
+            "metric": {"f1": fact_metric},
+            "semantic_strict": {"f1": semantic},
+        },
+    }
+
+
+def _metric_snapshot(metrics: dict[str, object]) -> dict[str, object]:
+    paths = (
+        "events.micro.precision",
+        "events.micro.recall",
+        "events.micro.f1",
+        "events.macro_f1",
+        "events.primary_accuracy",
+        "facts.value.f1",
+        "facts.metric.f1",
+        "facts.semantic_strict.f1",
+        "facts.evidence_span_accuracy",
+    )
+    snapshot: dict[str, object] = {}
+    for path in paths:
+        value = _nested_number(metrics, path)
+        if value is not None:
+            snapshot[path] = value
+    snapshot["runtime"] = metrics["runtime"]
+    return snapshot
+
+
+def _write_comparison_markdown(metrics: dict[str, object], split: DatasetSplit) -> None:
+    if split not in {DatasetSplit.VALIDATION, DatasetSplit.TEST}:
+        return
+    comparison = cast("dict[str, object]", metrics.get("comparison", {}))
+    labels = {
+        "events.micro.f1": "event micro F1",
+        "events.primary_accuracy": "primary accuracy",
+        "facts.value.f1": "fact value F1",
+        "facts.metric.f1": "fact metric F1",
+        "facts.semantic_strict.f1": "semantic_strict_f1",
+    }
+    lines = [
+        f"# Deterministic v2 vs AI v0 ({split.value})",
+        "",
+        "| Metric | Deterministic v2 | AI v0 | Delta |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for path, label in labels.items():
+        values = cast("dict[str, object]", comparison.get(path, {}))
+        if values:
+            deterministic = _number(values.get("deterministic"))
+            ai_value = _number(values.get("ai"))
+            delta = _number(values.get("delta"))
+            if deterministic is None or ai_value is None or delta is None:
+                continue
+            lines.append(f"| {label} | {deterministic:.6f} | {ai_value:.6f} | {delta:+.6f} |")
+    target = Path("artifacts/seed/ai-event-v0") / f"comparison-{split.value.lower()}.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _number(value: object) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def _nested_number(payload: dict[str, object], path: str) -> float | None:

@@ -420,8 +420,9 @@ facts, and facts without periods.
 
 ## AI Event Analyzer v0
 
-The optional AI analyzer is isolated under `src/ai_events/`. Its application
-layer depends on the `AIEventModelClient` protocol rather than the OpenAI SDK.
+The optional AI analyzer is an experimental research/evaluation module isolated
+under `src/ai_events/`. Its application layer depends on the
+`AIEventModelClient` protocol rather than the OpenAI SDK.
 The infrastructure adapter uses the OpenAI Responses API with strict Pydantic
 Structured Outputs. The zero-shot prompt is versioned as `ai-event-prompt-v0`;
 predictions use analysis version `ai-event-v0` and fact extractor version
@@ -440,8 +441,8 @@ AI_REASONING_EFFORT=low
 ```
 
 `OPENAI_API_KEY` is read only from the environment. It is never written to
-predictions, cache files, manifests, or logs. Analyze raw text or a stored news
-item:
+predictions, cache files, manifests, or logs, and must never be committed.
+Analyze raw text or a stored news item:
 
 ```bash
 uv run python -m apps.cli.analyze_event_ai --text "Company reported revenue of 100 million RUB."
@@ -454,6 +455,8 @@ reasoning content is neither requested for output nor persisted. The local
 cache lives under `artifacts/ai-event-v0/cache/`; use `--force-refresh` to bypass
 a hit. The analyzer does not save AI rows to the database and cannot overwrite
 the deterministic extractor.
+Its output is not a trading recommendation and is not used for impact scores,
+market reactions, sentiment, routing, fallback, or ensemble decisions.
 
 Evaluate a three-record TRAIN smoke, then the full VALIDATION split:
 
@@ -472,6 +475,9 @@ Validation artifacts are written to
 `errors.jsonl`, `summary.md`, and `run-manifest.json`. Item-level API failures
 are reported and excluded from metric inputs; they are never represented as
 synthetic empty predictions.
+Aggregate comparisons are written to
+`artifacts/seed/ai-event-v0/comparison-validation.md` and, only after an allowed
+frozen TEST run, `artifacts/seed/ai-event-v0/comparison-test.md`.
 
 TEST is guarded and cannot run without both an explicit flag and an unchanged
 frozen configuration produced from VALIDATION:

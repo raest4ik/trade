@@ -101,7 +101,7 @@ class AnalyzeAIEvent:
         completion = None if command.force_refresh else await self._cache.get(key)
         cached = completion is not None
         if completion is None:
-            completion = await self._client.complete(request)
+            completion = await self._client.analyze(request)
             await self._cache.put(key, completion)
         return _build_result(command, completion, key=key, cached=cached)
 
@@ -197,8 +197,8 @@ def _build_result(
                 currency=prediction.currency,
                 scale=prediction.scale,
                 period_type=prediction.period_type,
-                year=prediction.year,
-                quarter=prediction.quarter,
+                year=prediction.period_year,
+                quarter=prediction.period_quarter,
                 month=None,
                 date_from=None,
                 date_to=None,

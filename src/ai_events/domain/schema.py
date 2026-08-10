@@ -45,8 +45,8 @@ class AIFinancialFactPrediction(StrictOutputModel):
     scale: ValueScale
     fact_role: FactRole
     period_type: PeriodType
-    year: int | None
-    quarter: int | None = Field(ge=1, le=4)
+    period_year: int | None
+    period_quarter: int | None = Field(ge=1, le=4)
     comparison_type: ComparisonType
     change_direction: ChangeDirection
     change_value: str | None = Field(pattern=DECIMAL_PATTERN)
@@ -58,10 +58,10 @@ class AIFinancialFactPrediction(StrictOutputModel):
     def validate_semantics(self) -> Self:
         if self.metric == FinancialMetric.OTHER and not (self.metric_name or "").strip():
             raise ValueError("metric_name is required when metric is OTHER")
-        if self.period_type == PeriodType.QUARTER and self.quarter is None:
-            raise ValueError("quarter is required for QUARTER period")
-        if self.period_type != PeriodType.QUARTER and self.quarter is not None:
-            raise ValueError("quarter is only valid for QUARTER period")
+        if self.period_type == PeriodType.QUARTER and self.period_quarter is None:
+            raise ValueError("period_quarter is required for QUARTER period")
+        if self.period_type != PeriodType.QUARTER and self.period_quarter is not None:
+            raise ValueError("period_quarter is only valid for QUARTER period")
         if self.change_direction == ChangeDirection.UNCHANGED and not _EXPLICIT_UNCHANGED.search(
             self.evidence_text
         ):

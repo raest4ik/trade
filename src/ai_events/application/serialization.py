@@ -33,8 +33,8 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
                 "scale": fact.scale.value,
                 "fact_role": fact.fact_role.value,
                 "period_type": fact.period_type.value,
-                "year": fact.year,
-                "quarter": fact.quarter,
+                "period_year": fact.year,
+                "period_quarter": fact.quarter,
                 "comparison_type": fact.comparison_type.value,
                 "change_direction": fact.change_direction.value,
                 "change_value": None if fact.change_value is None else str(fact.change_value),
@@ -53,11 +53,11 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
             "news_id": None if result.metadata.news_id is None else str(result.metadata.news_id),
             "raw_content_hash": result.metadata.raw_content_hash,
             "requested_model": result.metadata.requested_model,
-            "actual_model": result.metadata.actual_model,
+            "actual_response_model": result.metadata.actual_model,
             "prompt_version": result.metadata.prompt_version,
-            "prompt_hash": result.metadata.prompt_hash,
+            "prompt_sha256": result.metadata.prompt_hash,
             "schema_version": result.metadata.schema_version,
-            "schema_hash": result.metadata.schema_hash,
+            "schema_sha256": result.metadata.schema_hash,
             "analyzer_version": result.metadata.analyzer_version,
             "fact_extractor_version": result.metadata.fact_extractor_version,
             "reasoning_effort": result.metadata.reasoning_effort,
@@ -74,8 +74,9 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
 
 def failure_to_json(failure: AIItemFailure) -> dict[str, object]:
     return {
+        "status": "FAILED",
         "record_id": failure.record_id,
         "news_id": None if failure.news_id is None else str(failure.news_id),
-        "error_code": failure.error_code,
-        "message": failure.message,
+        "error_type": failure.error_code,
+        "error_message": failure.message,
     }
