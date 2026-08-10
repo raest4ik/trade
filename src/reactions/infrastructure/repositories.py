@@ -9,7 +9,11 @@ from sqlalchemy.orm import selectinload
 
 from src.reactions.application.exceptions import ReactionStorageError
 from src.reactions.domain.entities import NewsMarketReaction
-from src.reactions.infrastructure.models import NewsMarketReactionRecord
+from src.reactions.infrastructure.models import (
+    NewsMarketReactionRecord,
+    ReactionBenchmarkAdjustmentRecord,
+    ReactionPointRecord,
+)
 
 
 class SqlAlchemyReactionRepository:
@@ -24,6 +28,21 @@ class SqlAlchemyReactionRepository:
         reactions: list[NewsMarketReaction],
     ) -> list[NewsMarketReaction]:
         try:
+            reaction_ids = select(NewsMarketReactionRecord.id).where(
+                NewsMarketReactionRecord.news_id == news_id,
+                NewsMarketReactionRecord.reaction_version == reaction_version,
+            )
+            point_ids = select(ReactionPointRecord.id).where(
+                ReactionPointRecord.reaction_id.in_(reaction_ids)
+            )
+            await self._session.execute(
+                delete(ReactionBenchmarkAdjustmentRecord).where(
+                    ReactionBenchmarkAdjustmentRecord.reaction_point_id.in_(point_ids)
+                )
+            )
+            await self._session.execute(
+                delete(ReactionPointRecord).where(ReactionPointRecord.reaction_id.in_(reaction_ids))
+            )
             await self._session.execute(
                 delete(NewsMarketReactionRecord).where(
                     NewsMarketReactionRecord.news_id == news_id,
@@ -50,9 +69,11 @@ class SqlAlchemyReactionRepository:
             query = query.where(NewsMarketReactionRecord.reaction_version == reaction_version)
         try:
             result = await self._session.execute(
-                query.options(selectinload(NewsMarketReactionRecord.points)).order_by(
-                    NewsMarketReactionRecord.instrument_id
-                )
+                query.options(
+                    selectinload(NewsMarketReactionRecord.points).selectinload(
+                        ReactionPointRecord.benchmark_adjustment
+                    )
+                ).order_by(NewsMarketReactionRecord.instrument_id)
             )
         except SQLAlchemyError as exc:
             raise ReactionStorageError("could not read news market reactions") from exc

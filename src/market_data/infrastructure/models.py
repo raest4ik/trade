@@ -4,11 +4,28 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.market_data.domain.entities import MarketCandle, MarketDataImport
-from src.market_data.domain.enums import MarketDataImportStatus, MarketDataProvider
+from src.market_data.domain.entities import (
+    BenchmarkCandle,
+    MarketBenchmark,
+    MarketCandle,
+    MarketDataImport,
+)
+from src.market_data.domain.enums import (
+    MarketDataImportStatus,
+    MarketDataProvider,
+    MarketDataSetType,
+)
 from src.shared.database.base import Base
 from src.shared.database.types import UtcDateTime
 
@@ -98,16 +115,136 @@ class MarketCandleRecord(Base):
         )
 
 
+class MarketBenchmarkRecord(Base):
+    __tablename__ = "market_benchmarks"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    provider: Mapped[str] = mapped_column(String(32))
+    engine: Mapped[str] = mapped_column(String(32))
+    market: Mapped[str] = mapped_column(String(32))
+    board: Mapped[str] = mapped_column(String(32))
+
+    @classmethod
+    def from_entity(cls, item: MarketBenchmark) -> MarketBenchmarkRecord:
+        return cls(
+            id=item.id,
+            code=item.code,
+            name=item.name,
+            provider=item.provider.value,
+            engine=item.engine,
+            market=item.market,
+            board=item.board,
+        )
+
+    def to_entity(self) -> MarketBenchmark:
+        return MarketBenchmark(
+            id=self.id,
+            code=self.code,
+            name=self.name,
+            provider=MarketDataProvider(self.provider),
+            engine=self.engine,
+            market=self.market,
+            board=self.board,
+        )
+
+
+class BenchmarkCandleRecord(Base):
+    __tablename__ = "benchmark_candles"
+    __table_args__ = (
+        UniqueConstraint(
+            "benchmark_id",
+            "provider",
+            "interval_minutes",
+            "begin_at",
+            name="uq_benchmark_candles_benchmark_provider_interval_begin",
+        ),
+        Index(
+            "ix_benchmark_candles_benchmark_interval_begin",
+            "benchmark_id",
+            "interval_minutes",
+            "begin_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    benchmark_id: Mapped[UUID] = mapped_column(
+        ForeignKey("market_benchmarks.id", ondelete="RESTRICT")
+    )
+    provider: Mapped[str] = mapped_column(String(32))
+    interval_minutes: Mapped[int] = mapped_column(Integer)
+    begin_at: Mapped[datetime] = mapped_column(UtcDateTime())
+    end_at: Mapped[datetime] = mapped_column(UtcDateTime(), index=True)
+    open: Mapped[Decimal] = mapped_column(Numeric(24, 10))
+    high: Mapped[Decimal] = mapped_column(Numeric(24, 10))
+    low: Mapped[Decimal] = mapped_column(Numeric(24, 10))
+    close: Mapped[Decimal] = mapped_column(Numeric(24, 10))
+    volume: Mapped[Decimal] = mapped_column(Numeric(28, 10))
+    value: Mapped[Decimal] = mapped_column(Numeric(28, 10))
+    fetched_at: Mapped[datetime] = mapped_column(UtcDateTime())
+    adapter_version: Mapped[str] = mapped_column(String(64))
+
+    @classmethod
+    def from_entity(cls, item: BenchmarkCandle) -> BenchmarkCandleRecord:
+        return cls(
+            id=item.id,
+            benchmark_id=item.benchmark_id,
+            provider=item.provider.value,
+            interval_minutes=item.interval_minutes,
+            begin_at=item.begin_at,
+            end_at=item.end_at,
+            open=item.open,
+            high=item.high,
+            low=item.low,
+            close=item.close,
+            volume=item.volume,
+            value=item.value,
+            fetched_at=item.fetched_at,
+            adapter_version=item.adapter_version,
+        )
+
+    def to_entity(self) -> BenchmarkCandle:
+        return BenchmarkCandle(
+            id=self.id,
+            benchmark_id=self.benchmark_id,
+            provider=MarketDataProvider(self.provider),
+            interval_minutes=self.interval_minutes,
+            begin_at=self.begin_at,
+            end_at=self.end_at,
+            open=self.open,
+            high=self.high,
+            low=self.low,
+            close=self.close,
+            volume=self.volume,
+            value=self.value,
+            fetched_at=self.fetched_at,
+            adapter_version=self.adapter_version,
+        )
+
+
 class MarketDataImportRecord(Base):
     __tablename__ = "market_data_imports"
     __table_args__ = (
         Index("ix_market_data_imports_instrument_started", "instrument_id", "started_at"),
         Index("ix_market_data_imports_provider_board_started", "provider", "board", "started_at"),
+        CheckConstraint(
+            "(dataset_type = 'SECURITY' AND instrument_id IS NOT NULL AND benchmark_id IS NULL) "
+            "OR (dataset_type = 'BENCHMARK' AND instrument_id IS NULL "
+            "AND benchmark_id IS NOT NULL)",
+            name="ck_market_data_imports_dataset_reference",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(String(32))
-    instrument_id: Mapped[UUID] = mapped_column(ForeignKey("instruments.id", ondelete="RESTRICT"))
+    instrument_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("instruments.id", ondelete="RESTRICT"), nullable=True
+    )
+    benchmark_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("market_benchmarks.id", ondelete="RESTRICT"), nullable=True
+    )
+    dataset_type: Mapped[str] = mapped_column(String(16))
     ticker: Mapped[str] = mapped_column(String(32))
     board: Mapped[str] = mapped_column(String(32))
     interval_minutes: Mapped[int] = mapped_column(Integer)
@@ -132,6 +269,8 @@ class MarketDataImportRecord(Base):
             id=item.id,
             provider=item.provider.value,
             instrument_id=item.instrument_id,
+            benchmark_id=item.benchmark_id,
+            dataset_type=item.dataset_type.value,
             ticker=item.ticker,
             board=item.board,
             interval_minutes=item.interval_minutes,
@@ -167,6 +306,8 @@ class MarketDataImportRecord(Base):
             id=self.id,
             provider=MarketDataProvider(self.provider),
             instrument_id=self.instrument_id,
+            benchmark_id=self.benchmark_id,
+            dataset_type=MarketDataSetType(self.dataset_type),
             ticker=self.ticker,
             board=self.board,
             interval_minutes=self.interval_minutes,

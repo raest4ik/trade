@@ -5,7 +5,11 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
-from src.market_data.domain.enums import MarketDataImportStatus, MarketDataProvider
+from src.market_data.domain.enums import (
+    MarketDataImportStatus,
+    MarketDataProvider,
+    MarketDataSetType,
+)
 from src.market_data.domain.exceptions import MarketDataDomainError
 from src.news.domain.time import ensure_aware_utc, utc_now
 
@@ -14,6 +18,110 @@ MOEX_MARKET_SHARES = "shares"
 MOEX_ADAPTER_VERSION = "moex-iss-v1-minute-candles"
 MOEX_SOURCE_TIMEZONE = "Europe/Moscow"
 SUPPORTED_INTERVAL_MINUTES = 1
+IMOEX_BENCHMARK_CODE = "IMOEX"
+MOEX_INDEX_BOARD = "SNDX"
+MOEX_MARKET_INDEX = "index"
+
+
+@dataclass(frozen=True, slots=True)
+class MarketBenchmark:
+    id: UUID
+    code: str
+    name: str
+    provider: MarketDataProvider
+    engine: str
+    market: str
+    board: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        code: str,
+        name: str,
+        board: str,
+        provider: MarketDataProvider = MarketDataProvider.MOEX_ISS,
+        engine: str = MOEX_ENGINE_STOCK,
+        market: str = MOEX_MARKET_INDEX,
+    ) -> MarketBenchmark:
+        if not name.strip():
+            raise MarketDataDomainError("benchmark name must not be empty")
+        return cls(
+            id=uuid4(),
+            code=_normalize_market_code(code, "code"),
+            name=name.strip(),
+            provider=provider,
+            engine=_normalize_market_code(engine, "engine").lower(),
+            market=_normalize_market_code(market, "market").lower(),
+            board=_normalize_market_code(board, "board"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkCandle:
+    id: UUID
+    benchmark_id: UUID
+    provider: MarketDataProvider
+    interval_minutes: int
+    begin_at: datetime
+    end_at: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: Decimal
+    value: Decimal
+    fetched_at: datetime
+    adapter_version: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        benchmark_id: UUID,
+        interval_minutes: int,
+        begin_at: datetime,
+        end_at: datetime,
+        open_price: Decimal,
+        high: Decimal,
+        low: Decimal,
+        close: Decimal,
+        volume: Decimal,
+        value: Decimal,
+        fetched_at: datetime | None = None,
+        provider: MarketDataProvider = MarketDataProvider.MOEX_ISS,
+        adapter_version: str = MOEX_ADAPTER_VERSION,
+    ) -> BenchmarkCandle:
+        if interval_minutes != SUPPORTED_INTERVAL_MINUTES:
+            raise MarketDataDomainError("only 1 minute candles are supported")
+        begin_utc = ensure_aware_utc(begin_at, "begin_at")
+        end_utc = ensure_aware_utc(end_at, "end_at")
+        if end_utc < begin_utc:
+            raise MarketDataDomainError("end_at must not be before begin_at")
+        if high < low:
+            raise MarketDataDomainError("high must not be lower than low")
+        if open_price < low or open_price > high or close < low or close > high:
+            raise MarketDataDomainError("open and close must be inside low-high range")
+        if any(price <= Decimal("0") for price in (open_price, high, low, close)):
+            raise MarketDataDomainError("OHLC prices must be positive")
+        if volume < Decimal("0") or value < Decimal("0"):
+            raise MarketDataDomainError("volume and value must not be negative")
+        return cls(
+            id=uuid4(),
+            benchmark_id=benchmark_id,
+            provider=provider,
+            interval_minutes=interval_minutes,
+            begin_at=begin_utc,
+            end_at=end_utc,
+            open=open_price,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            value=value,
+            fetched_at=ensure_aware_utc(fetched_at or utc_now(), "fetched_at"),
+            adapter_version=adapter_version,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +210,9 @@ class MarketCandle:
 class MarketDataImport:
     id: UUID
     provider: MarketDataProvider
-    instrument_id: UUID
+    instrument_id: UUID | None
+    benchmark_id: UUID | None
+    dataset_type: MarketDataSetType
     ticker: str
     board: str
     interval_minutes: int
@@ -138,7 +248,47 @@ class MarketDataImport:
             id=uuid4(),
             provider=MarketDataProvider.MOEX_ISS,
             instrument_id=instrument_id,
+            benchmark_id=None,
+            dataset_type=MarketDataSetType.SECURITY,
             ticker=_normalize_market_code(ticker, "ticker"),
+            board=_normalize_market_code(board, "board"),
+            interval_minutes=interval_minutes,
+            requested_from=requested_from,
+            requested_till=requested_till,
+            source_timezone=MOEX_SOURCE_TIMEZONE,
+            started_at=utc_now(),
+            finished_at=None,
+            status=MarketDataImportStatus.RUNNING,
+            pages_received=0,
+            rows_received=0,
+            rows_valid=0,
+            rows_rejected=0,
+            rows_inserted=0,
+            rows_existing=0,
+            error_code=None,
+            adapter_version=MOEX_ADAPTER_VERSION,
+        )
+
+    @classmethod
+    def start_benchmark(
+        cls,
+        *,
+        benchmark_id: UUID,
+        code: str,
+        board: str,
+        interval_minutes: int,
+        requested_from: date,
+        requested_till: date,
+    ) -> MarketDataImport:
+        if requested_till < requested_from:
+            raise MarketDataDomainError("requested_till must not be before requested_from")
+        return cls(
+            id=uuid4(),
+            provider=MarketDataProvider.MOEX_ISS,
+            instrument_id=None,
+            benchmark_id=benchmark_id,
+            dataset_type=MarketDataSetType.BENCHMARK,
+            ticker=_normalize_market_code(code, "code"),
             board=_normalize_market_code(board, "board"),
             interval_minutes=interval_minutes,
             requested_from=requested_from,
@@ -173,6 +323,8 @@ class MarketDataImport:
             id=self.id,
             provider=self.provider,
             instrument_id=self.instrument_id,
+            benchmark_id=self.benchmark_id,
+            dataset_type=self.dataset_type,
             ticker=self.ticker,
             board=self.board,
             interval_minutes=self.interval_minutes,

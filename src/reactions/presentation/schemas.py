@@ -7,7 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from src.reactions.domain.entities import NewsMarketReaction, ReactionPoint
-from src.reactions.domain.enums import ReactionPointStatus, ReactionStatus
+from src.reactions.domain.enums import (
+    BenchmarkAdjustmentStatus,
+    ReactionPointStatus,
+    ReactionStatus,
+)
 
 
 class ReactionPointResponse(BaseModel):
@@ -19,10 +23,24 @@ class ReactionPointResponse(BaseModel):
     price: Decimal | None
     simple_return: Decimal | None
     log_return: Decimal | None
+    security_simple_return: Decimal | None
+    security_log_return: Decimal | None
+    benchmark_code: str | None
+    benchmark_status: BenchmarkAdjustmentStatus | None
+    benchmark_baseline_value: Decimal | None
+    benchmark_target_value: Decimal | None
+    benchmark_baseline_observed_at: datetime | None
+    benchmark_target_observed_at: datetime | None
+    benchmark_simple_return: Decimal | None
+    benchmark_log_return: Decimal | None
+    abnormal_simple_return: Decimal | None
+    abnormal_log_return: Decimal | None
+    benchmark_missing_reason: str | None
     status: ReactionPointStatus
 
     @classmethod
     def from_entity(cls, point: ReactionPoint) -> ReactionPointResponse:
+        adjustment = point.benchmark_adjustment
         return cls(
             id=point.id,
             reaction_id=point.reaction_id,
@@ -32,6 +50,25 @@ class ReactionPointResponse(BaseModel):
             price=point.price,
             simple_return=point.simple_return,
             log_return=point.log_return,
+            security_simple_return=point.simple_return,
+            security_log_return=point.log_return,
+            benchmark_code=None if adjustment is None else adjustment.benchmark_code,
+            benchmark_status=None if adjustment is None else adjustment.status,
+            benchmark_baseline_value=None if adjustment is None else adjustment.baseline_value,
+            benchmark_target_value=None if adjustment is None else adjustment.target_value,
+            benchmark_baseline_observed_at=None
+            if adjustment is None
+            else adjustment.baseline_observed_at,
+            benchmark_target_observed_at=None
+            if adjustment is None
+            else adjustment.target_observed_at,
+            benchmark_simple_return=None if adjustment is None else adjustment.simple_return,
+            benchmark_log_return=None if adjustment is None else adjustment.log_return,
+            abnormal_simple_return=None
+            if adjustment is None
+            else adjustment.abnormal_simple_return,
+            abnormal_log_return=None if adjustment is None else adjustment.abnormal_log_return,
+            benchmark_missing_reason=None if adjustment is None else adjustment.missing_reason,
             status=point.status,
         )
 
@@ -111,6 +148,26 @@ class NewsReactionsResponse(BaseModel):
                     "status": point.status.value,
                     "target_at": point.target_at,
                     "observed_at": point.observed_at,
+                    "security_simple_return": point.simple_return,
+                    "security_log_return": point.log_return,
+                    "benchmark_code": None
+                    if point.benchmark_adjustment is None
+                    else point.benchmark_adjustment.benchmark_code,
+                    "benchmark_status": None
+                    if point.benchmark_adjustment is None
+                    else point.benchmark_adjustment.status.value,
+                    "benchmark_simple_return": None
+                    if point.benchmark_adjustment is None
+                    else point.benchmark_adjustment.simple_return,
+                    "benchmark_log_return": None
+                    if point.benchmark_adjustment is None
+                    else point.benchmark_adjustment.log_return,
+                    "abnormal_simple_return": None
+                    if point.benchmark_adjustment is None
+                    else point.benchmark_adjustment.abnormal_simple_return,
+                    "abnormal_log_return": None
+                    if point.benchmark_adjustment is None
+                    else point.benchmark_adjustment.abnormal_log_return,
                 }
                 for item in reactions
                 for point in item.points
@@ -123,6 +180,13 @@ class NewsReactionsResponse(BaseModel):
                 ),
                 "outside_session": sum(
                     1 for item in reactions if item.status == ReactionStatus.OUTSIDE_SESSION
+                ),
+                "benchmark_missing": sum(
+                    1
+                    for item in reactions
+                    for point in item.points
+                    if point.benchmark_adjustment is not None
+                    and point.benchmark_adjustment.status == BenchmarkAdjustmentStatus.MISSING
                 ),
             },
             ambiguity={

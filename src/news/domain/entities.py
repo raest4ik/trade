@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from src.news.domain.enums import PublicationTimestampQuality
 from src.news.domain.exceptions import DomainError
 from src.news.domain.hash import calculate_raw_content_hash
 from src.news.domain.time import ensure_aware_utc, utc_now
@@ -20,6 +21,7 @@ class NewsItem:
     raw_content_hash: str
     language: str
     published_at: datetime
+    publication_timestamp_quality: PublicationTimestampQuality
     received_at: datetime
     created_at: datetime
 
@@ -34,6 +36,9 @@ class NewsItem:
         raw_content: str,
         language: str,
         published_at: datetime,
+        publication_timestamp_quality: PublicationTimestampQuality = (
+            PublicationTimestampQuality.UNKNOWN
+        ),
         received_at: datetime | None = None,
     ) -> NewsItem:
         cls._validate_required_text("source_id", source_id)
@@ -58,6 +63,7 @@ class NewsItem:
             raw_content_hash=calculate_raw_content_hash(source_id, raw_content),
             language=language,
             published_at=normalized_published_at,
+            publication_timestamp_quality=publication_timestamp_quality,
             received_at=normalized_received_at,
             created_at=created_at,
         )

@@ -18,6 +18,7 @@ from src.market_data.application.use_cases import (
 from src.market_data.domain.entities import MarketCandle
 from src.market_data.infrastructure.repositories import SqlAlchemyMarketDataRepository
 from src.news.domain.entities import NewsItem
+from src.news.domain.enums import PublicationTimestampQuality
 from src.news.infrastructure.repositories import SqlAlchemyNewsRepository
 from src.reactions.application.use_cases import CalculateNewsMarketReactions
 from src.reactions.domain.enums import ReactionPointStatus, ReactionStatus
@@ -92,6 +93,7 @@ async def test_reaction_calculation_uses_previous_complete_candle_for_baseline(
                     raw_content="SBER news",
                     language="en",
                     published_at=datetime(2026, 7, 1, 7, 0, 30, tzinfo=UTC),
+                    publication_timestamp_quality=PublicationTimestampQuality.EXACT,
                     received_at=datetime(2026, 7, 1, 7, 0, 31, tzinfo=UTC),
                 )
             )
@@ -182,6 +184,7 @@ async def test_reaction_uses_candle_start_equal_to_published_at_as_effective_eve
                     raw_content="SBER news",
                     language="en",
                     published_at=datetime(2026, 7, 1, 7, 0, tzinfo=UTC),
+                    publication_timestamp_quality=PublicationTimestampQuality.EXACT,
                     received_at=datetime(2026, 7, 1, 7, 0, 1, tzinfo=UTC),
                 )
             )

@@ -7,6 +7,7 @@ from pydantic import AnyUrl, BaseModel, ConfigDict, Field, ValidationInfo, field
 
 from src.news.application.use_cases import CreateNewsItemCommand
 from src.news.domain.entities import NewsItem
+from src.news.domain.enums import PublicationTimestampQuality
 from src.news.domain.time import ensure_aware_utc
 
 
@@ -19,6 +20,7 @@ class NewsCreateRequest(BaseModel):
     language: str = Field(min_length=1, max_length=16)
     published_at: datetime
     received_at: datetime | None = None
+    publication_timestamp_quality: PublicationTimestampQuality = PublicationTimestampQuality.UNKNOWN
 
     @field_validator("source_id", "source_name", "title", "language")
     @classmethod
@@ -51,6 +53,7 @@ class NewsCreateRequest(BaseModel):
             language=self.language,
             published_at=self.published_at,
             received_at=self.received_at,
+            publication_timestamp_quality=self.publication_timestamp_quality,
         )
 
 
@@ -66,6 +69,7 @@ class NewsResponse(BaseModel):
     raw_content_hash: str
     language: str
     published_at: datetime
+    publication_timestamp_quality: PublicationTimestampQuality
     received_at: datetime
     created_at: datetime
 
@@ -81,6 +85,7 @@ class NewsResponse(BaseModel):
             raw_content_hash=item.raw_content_hash,
             language=item.language,
             published_at=item.published_at,
+            publication_timestamp_quality=item.publication_timestamp_quality,
             received_at=item.received_at,
             created_at=item.created_at,
         )

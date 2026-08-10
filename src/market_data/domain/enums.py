@@ -16,3 +16,8 @@ class MarketDataImportStatus(StrEnum):
 
 class CandleInterval(StrEnum):
     MINUTE = "MINUTE"
+
+
+class MarketDataSetType(StrEnum):
+    SECURITY = "SECURITY"
+    BENCHMARK = "BENCHMARK"
