@@ -50,6 +50,8 @@ async def run(args: argparse.Namespace) -> int:
                 reasoning_effort=provider.reasoning_effort,
                 max_output_tokens=settings.ai_max_output_tokens,
                 think=provider.think,
+                random_seed=provider.random_seed,
+                context_length=provider.context_length,
                 force_refresh=args.force_refresh,
             )
         )

@@ -21,6 +21,8 @@ class AIProviderConfig:
     requested_model: str
     reasoning_effort: str | None
     think: bool
+    random_seed: int | None
+    context_length: int | None
     artifact_slug: str
 
 
@@ -43,6 +45,8 @@ def resolve_ai_provider_config(
             requested_model=model,
             reasoning_effort=None,
             think=settings.ollama_think,
+            random_seed=settings.ai_random_seed,
+            context_length=settings.ollama_context_length,
             artifact_slug=_artifact_slug(provider, model),
         )
     if settings.openai_api_key is None:
@@ -53,6 +57,8 @@ def resolve_ai_provider_config(
         requested_model=model,
         reasoning_effort=settings.ai_reasoning_effort,
         think=False,
+        random_seed=None,
+        context_length=None,
         artifact_slug=_artifact_slug(provider, model),
     )
 

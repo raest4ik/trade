@@ -42,6 +42,8 @@ class AnalyzeAIEventCommand:
     reasoning_effort: str | None
     max_output_tokens: int
     think: bool
+    random_seed: int | None = None
+    context_length: int | None = None
     news_id: UUID | None = None
     record_id: str | None = None
     force_refresh: bool = False
@@ -100,6 +102,8 @@ class AnalyzeAIEvent:
             raise AIConfigurationError("requested_model must not be empty")
         if command.max_output_tokens <= 0:
             raise AIConfigurationError("max_output_tokens must be positive")
+        if command.context_length is not None and command.context_length <= 0:
+            raise AIConfigurationError("context_length must be positive")
 
         request = build_model_request(command)
         key = cache_key(request)
@@ -125,6 +129,8 @@ def build_model_request(command: AnalyzeAIEventCommand) -> AIModelRequest:
         reasoning_effort=command.reasoning_effort,
         max_output_tokens=command.max_output_tokens,
         think=command.think,
+        random_seed=command.random_seed,
+        context_length=command.context_length,
     )
 
 
@@ -139,6 +145,8 @@ def cache_key(request: AIModelRequest) -> str:
         "schema_hash": request.schema_hash,
         "max_output_tokens": request.max_output_tokens,
         "think": request.think,
+        "random_seed": request.random_seed,
+        "context_length": request.context_length,
     }
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 

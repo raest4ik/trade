@@ -434,8 +434,10 @@ Configure the runtime through environment variables:
 ```bash
 AI_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=qwen3:8b
+OLLAMA_MODEL=qwen3.5:9b
 OLLAMA_THINK=false
+OLLAMA_CONTEXT_LENGTH=4096
+AI_RANDOM_SEED=0
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-mini
 AI_REQUEST_TIMEOUT_SECONDS=60
@@ -448,8 +450,8 @@ AI_REASONING_EFFORT=low
 Install Ollama, pull the default model, and start an interactive check:
 
 ```bash
-ollama pull qwen3:8b
-ollama run qwen3:8b
+ollama pull qwen3.5:9b
+ollama run qwen3.5:9b
 ```
 
 Enter `/bye` after the check. Ollama runs locally, requires no API key, and
@@ -461,6 +463,10 @@ Install the optional SDK before using that backend:
 ```bash
 uv sync --extra openai
 ```
+
+The local RTX 4060 Ti 8 GB benchmark loaded this quantized model fully on the
+GPU. Hardware, quantization, drivers, and context settings affect residency, so
+this observation is not a guarantee for every 8 GB GPU.
 Analyze raw text or a stored news item:
 
 ```bash
@@ -496,13 +502,13 @@ uv run python -m apps.cli.evaluate_ai_event_extraction \
 ```
 
 Validation artifacts for the default backend are written to
-`artifacts/seed/ai-event-v0/ollama-qwen3-8b/validation/`: `predictions.jsonl`, `metrics.json`,
+`artifacts/seed/ai-event-v0/ollama-qwen3.5-9b/validation/`: `predictions.jsonl`, `metrics.json`,
 `errors.jsonl`, `summary.md`, and `run-manifest.json`. Item-level API failures
 are reported explicitly. The `successful_only` view excludes them for model-quality
 diagnosis; the `end_to_end` view represents them as empty predictions and reports
 requested/successful/failed counts plus `item_success_rate`.
 Aggregate comparisons are written to
-`artifacts/seed/ai-event-v0/ollama-qwen3-8b/comparison-validation.md` and, only after an allowed
+`artifacts/seed/ai-event-v0/ollama-qwen3.5-9b/comparison-validation.md` and, only after an allowed
 frozen TEST run, `artifacts/seed/ai-event-v0/comparison-test.md`.
 
 TEST is guarded and cannot run without both an explicit flag and an unchanged
@@ -511,7 +517,7 @@ frozen configuration produced from VALIDATION:
 ```bash
 uv run python -m apps.cli.evaluate_ai_event_extraction \
   --dataset-id <dataset-id> --split TEST --allow-frozen-test \
-  --frozen-config artifacts/seed/ai-event-v0/frozen-config.json
+  --frozen-config artifacts/seed/ai-event-v0/qwen3.5-9b-frozen-config.json
 ```
 
 Normal tests use fake clients and mocked HTTP. They make neither live Ollama

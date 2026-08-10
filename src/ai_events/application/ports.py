@@ -20,6 +20,8 @@ class AIModelRequest:
     reasoning_effort: str | None
     max_output_tokens: int
     think: bool
+    random_seed: int | None
+    context_length: int | None
 
 
 @dataclass(frozen=True, slots=True)

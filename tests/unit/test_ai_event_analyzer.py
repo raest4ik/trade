@@ -41,6 +41,7 @@ from src.ai_events.infrastructure.factory import (
     create_ai_event_analyzer,
     resolve_ai_provider_config,
 )
+from src.ai_events.infrastructure.ollama_client import OllamaModelIdentity
 from src.evaluation.domain.entities import GoldEvent
 from src.evaluation.domain.enums import DatasetSplit
 from src.evaluation.domain.metrics import EventEvaluationInput, FactEvaluationInput
@@ -146,6 +147,8 @@ def _command(text: str = "Revenue was 100") -> AnalyzeAIEventCommand:
         reasoning_effort="low",
         max_output_tokens=1000,
         think=False,
+        random_seed=0,
+        context_length=4096,
     )
 
 
@@ -461,6 +464,8 @@ def test_cache_key_changes_with_every_material_input() -> None:
         replace(request, max_output_tokens=999),
         replace(request, provider="ollama"),
         replace(request, think=True),
+        replace(request, random_seed=1),
+        replace(request, context_length=8192),
     )
     assert all(cache_key(item) != base for item in variants)
 
@@ -514,8 +519,10 @@ def test_default_ollama_provider_needs_no_api_key() -> None:
     settings = Settings(openai_api_key=None)
     provider = resolve_ai_provider_config(settings)
     assert provider.provider.value == "ollama"
-    assert provider.requested_model == "qwen3:8b"
+    assert provider.requested_model == "qwen3.5:9b"
     assert provider.think is False
+    assert provider.random_seed == 0
+    assert provider.context_length == 4096
     create_ai_event_analyzer(settings)
 
 
@@ -528,7 +535,7 @@ def test_generic_model_override_is_propagated_without_changing_default() -> None
     )
     assert provider.requested_model == "qwen3.5:9b"
     assert provider.artifact_slug == "ollama-qwen3-5-9b"
-    assert resolve_ai_provider_config(settings).requested_model == "qwen3:8b"
+    assert resolve_ai_provider_config(settings).requested_model == "qwen3.5:9b"
     assert (
         build_analyze_parser().parse_args(["--text", "synthetic", "--model", "qwen3.5:9b"]).model
         == "qwen3.5:9b"
@@ -547,11 +554,25 @@ def test_model_manifest_records_requested_and_actual_model() -> None:
         provider_override="ollama",
         model_override="qwen3.5:9b",
     )
-    fields = model_manifest_fields(provider, Counter({"qwen3.5:9b": 3}))
+    identity = OllamaModelIdentity(
+        model_tag="qwen3.5:9b",
+        model_digest="digest-123",
+        parameter_size="9.7B",
+        quantization_level="Q4_K_M",
+        ollama_version="0.12.3",
+    )
+    fields = model_manifest_fields(provider, Counter({"qwen3.5:9b": 3}), identity)
     assert fields == {
         "requested_model": "qwen3.5:9b",
         "actual_model": "qwen3.5:9b",
         "actual_response_models": {"qwen3.5:9b": 3},
+        "model_tag": "qwen3.5:9b",
+        "model_digest": "digest-123",
+        "parameter_size": "9.7B",
+        "quantization_level": "Q4_K_M",
+        "ollama_version": "0.12.3",
+        "random_seed": 0,
+        "context_length": 4096,
     }
 
 

@@ -15,8 +15,10 @@ DEFAULT_MOEX_HTTP_MAX_PAGES = 1000
 DEFAULT_MOEX_HTTP_USER_AGENT = "trade-ai-news-mvp/0.1"
 DEFAULT_AI_PROVIDER = "ollama"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
-DEFAULT_OLLAMA_MODEL = "qwen3:8b"
+DEFAULT_OLLAMA_MODEL = "qwen3.5:9b"
 DEFAULT_OLLAMA_THINK = False
+DEFAULT_OLLAMA_CONTEXT_LENGTH = 4096
+DEFAULT_AI_RANDOM_SEED = 0
 DEFAULT_OPENAI_MODEL = "gpt-5-mini"
 DEFAULT_AI_REQUEST_TIMEOUT_SECONDS = 60.0
 DEFAULT_AI_MAX_RETRIES = 3
@@ -40,6 +42,8 @@ class Settings:
     ollama_base_url: str = DEFAULT_OLLAMA_BASE_URL
     ollama_model: str = DEFAULT_OLLAMA_MODEL
     ollama_think: bool = DEFAULT_OLLAMA_THINK
+    ollama_context_length: int = DEFAULT_OLLAMA_CONTEXT_LENGTH
+    ai_random_seed: int = DEFAULT_AI_RANDOM_SEED
     openai_api_key: str | None = None
     openai_model: str = DEFAULT_OPENAI_MODEL
     ai_request_timeout_seconds: float = DEFAULT_AI_REQUEST_TIMEOUT_SECONDS
@@ -77,6 +81,10 @@ def get_settings() -> Settings:
         ollama_base_url=os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
         ollama_model=os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
         ollama_think=_environment_bool("OLLAMA_THINK", DEFAULT_OLLAMA_THINK),
+        ollama_context_length=int(
+            os.getenv("OLLAMA_CONTEXT_LENGTH", str(DEFAULT_OLLAMA_CONTEXT_LENGTH))
+        ),
+        ai_random_seed=int(os.getenv("AI_RANDOM_SEED", str(DEFAULT_AI_RANDOM_SEED))),
         openai_api_key=os.getenv("OPENAI_API_KEY") or None,
         openai_model=os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
         ai_request_timeout_seconds=float(

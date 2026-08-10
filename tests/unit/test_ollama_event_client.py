@@ -19,7 +19,10 @@ from src.ai_events.domain.exceptions import (
     OllamaUnavailableError,
 )
 from src.ai_events.domain.prompt import output_schema
-from src.ai_events.infrastructure.ollama_client import OllamaEventModelClient
+from src.ai_events.infrastructure.ollama_client import (
+    OllamaEventModelClient,
+    fetch_ollama_model_identity,
+)
 
 
 def _request(*, think: bool = False, provider: str = "ollama"):
@@ -31,6 +34,8 @@ def _request(*, think: bool = False, provider: str = "ollama"):
             reasoning_effort=None,
             max_output_tokens=1000,
             think=think,
+            random_seed=0,
+            context_length=4096,
         )
     )
 
@@ -94,7 +99,12 @@ async def test_ollama_chat_request_and_structured_response(think: bool) -> None:
         assert payload["stream"] is False
         assert payload["think"] is think
         assert payload["format"] == output_schema()
-        assert payload["options"] == {"num_predict": 1000, "seed": 0, "temperature": 0}
+        assert payload["options"] == {
+            "num_ctx": 4096,
+            "num_predict": 1000,
+            "seed": 0,
+            "temperature": 0,
+        }
         return httpx.Response(200, json=_success_response())
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
@@ -293,3 +303,41 @@ def test_provider_specific_cache_keys_do_not_collide() -> None:
 
 def test_invalid_ollama_structured_output_is_retryable() -> None:
     assert issubclass(OllamaInvalidStructuredOutputError, AIModelTransientError)
+
+
+@pytest.mark.asyncio
+async def test_ollama_model_identity_uses_registry_digest() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {
+                            "name": "qwen3.5:9b",
+                            "digest": "digest-123",
+                            "details": {
+                                "parameter_size": "9.7B",
+                                "quantization_level": "Q4_K_M",
+                            },
+                        }
+                    ]
+                },
+            )
+        if request.url.path == "/api/version":
+            return httpx.Response(200, json={"version": "0.12.3"})
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        identity = await fetch_ollama_model_identity(
+            base_url="http://localhost:11434",
+            model_tag="qwen3.5:9b",
+            timeout_seconds=1,
+            http_client=http_client,
+        )
+
+    assert identity.model_tag == "qwen3.5:9b"
+    assert identity.model_digest == "digest-123"
+    assert identity.parameter_size == "9.7B"
+    assert identity.quantization_level == "Q4_K_M"
+    assert identity.ollama_version == "0.12.3"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import dataclass
 from typing import cast
 
 import httpx
@@ -26,6 +27,15 @@ _USAGE_FIELDS = (
     "prompt_eval_duration",
     "eval_duration",
 )
+
+
+@dataclass(frozen=True, slots=True)
+class OllamaModelIdentity:
+    model_tag: str
+    model_digest: str
+    parameter_size: str | None
+    quantization_level: str | None
+    ollama_version: str
 
 
 class OllamaEventModelClient:
@@ -53,11 +63,7 @@ class OllamaEventModelClient:
             "stream": False,
             "think": request.think,
             "format": output_schema(),
-            "options": {
-                "num_predict": request.max_output_tokens,
-                "seed": 0,
-                "temperature": 0,
-            },
+            "options": _request_options(request),
         }
         try:
             response = await self._post(payload)
@@ -113,6 +119,78 @@ class OllamaEventModelClient:
             return await self._http_client.post(url, json=payload, timeout=self._timeout)
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             return await client.post(url, json=payload)
+
+
+def _request_options(request: AIModelRequest) -> dict[str, int]:
+    options = {
+        "num_predict": request.max_output_tokens,
+        "temperature": 0,
+    }
+    if request.random_seed is not None:
+        options["seed"] = request.random_seed
+    if request.context_length is not None:
+        options["num_ctx"] = request.context_length
+    return options
+
+
+async def fetch_ollama_model_identity(
+    *,
+    base_url: str,
+    model_tag: str,
+    timeout_seconds: float,
+    http_client: httpx.AsyncClient | None = None,
+) -> OllamaModelIdentity:
+    normalized_base_url = base_url.rstrip("/")
+    try:
+        if http_client is None:
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                tags_response = await client.get(f"{normalized_base_url}/api/tags")
+                version_response = await client.get(f"{normalized_base_url}/api/version")
+        else:
+            tags_response = await http_client.get(
+                f"{normalized_base_url}/api/tags",
+                timeout=timeout_seconds,
+            )
+            version_response = await http_client.get(
+                f"{normalized_base_url}/api/version",
+                timeout=timeout_seconds,
+            )
+    except httpx.TimeoutException as exc:
+        raise OllamaTimeoutError() from exc
+    except httpx.RequestError as exc:
+        raise OllamaUnavailableError(normalized_base_url) from exc
+    if tags_response.status_code >= 400 or version_response.status_code >= 400:
+        raise OllamaUnavailableError(normalized_base_url)
+    tags_body = cast("dict[str, object]", tags_response.json())
+    version_body = cast("dict[str, object]", version_response.json())
+    models = tags_body.get("models")
+    if not isinstance(models, list):
+        raise OllamaUnavailableError(normalized_base_url)
+    selected: dict[str, object] | None = None
+    for value in cast("list[object]", models):
+        if not isinstance(value, dict):
+            continue
+        candidate = cast("dict[str, object]", value)
+        if candidate.get("name") == model_tag or candidate.get("model") == model_tag:
+            selected = candidate
+            break
+    if selected is None:
+        raise OllamaModelNotFoundError(model_tag)
+    digest = selected.get("digest")
+    version = version_body.get("version")
+    if not isinstance(digest, str) or not digest or not isinstance(version, str) or not version:
+        raise OllamaUnavailableError(normalized_base_url)
+    details_value = selected.get("details")
+    details = cast("dict[str, object]", details_value) if isinstance(details_value, dict) else {}
+    parameter_size = details.get("parameter_size")
+    quantization_level = details.get("quantization_level")
+    return OllamaModelIdentity(
+        model_tag=model_tag,
+        model_digest=digest,
+        parameter_size=parameter_size if isinstance(parameter_size, str) else None,
+        quantization_level=(quantization_level if isinstance(quantization_level, str) else None),
+        ollama_version=version,
+    )
 
 
 def _optional_int(value: object) -> int | None:

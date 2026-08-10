@@ -35,6 +35,10 @@ from src.ai_events.infrastructure.factory import (
     create_ai_event_analyzer,
     resolve_ai_provider_config,
 )
+from src.ai_events.infrastructure.ollama_client import (
+    OllamaModelIdentity,
+    fetch_ollama_model_identity,
+)
 from src.evaluation.domain.enums import DatasetSplit
 from src.evaluation.domain.metrics import (
     EventEvaluationInput,
@@ -68,6 +72,15 @@ async def run(args: argparse.Namespace) -> int:
             provider_override=args.provider,
             model_override=args.model,
         )
+        model_identity = (
+            await fetch_ollama_model_identity(
+                base_url=settings.ollama_base_url,
+                model_tag=provider.requested_model,
+                timeout_seconds=settings.ai_request_timeout_seconds,
+            )
+            if provider.provider == AIProvider.OLLAMA
+            else None
+        )
     except Exception as exc:
         failure = sanitize_failure(exc)
         print(json.dumps(failure_to_json(failure), sort_keys=True))
@@ -85,6 +98,7 @@ async def run(args: argparse.Namespace) -> int:
             expected_frozen = _frozen_config(
                 settings,
                 provider,
+                model_identity,
                 dataset_id,
                 dataset.source_file_hash,
             )
@@ -139,6 +153,7 @@ async def run(args: argparse.Namespace) -> int:
         metrics=metrics,
         settings=settings,
         provider=provider,
+        model_identity=model_identity,
         dataset_id=dataset_id,
         dataset_hash=dataset.source_file_hash,
         split=split,
@@ -169,6 +184,7 @@ async def run(args: argparse.Namespace) -> int:
             **expected_frozen,
             "validation_metrics": _metric_snapshot(metrics),
             "frozen_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "git_commit_sha": _git_commit_sha(),
         }
         _write_json(Path(args.freeze_config_output), frozen)
     print(
@@ -200,6 +216,8 @@ async def _analyze_row(
                 reasoning_effort=provider.reasoning_effort,
                 max_output_tokens=settings.ai_max_output_tokens,
                 think=provider.think,
+                random_seed=provider.random_seed,
+                context_length=provider.context_length,
                 news_id=news_id,
                 record_id=record_id,
                 force_refresh=force_refresh,
@@ -334,6 +352,7 @@ def _write_artifacts(
     metrics: dict[str, object],
     settings: Settings,
     provider: AIProviderConfig,
+    model_identity: OllamaModelIdentity | None,
     dataset_id: UUID,
     dataset_hash: str,
     split: DatasetSplit,
@@ -348,24 +367,22 @@ def _write_artifacts(
         payload["news_id"] = str(row.news.id)
         predictions.append(payload)
         actual_models[result.metadata.actual_model] += 1
-    if split != DatasetSplit.TEST:
-        _write_jsonl(output_dir / "predictions.jsonl", predictions)
+    _write_jsonl(output_dir / "predictions.jsonl", predictions)
     public_metrics = {
         key: value for key, value in metrics.items() if key not in {"errors", "end_to_end_errors"}
     }
     _write_json(output_dir / "metrics.json", public_metrics)
-    if split != DatasetSplit.TEST:
-        successful_errors = [
-            {"metric_view": "SUCCESSFUL_ONLY", **item}
-            for item in cast("list[dict[str, object]]", metrics["errors"])
-        ]
-        end_to_end_errors = [
-            {"metric_view": "END_TO_END", **item}
-            for item in cast("list[dict[str, object]]", metrics["end_to_end_errors"])
-        ]
-        errors = successful_errors + end_to_end_errors
-        errors.extend({"type": "AI_ITEM_FAILURE", **failure_to_json(item)} for item in failures)
-        _write_jsonl(output_dir / "errors.jsonl", errors)
+    successful_errors = [
+        {"metric_view": "SUCCESSFUL_ONLY", **item}
+        for item in cast("list[dict[str, object]]", metrics["errors"])
+    ]
+    end_to_end_errors = [
+        {"metric_view": "END_TO_END", **item}
+        for item in cast("list[dict[str, object]]", metrics["end_to_end_errors"])
+    ]
+    errors = successful_errors + end_to_end_errors
+    errors.extend({"type": "AI_ITEM_FAILURE", **failure_to_json(item)} for item in failures)
+    _write_jsonl(output_dir / "errors.jsonl", errors)
     runtime = cast("dict[str, object]", public_metrics["runtime"])
     manifest = {
         "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -374,7 +391,7 @@ def _write_artifacts(
         "dataset_source_hash": dataset_hash,
         "split": split.value,
         "provider": provider.provider.value,
-        **model_manifest_fields(provider, actual_models),
+        **model_manifest_fields(provider, actual_models, model_identity),
         "prompt_version": PROMPT_VERSION,
         "prompt_sha256": prompt_hash(),
         "schema_version": SCHEMA_VERSION,
@@ -434,17 +451,28 @@ def _write_artifacts(
 def model_manifest_fields(
     provider: AIProviderConfig,
     actual_models: Mapping[str, int],
+    model_identity: OllamaModelIdentity | None,
 ) -> dict[str, object]:
     return {
         "requested_model": provider.requested_model,
         "actual_model": next(iter(actual_models)) if len(actual_models) == 1 else None,
         "actual_response_models": dict(sorted(actual_models.items())),
+        "model_tag": None if model_identity is None else model_identity.model_tag,
+        "model_digest": None if model_identity is None else model_identity.model_digest,
+        "parameter_size": None if model_identity is None else model_identity.parameter_size,
+        "quantization_level": (
+            None if model_identity is None else model_identity.quantization_level
+        ),
+        "ollama_version": None if model_identity is None else model_identity.ollama_version,
+        "random_seed": provider.random_seed,
+        "context_length": provider.context_length,
     }
 
 
 def _frozen_config(
     settings: Settings,
     provider: AIProviderConfig,
+    model_identity: OllamaModelIdentity | None,
     dataset_id: UUID,
     dataset_hash: str,
 ) -> dict[str, object]:
@@ -453,6 +481,13 @@ def _frozen_config(
         "gold_dataset_sha256": dataset_hash,
         "provider": provider.provider.value,
         "model_requested": provider.requested_model,
+        "model_tag": None if model_identity is None else model_identity.model_tag,
+        "model_digest": None if model_identity is None else model_identity.model_digest,
+        "parameter_size": None if model_identity is None else model_identity.parameter_size,
+        "quantization_level": (
+            None if model_identity is None else model_identity.quantization_level
+        ),
+        "ollama_version": None if model_identity is None else model_identity.ollama_version,
         "prompt_version": PROMPT_VERSION,
         "prompt_sha256": prompt_hash(),
         "schema_version": SCHEMA_VERSION,
@@ -461,6 +496,8 @@ def _frozen_config(
         "fact_version": FACT_EXTRACTOR_VERSION,
         "reasoning_effort": provider.reasoning_effort,
         "think": provider.think,
+        "random_seed": provider.random_seed,
+        "context_length": provider.context_length,
         "max_output_tokens": settings.ai_max_output_tokens,
     }
 
