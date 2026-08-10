@@ -15,8 +15,9 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
                 "is_primary": event.event_type == analysis.primary_event_type,
                 "confidence": str(event.confidence),
                 "evidence_text": event.evidence_text,
-                "start_position": event.start_position,
-                "end_position": event.end_position,
+                "evidence_valid": event.start_position >= 0 and event.end_position >= 0,
+                "start_position": None if event.start_position < 0 else event.start_position,
+                "end_position": None if event.end_position < 0 else event.end_position,
                 "rule_id": event.rule_id,
             }
             for event in analysis.events
@@ -40,8 +41,9 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
                 "change_value": None if fact.change_value is None else str(fact.change_value),
                 "change_unit": None if fact.change_unit is None else fact.change_unit.value,
                 "evidence_text": fact.evidence_text,
-                "start_position": fact.start_position,
-                "end_position": fact.end_position,
+                "evidence_valid": fact.start_position >= 0 and fact.end_position >= 0,
+                "start_position": None if fact.start_position < 0 else fact.start_position,
+                "end_position": None if fact.end_position < 0 else fact.end_position,
                 "confidence": str(fact.confidence),
                 "extractor_version": fact.extractor_version,
             }

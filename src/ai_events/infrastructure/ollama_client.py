@@ -79,7 +79,9 @@ class OllamaEventModelClient:
             content = message["content"]
             if not isinstance(content, str):
                 raise TypeError("message.content must be a string")
-            parsed = AIEventOutput.model_validate(json.loads(content))
+            structured = json.loads(content)
+            _canonicalize_null_change_units(structured)
+            parsed = AIEventOutput.model_validate(structured)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError, ValidationError) as exc:
             raise OllamaInvalidStructuredOutputError() from exc
 
@@ -122,3 +124,28 @@ def _provider_metadata(body: dict[str, object]) -> dict[str, int | str | bool | 
         for field in _USAGE_FIELDS
         if (value := _optional_int(body.get(field))) is not None
     }
+
+
+def _canonicalize_null_change_units(payload: object) -> None:
+    if not isinstance(payload, dict):
+        return
+    structured = cast("dict[object, object]", payload)
+    facts = structured.get("financial_facts")
+    warnings = structured.get("warnings")
+    if not isinstance(facts, list) or not isinstance(warnings, list):
+        return
+    fact_values = cast("list[object]", facts)
+    warning_values = cast("list[object]", warnings)
+    canonicalized = 0
+    for value in fact_values:
+        if not isinstance(value, dict):
+            continue
+        fact = cast("dict[object, object]", value)
+        if fact.get("change_value") is None and fact.get("change_unit") == "UNSPECIFIED":
+            fact["change_unit"] = None
+            canonicalized += 1
+    if canonicalized:
+        warning_values.append(
+            "canonicalized change_unit UNSPECIFIED to null because change_value is null "
+            f"for {canonicalized} fact(s)"
+        )

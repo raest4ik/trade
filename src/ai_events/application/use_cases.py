@@ -12,7 +12,7 @@ from src.ai_events.application.ports import (
     AIModelCompletion,
     AIModelRequest,
 )
-from src.ai_events.domain.evidence import resolve_exact_evidence
+from src.ai_events.domain.evidence import UNRESOLVED_EVIDENCE_OFFSET, resolve_evidence
 from src.ai_events.domain.exceptions import AIConfigurationError, AIEventError
 from src.ai_events.domain.prompt import (
     ANALYSIS_VERSION,
@@ -173,7 +173,7 @@ def _build_result(
     warnings = list(output.warnings)
     events: list[DetectedEvent] = []
     for prediction in output.events:
-        span = resolve_exact_evidence(command.raw_content, prediction.evidence_text)
+        span = resolve_evidence(command.raw_content, prediction.evidence_text)
         if span.warning:
             warnings.append(f"event {prediction.event_type.value}: {span.warning}")
         events.append(
@@ -185,13 +185,13 @@ def _build_result(
                 rule_id=PROMPT_VERSION,
                 matched_rule="ai-structured-output",
                 evidence_text=prediction.evidence_text,
-                start_position=span.start,
-                end_position=span.end,
+                start_position=span.start if span.start is not None else UNRESOLVED_EVIDENCE_OFFSET,
+                end_position=span.end if span.end is not None else UNRESOLVED_EVIDENCE_OFFSET,
             )
         )
     facts: list[ExtractedFinancialFact] = []
     for prediction in output.financial_facts:
-        span = resolve_exact_evidence(command.raw_content, prediction.evidence_text)
+        span = resolve_evidence(command.raw_content, prediction.evidence_text)
         if span.warning:
             warnings.append(f"fact {prediction.metric.value}: {span.warning}")
         normalized_value = prediction.decimal_value()
@@ -220,8 +220,8 @@ def _build_result(
                 confidence=Decimal(str(prediction.confidence)),
                 rule_id=PROMPT_VERSION,
                 evidence_text=prediction.evidence_text,
-                start_position=span.start,
-                end_position=span.end,
+                start_position=span.start if span.start is not None else UNRESOLVED_EVIDENCE_OFFSET,
+                end_position=span.end if span.end is not None else UNRESOLVED_EVIDENCE_OFFSET,
                 extractor_version=FACT_EXTRACTOR_VERSION,
                 matched_rule=prediction.metric_name or "ai-structured-output",
             )
@@ -230,6 +230,8 @@ def _build_result(
         (item.event_type for item in output.events if item.is_primary),
         EventType.UNKNOWN,
     )
+    if output.events and primary == EventType.UNKNOWN:
+        warnings.append("events are present but no primary event was marked")
     status = _status(output.events, facts, primary)
     now = utc_now()
     analysis = NewsEventAnalysis(

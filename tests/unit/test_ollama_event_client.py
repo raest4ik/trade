@@ -12,6 +12,7 @@ from src.ai_events.application.use_cases import (
     cache_key,
 )
 from src.ai_events.domain.exceptions import (
+    AIModelTransientError,
     OllamaInvalidStructuredOutputError,
     OllamaModelNotFoundError,
     OllamaTimeoutError,
@@ -145,6 +146,52 @@ async def test_ollama_json_that_violates_pydantic_schema_is_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ollama_canonicalizes_unspecified_unit_for_null_change_value() -> None:
+    response = _success_response()
+    output = _valid_output()
+    fact = cast("list[dict[str, object]]", output["financial_facts"])[0]
+    fact["change_unit"] = "UNSPECIFIED"
+    message = cast("dict[str, object]", response["message"])
+    message["content"] = json.dumps(output)
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = OllamaEventModelClient(
+            base_url="http://localhost:11434",
+            timeout_seconds=1,
+            http_client=http_client,
+        )
+        completion = await client.analyze(_request())
+
+    assert completion.output.financial_facts[0].change_unit is None
+    assert "canonicalized change_unit UNSPECIFIED to null" in completion.output.warnings[0]
+
+
+@pytest.mark.asyncio
+async def test_ollama_does_not_canonicalize_real_unit_without_change_value() -> None:
+    response = _success_response()
+    output = _valid_output()
+    fact = cast("list[dict[str, object]]", output["financial_facts"])[0]
+    fact["change_unit"] = "PERCENT"
+    message = cast("dict[str, object]", response["message"])
+    message["content"] = json.dumps(output)
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=response)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = OllamaEventModelClient(
+            base_url="http://localhost:11434",
+            timeout_seconds=1,
+            http_client=http_client,
+        )
+        with pytest.raises(OllamaInvalidStructuredOutputError):
+            await client.analyze(_request())
+
+
+@pytest.mark.asyncio
 async def test_ollama_unavailable_is_classified() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("offline", request=request)
@@ -193,3 +240,7 @@ def test_provider_specific_cache_keys_do_not_collide() -> None:
     ollama = _request()
     openai = _request(provider="openai")
     assert cache_key(ollama) != cache_key(openai)
+
+
+def test_invalid_ollama_structured_output_is_retryable() -> None:
+    assert issubclass(OllamaInvalidStructuredOutputError, AIModelTransientError)

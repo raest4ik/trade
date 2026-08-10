@@ -475,6 +475,11 @@ reasoning content is neither requested for output nor persisted. The local
 cache lives under `artifacts/ai-event-v0/cache/`; use `--force-refresh` to bypass
 a hit. The analyzer does not save AI rows to the database and cannot overwrite
 the deterministic extractor.
+Evidence is located exactly first, then through deterministic whitespace/NBSP,
+line-ending, and Unicode-quote normalization with offsets mapped back to the
+original text. No fuzzy matching is used. A non-literal quote keeps its semantic
+prediction, emits a warning, sets `evidence_valid=false`, and serializes character
+offsets as `null`.
 Its output is not a trading recommendation and is not used for impact scores,
 market reactions, sentiment, routing, fallback, or ensemble decisions.
 
@@ -493,8 +498,9 @@ uv run python -m apps.cli.evaluate_ai_event_extraction \
 Validation artifacts for the default backend are written to
 `artifacts/seed/ai-event-v0/ollama-qwen3-8b/validation/`: `predictions.jsonl`, `metrics.json`,
 `errors.jsonl`, `summary.md`, and `run-manifest.json`. Item-level API failures
-are reported and excluded from metric inputs; they are never represented as
-synthetic empty predictions.
+are reported explicitly. The `successful_only` view excludes them for model-quality
+diagnosis; the `end_to_end` view represents them as empty predictions and reports
+requested/successful/failed counts plus `item_success_rate`.
 Aggregate comparisons are written to
 `artifacts/seed/ai-event-v0/ollama-qwen3-8b/comparison-validation.md` and, only after an allowed
 frozen TEST run, `artifacts/seed/ai-event-v0/comparison-test.md`.

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID
 
-from src.ai_events.application.evaluation import to_evaluation_inputs
+from src.ai_events.application.evaluation import evaluate_ai_metric_views, to_evaluation_inputs
 from src.ai_events.application.frozen_test import FrozenTestGuardError, validate_test_access
 from src.ai_events.application.serialization import analysis_result_to_json, failure_to_json
 from src.ai_events.application.use_cases import (
@@ -39,8 +39,6 @@ from src.evaluation.domain.enums import DatasetSplit
 from src.evaluation.domain.metrics import (
     EventEvaluationInput,
     FactEvaluationInput,
-    evaluate_event_predictions,
-    evaluate_fact_predictions,
 )
 from src.evaluation.infrastructure.repositories import (
     EvaluationExampleWithNews,
@@ -55,6 +53,12 @@ async def run(args: argparse.Namespace) -> int:
     split = DatasetSplit(args.split)
     if args.limit is not None and split != DatasetSplit.TRAIN:
         print("error=--limit is allowed only for TRAIN")
+        return 2
+    if bool(args.hardening_before_metrics) != bool(args.hardening_comparison_output):
+        print(
+            "error=--hardening-before-metrics and --hardening-comparison-output "
+            "must be used together"
+        )
         return 2
     try:
         provider = resolve_ai_provider_config(settings, args.provider)
@@ -111,7 +115,8 @@ async def run(args: argparse.Namespace) -> int:
         ]
     )
     successes = [(row, result) for row, result, _ in completed if result is not None]
-    failures = [failure for _, _, failure in completed if failure is not None]
+    failed_items = [(row, failure) for row, _, failure in completed if failure is not None]
+    failures = [failure for _, failure in failed_items]
     output_dir = Path(
         args.output_dir
         or f"artifacts/seed/ai-event-v0/{provider.artifact_slug}/{split.value.lower()}"
@@ -123,7 +128,7 @@ async def run(args: argparse.Namespace) -> int:
         split=split,
         requested_count=len(rows),
         successes=successes,
-        failures=failures,
+        failed_items=failed_items,
         baseline_path=None if args.baseline_metrics is None else Path(args.baseline_metrics),
     )
     _write_artifacts(
@@ -138,6 +143,20 @@ async def run(args: argparse.Namespace) -> int:
         split=split,
         cache_directory=Path(args.cache_dir),
     )
+    if args.hardening_before_metrics is not None:
+        before_text = await asyncio.to_thread(
+            Path(args.hardening_before_metrics).read_text,
+            encoding="utf-8",
+        )
+        before = cast(
+            "dict[str, object]",
+            json.loads(before_text),
+        )
+        _write_hardening_comparison(
+            before=before,
+            after=metrics,
+            target=Path(args.hardening_comparison_output),
+        )
     if args.freeze_config_output is not None:
         if split != DatasetSplit.VALIDATION:
             print("error=frozen config can be created only from VALIDATION")
@@ -198,7 +217,7 @@ def _evaluate(
     split: DatasetSplit,
     requested_count: int,
     successes: list[tuple[EvaluationExampleWithNews, AIEventAnalysisResult]],
-    failures: list[AIItemFailure],
+    failed_items: list[tuple[EvaluationExampleWithNews, AIItemFailure]],
     baseline_path: Path | None,
 ) -> dict[str, object]:
     event_inputs: list[EventEvaluationInput] = []
@@ -213,9 +232,47 @@ def _evaluate(
         event_inputs.append(event_input)
         fact_inputs.append(fact_input)
         record_ids.append(str(row.example.id))
-    event_result = evaluate_event_predictions(event_inputs)
-    fact_result = evaluate_fact_predictions(fact_inputs)
-    errors = _tag_errors(event_result.errors + fact_result.errors, record_ids)
+    failed_event_inputs: list[EventEvaluationInput] = []
+    failed_fact_inputs: list[FactEvaluationInput] = []
+    end_to_end_record_ids = list(record_ids)
+    for row, _ in failed_items:
+        gold_events = [item.to_entity() for item in row.example.gold_events]
+        gold_primary = next(
+            (event.event_type for event in gold_events if event.is_primary),
+            next((event.event_type for event in gold_events), None),
+        )
+        failed_event_inputs.append(
+            EventEvaluationInput(
+                gold_events=gold_events,
+                predicted_events=[],
+                gold_primary_event_type=gold_primary,
+                predicted_primary_event_type=None,
+                prediction_status="FAILED",
+            )
+        )
+        failed_fact_inputs.append(
+            FactEvaluationInput(
+                gold_facts=[item.to_entity() for item in row.example.gold_financial_facts],
+                predicted_facts=[],
+            )
+        )
+        end_to_end_record_ids.append(str(row.example.id))
+    views = evaluate_ai_metric_views(
+        successful_event_inputs=event_inputs,
+        successful_fact_inputs=fact_inputs,
+        failed_event_inputs=failed_event_inputs,
+        failed_fact_inputs=failed_fact_inputs,
+    )
+    successful_errors = _tag_errors(
+        views.successful_events.errors + views.successful_facts.errors,
+        record_ids,
+    )
+    end_to_end_errors = _tag_errors(
+        views.end_to_end_events.errors + views.end_to_end_facts.errors,
+        end_to_end_record_ids,
+    )
+    if views.requested_count != requested_count:
+        raise ValueError("requested count does not match metric inputs")
     metrics: dict[str, object] = {
         "dataset_id": str(dataset_id),
         "dataset_name": dataset_name,
@@ -225,11 +282,25 @@ def _evaluate(
         "extractor_version": FACT_EXTRACTOR_VERSION,
         "requested_example_count": requested_count,
         "evaluated_example_count": len(successes),
-        "failed_example_count": len(failures),
-        "events": event_result.metrics,
-        "facts": fact_result.metrics,
-        "runtime": _runtime_metrics(successes, failures),
-        "errors": errors,
+        "successful_example_count": views.successful_count,
+        "failed_example_count": views.failed_count,
+        "item_success_rate": views.item_success_rate,
+        "events": views.successful_events.metrics,
+        "facts": views.successful_facts.metrics,
+        "successful_only": {
+            "events": views.successful_events.metrics,
+            "facts": views.successful_facts.metrics,
+        },
+        "end_to_end": {
+            "events": views.end_to_end_events.metrics,
+            "facts": views.end_to_end_facts.metrics,
+        },
+        "runtime": _runtime_metrics(
+            successes,
+            [failure for _, failure in failed_items],
+        ),
+        "errors": successful_errors,
+        "end_to_end_errors": end_to_end_errors,
     }
     baseline = _default_baseline(split)
     if baseline_path is not None and baseline_path.is_file():
@@ -278,10 +349,20 @@ def _write_artifacts(
         actual_models[result.metadata.actual_model] += 1
     if split != DatasetSplit.TEST:
         _write_jsonl(output_dir / "predictions.jsonl", predictions)
-    public_metrics = {key: value for key, value in metrics.items() if key != "errors"}
+    public_metrics = {
+        key: value for key, value in metrics.items() if key not in {"errors", "end_to_end_errors"}
+    }
     _write_json(output_dir / "metrics.json", public_metrics)
     if split != DatasetSplit.TEST:
-        errors = cast("list[dict[str, object]]", metrics["errors"])
+        successful_errors = [
+            {"metric_view": "SUCCESSFUL_ONLY", **item}
+            for item in cast("list[dict[str, object]]", metrics["errors"])
+        ]
+        end_to_end_errors = [
+            {"metric_view": "END_TO_END", **item}
+            for item in cast("list[dict[str, object]]", metrics["end_to_end_errors"])
+        ]
+        errors = successful_errors + end_to_end_errors
         errors.extend({"type": "AI_ITEM_FAILURE", **failure_to_json(item)} for item in failures)
         _write_jsonl(output_dir / "errors.jsonl", errors)
     runtime = cast("dict[str, object]", public_metrics["runtime"])
@@ -313,6 +394,10 @@ def _write_artifacts(
         "api_calls": runtime["api_calls"],
         "cache_hits": runtime["cache_hits"],
         "failed_calls": runtime["failed_calls"],
+        "requested_items": public_metrics["requested_example_count"],
+        "successful_items": public_metrics["successful_example_count"],
+        "failed_items": public_metrics["failed_example_count"],
+        "item_success_rate": public_metrics["item_success_rate"],
         "mean_latency_ms": runtime["mean_latency_ms"],
         "p50_latency_ms": runtime["p50_latency_ms"],
         "p95_latency_ms": runtime["p95_latency_ms"],
@@ -323,6 +408,9 @@ def _write_artifacts(
     fact_metrics = cast("dict[str, object]", public_metrics["facts"])
     event_micro = cast("dict[str, object]", event_metrics["micro"])
     fact_semantic = cast("dict[str, object]", fact_metrics["semantic_strict"])
+    end_to_end = cast("dict[str, object]", public_metrics["end_to_end"])
+    end_to_end_events = cast("dict[str, object]", end_to_end["events"])
+    end_to_end_event_micro = cast("dict[str, object]", end_to_end_events["micro"])
     summary = [
         "# AI Event Extraction v0",
         "",
@@ -330,7 +418,9 @@ def _write_artifacts(
         f"- requested: {public_metrics['requested_example_count']}",
         f"- evaluated: {public_metrics['evaluated_example_count']}",
         f"- failures: {public_metrics['failed_example_count']}",
-        f"- event micro F1: {event_micro['f1']}",
+        f"- item success rate: {public_metrics['item_success_rate']}",
+        f"- successful-only event micro F1: {event_micro['f1']}",
+        f"- end-to-end event micro F1: {end_to_end_event_micro['f1']}",
         f"- fact semantic strict F1: {fact_semantic['f1']}",
     ]
     (output_dir / "summary.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
@@ -552,6 +642,56 @@ def _write_comparison_markdown(
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _write_hardening_comparison(
+    *,
+    before: dict[str, object],
+    after: dict[str, object],
+    target: Path,
+) -> None:
+    rows = (
+        ("requested items", "requested_example_count"),
+        ("successful items", "successful_example_count"),
+        ("failed items", "failed_example_count"),
+        ("item success rate", "item_success_rate"),
+        ("SUCCESSFUL_ONLY event micro F1", "successful_only.events.micro.f1"),
+        ("END_TO_END event micro F1", "end_to_end.events.micro.f1"),
+        ("primary accuracy", "successful_only.events.primary_accuracy"),
+        ("fact value F1", "successful_only.facts.value.f1"),
+        ("fact metric F1", "successful_only.facts.metric.f1"),
+        ("semantic strict F1", "successful_only.facts.semantic_strict.f1"),
+        ("period accuracy", "successful_only.facts.field_accuracy.period_type"),
+        ("role accuracy", "successful_only.facts.field_accuracy.fact_role"),
+        (
+            "change direction accuracy",
+            "successful_only.facts.field_accuracy.change_direction",
+        ),
+        ("change value accuracy", "successful_only.facts.field_accuracy.change_value"),
+        ("change unit accuracy", "successful_only.facts.field_accuracy.change_unit"),
+        ("evidence span accuracy", "successful_only.facts.evidence_span_accuracy"),
+        ("mean latency ms", "runtime.mean_latency_ms"),
+        ("p50 latency ms", "runtime.p50_latency_ms"),
+        ("p95 latency ms", "runtime.p95_latency_ms"),
+    )
+    lines = [
+        "# Local AI hardening comparison",
+        "",
+        "| Metric | Before | After |",
+        "| --- | ---: | ---: |",
+    ]
+    for label, path in rows:
+        before_value = _nested_number(before, path)
+        after_value = _nested_number(after, path)
+        lines.append(
+            f"| {label} | {_format_metric(before_value)} | {_format_metric(after_value)} |"
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _format_metric(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.6f}"
+
+
 def _number(value: object) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
@@ -607,6 +747,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir")
     parser.add_argument("--cache-dir", default=str(DEFAULT_AI_CACHE_DIRECTORY))
     parser.add_argument("--baseline-metrics")
+    parser.add_argument("--hardening-before-metrics")
+    parser.add_argument("--hardening-comparison-output")
     parser.add_argument("--provider", choices=[item.value for item in AIProvider])
     parser.add_argument("--limit", type=int)
     parser.add_argument("--force-refresh", action="store_true")

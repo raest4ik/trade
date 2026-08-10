@@ -37,7 +37,7 @@ class OllamaModelNotFoundError(AIModelError):
         super().__init__(self.public_message)
 
 
-class OllamaInvalidStructuredOutputError(AIModelError):
+class OllamaInvalidStructuredOutputError(AIModelTransientError):
     error_code = "OLLAMA_INVALID_STRUCTURED_OUTPUT"
     public_message = "Ollama returned invalid structured output"
 

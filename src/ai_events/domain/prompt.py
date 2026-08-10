@@ -42,9 +42,15 @@ Rules:
 - Never translate, normalize, reconstruct, or paraphrase evidence_text. Preserve every source
   character, space, separator, and punctuation mark exactly.
 - Use decimal strings with a dot, no thousands separators, and no exponent.
-- normalized_value is the numeric value after applying scale semantics; keep unit, currency,
-  and source scale. Multiply THOUSAND, MILLION, BILLION, and TRILLION values by their decimal
-  powers to obtain normalized_value.
+- normalized_value is the numeric value converted to BASE UNITS after applying the textual
+  scale. Apply these exact multipliers: THOUSAND = 1,000; MILLION = 1,000,000;
+  BILLION = 1,000,000,000; TRILLION = 1,000,000,000,000. The scale field still records the
+  textual magnitude even though normalized_value is absolute.
+- For percentages, keep percentage units: a textual percentage number remains that number,
+  not a decimal fraction. Apply the same rule to percentage change_value; never divide it by 100.
+- currency, unit, scale, and normalized_value are independent. A monetary amount uses unit MONEY,
+  the explicitly stated currency or UNSPECIFIED, its textual scale, and the absolute base-currency
+  amount in normalized_value. Never infer a currency that the text does not state.
 - Monetary amounts and dividends use unit MONEY. Do not select an unrelated physical unit.
 - Use metric OTHER with a concise metric_name for unsupported named KPIs such as ROE or NIM;
   set metric_name to null for every named FinancialMetric.
@@ -53,7 +59,8 @@ Rules:
 - Use UNKNOWN for missing or uncertain fact_role, period_type, comparison_type, or change_direction.
 - Set period_quarter only when period_type is QUARTER; otherwise it must be null. Set period_year
   to null when the year is not explicit.
-- If no change amount is explicit, set change_value and change_unit to null; never invent zero.
+- If no change amount is explicit, set change_value and change_unit to JSON null.
+  Never invent zero or use UNSPECIFIED as a placeholder for a null change_unit.
 - Use UNCHANGED only when the evidence explicitly says the value did not change.
 - YEAR means a full year, HALF_YEAR six months, QUARTER one quarter, NINE_MONTHS nine months,
   MONTH one month, DATE_RANGE an explicit range. Do not infer a period from publication date.
@@ -65,6 +72,11 @@ Rules:
   or TARGET as the wording supports. Historical results mentioned as context remain ACTUAL.
 - Attach an explicit growth or decline amount to its main fact through change_direction,
   change_value, and change_unit; do not create a separate numeric fact for the change.
+- Extract each economically meaningful supported KPI once. Do not duplicate the same
+  metric/value/period/role tuple, and do not emit a standalone percentage-change fact when the
+  percentage belongs to another fact.
+- Do not emit dates, ordinals, package numbers, or period numbers as financial facts. Do not
+  invent a value absent from the text.
 - Put non-fatal ambiguity notes in warnings. Never include hidden reasoning or chain-of-thought.
 """
 
