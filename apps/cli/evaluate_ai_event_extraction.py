@@ -20,6 +20,7 @@ from src.ai_events.application.use_cases import (
     AnalyzeAIEventCommand,
     sanitize_failure,
 )
+from src.ai_events.domain.enums import AIProvider
 from src.ai_events.domain.prompt import (
     ANALYSIS_VERSION,
     FACT_EXTRACTOR_VERSION,
@@ -30,7 +31,9 @@ from src.ai_events.domain.prompt import (
 )
 from src.ai_events.infrastructure.factory import (
     DEFAULT_AI_CACHE_DIRECTORY,
+    AIProviderConfig,
     create_ai_event_analyzer,
+    resolve_ai_provider_config,
 )
 from src.evaluation.domain.enums import DatasetSplit
 from src.evaluation.domain.metrics import (
@@ -54,9 +57,11 @@ async def run(args: argparse.Namespace) -> int:
         print("error=--limit is allowed only for TRAIN")
         return 2
     try:
+        provider = resolve_ai_provider_config(settings, args.provider)
         analyzer = create_ai_event_analyzer(
             settings,
             cache_directory=Path(args.cache_dir),
+            provider_override=args.provider,
         )
     except Exception as exc:
         failure = sanitize_failure(exc)
@@ -72,7 +77,12 @@ async def run(args: argparse.Namespace) -> int:
             if dataset is None:
                 print("error=evaluation dataset not found")
                 return 2
-            expected_frozen = _frozen_config(settings, dataset_id, dataset.source_file_hash)
+            expected_frozen = _frozen_config(
+                settings,
+                provider,
+                dataset_id,
+                dataset.source_file_hash,
+            )
             validate_test_access(
                 split=split,
                 allow_frozen_test=args.allow_frozen_test,
@@ -94,6 +104,7 @@ async def run(args: argparse.Namespace) -> int:
                 analyzer,
                 row,
                 settings=settings,
+                provider=provider,
                 force_refresh=args.force_refresh,
             )
             for row in rows
@@ -101,7 +112,10 @@ async def run(args: argparse.Namespace) -> int:
     )
     successes = [(row, result) for row, result, _ in completed if result is not None]
     failures = [failure for _, _, failure in completed if failure is not None]
-    output_dir = Path(args.output_dir or f"artifacts/seed/ai-event-v0/{split.value.lower()}")
+    output_dir = Path(
+        args.output_dir
+        or f"artifacts/seed/ai-event-v0/{provider.artifact_slug}/{split.value.lower()}"
+    )
     metrics = _evaluate(
         dataset_id=dataset_id,
         dataset_name=dataset.name,
@@ -118,6 +132,7 @@ async def run(args: argparse.Namespace) -> int:
         failures=failures,
         metrics=metrics,
         settings=settings,
+        provider=provider,
         dataset_id=dataset_id,
         dataset_hash=dataset.source_file_hash,
         split=split,
@@ -148,6 +163,7 @@ async def _analyze_row(
     row: EvaluationExampleWithNews,
     *,
     settings: Settings,
+    provider: AIProviderConfig,
     force_refresh: bool,
 ) -> tuple[EvaluationExampleWithNews, AIEventAnalysisResult | None, AIItemFailure | None]:
     from src.ai_events.application.use_cases import AnalyzeAIEvent
@@ -158,10 +174,12 @@ async def _analyze_row(
     try:
         result = await typed_analyzer.execute(
             AnalyzeAIEventCommand(
+                provider=provider.provider.value,
                 raw_content=row.news.raw_content,
-                requested_model=settings.openai_model,
-                reasoning_effort=settings.ai_reasoning_effort,
+                requested_model=provider.requested_model,
+                reasoning_effort=provider.reasoning_effort,
                 max_output_tokens=settings.ai_max_output_tokens,
+                think=provider.think,
                 news_id=news_id,
                 record_id=record_id,
                 force_refresh=force_refresh,
@@ -243,6 +261,7 @@ def _write_artifacts(
     failures: list[AIItemFailure],
     metrics: dict[str, object],
     settings: Settings,
+    provider: AIProviderConfig,
     dataset_id: UUID,
     dataset_hash: str,
     split: DatasetSplit,
@@ -272,7 +291,9 @@ def _write_artifacts(
         "dataset_id": str(dataset_id),
         "dataset_source_hash": dataset_hash,
         "split": split.value,
-        "requested_model": settings.openai_model,
+        "provider": provider.provider.value,
+        "requested_model": provider.requested_model,
+        "actual_model": next(iter(actual_models)) if len(actual_models) == 1 else None,
         "actual_response_models": dict(sorted(actual_models.items())),
         "prompt_version": PROMPT_VERSION,
         "prompt_sha256": prompt_hash(),
@@ -280,7 +301,8 @@ def _write_artifacts(
         "schema_sha256": schema_hash(),
         "analyzer_version": ANALYSIS_VERSION,
         "fact_version": FACT_EXTRACTOR_VERSION,
-        "reasoning_effort": settings.ai_reasoning_effort,
+        "reasoning_effort": provider.reasoning_effort,
+        "think": provider.think,
         "max_output_tokens": settings.ai_max_output_tokens,
         "request_timeout_seconds": settings.ai_request_timeout_seconds,
         "max_retries": settings.ai_max_retries,
@@ -312,37 +334,52 @@ def _write_artifacts(
         f"- fact semantic strict F1: {fact_semantic['f1']}",
     ]
     (output_dir / "summary.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
-    _write_comparison_markdown(public_metrics, split)
+    _write_comparison_markdown(
+        public_metrics,
+        split,
+        provider=provider,
+        target=output_dir.parent / f"comparison-{split.value.lower()}.md",
+    )
 
 
 def _frozen_config(
     settings: Settings,
+    provider: AIProviderConfig,
     dataset_id: UUID,
     dataset_hash: str,
 ) -> dict[str, object]:
     return {
         "dataset_id": str(dataset_id),
         "gold_dataset_sha256": dataset_hash,
-        "model_requested": settings.openai_model,
+        "provider": provider.provider.value,
+        "model_requested": provider.requested_model,
         "prompt_version": PROMPT_VERSION,
         "prompt_sha256": prompt_hash(),
         "schema_version": SCHEMA_VERSION,
         "schema_sha256": schema_hash(),
         "analyzer_version": ANALYSIS_VERSION,
         "fact_version": FACT_EXTRACTOR_VERSION,
-        "reasoning_effort": settings.ai_reasoning_effort,
+        "reasoning_effort": provider.reasoning_effort,
+        "think": provider.think,
         "max_output_tokens": settings.ai_max_output_tokens,
     }
 
 
 def _comparison(current: dict[str, object], baseline: dict[str, object]) -> dict[str, object]:
     paths = (
+        "events.micro.precision",
+        "events.micro.recall",
         "events.micro.f1",
+        "events.macro_f1",
         "events.primary_accuracy",
-        "facts.strict.f1",
-        "facts.semantic_strict.f1",
         "facts.value.f1",
         "facts.metric.f1",
+        "facts.semantic_strict.f1",
+        "facts.field_accuracy.period_type",
+        "facts.field_accuracy.fact_role",
+        "facts.field_accuracy.change_direction",
+        "facts.field_accuracy.change_value",
+        "facts.field_accuracy.change_unit",
         "facts.evidence_span_accuracy",
     )
     comparison: dict[str, object] = {}
@@ -402,11 +439,23 @@ def _default_baseline(split: DatasetSplit) -> dict[str, object] | None:
     else:
         return None
     return {
-        "events": {"micro": {"f1": event_f1}, "primary_accuracy": primary},
+        "events": {
+            "micro": {"precision": event_f1, "recall": event_f1, "f1": event_f1},
+            "macro_f1": event_f1,
+            "primary_accuracy": primary,
+        },
         "facts": {
             "value": {"f1": fact_value},
             "metric": {"f1": fact_metric},
             "semantic_strict": {"f1": semantic},
+            "field_accuracy": {
+                "period_type": 1.0,
+                "fact_role": 1.0,
+                "change_direction": 1.0,
+                "change_value": 1.0,
+                "change_unit": 1.0,
+            },
+            "evidence_span_accuracy": 0.0,
         },
     }
 
@@ -432,21 +481,41 @@ def _metric_snapshot(metrics: dict[str, object]) -> dict[str, object]:
     return snapshot
 
 
-def _write_comparison_markdown(metrics: dict[str, object], split: DatasetSplit) -> None:
+def _write_comparison_markdown(
+    metrics: dict[str, object],
+    split: DatasetSplit,
+    *,
+    provider: AIProviderConfig,
+    target: Path,
+) -> None:
     if split not in {DatasetSplit.VALIDATION, DatasetSplit.TEST}:
         return
     comparison = cast("dict[str, object]", metrics.get("comparison", {}))
     labels = {
+        "events.micro.precision": "event micro precision",
+        "events.micro.recall": "event micro recall",
         "events.micro.f1": "event micro F1",
+        "events.macro_f1": "event macro F1",
         "events.primary_accuracy": "primary accuracy",
         "facts.value.f1": "fact value F1",
         "facts.metric.f1": "fact metric F1",
         "facts.semantic_strict.f1": "semantic_strict_f1",
+        "facts.field_accuracy.period_type": "period accuracy",
+        "facts.field_accuracy.fact_role": "role accuracy",
+        "facts.field_accuracy.change_direction": "change_direction accuracy",
+        "facts.field_accuracy.change_value": "change_value accuracy",
+        "facts.field_accuracy.change_unit": "change_unit accuracy",
+        "facts.evidence_span_accuracy": "evidence_span_accuracy",
     }
+    provider_label = (
+        f"Local AI {provider.requested_model}"
+        if provider.provider == AIProvider.OLLAMA
+        else f"OpenAI {provider.requested_model}"
+    )
     lines = [
-        f"# Deterministic v2 vs AI v0 ({split.value})",
+        f"# Deterministic v2 vs {provider_label} ({split.value})",
         "",
-        "| Metric | Deterministic v2 | AI v0 | Delta |",
+        f"| Metric | Deterministic v2 | {provider.requested_model} | Delta |",
         "| --- | ---: | ---: | ---: |",
     ]
     for path, label in labels.items():
@@ -458,7 +527,27 @@ def _write_comparison_markdown(metrics: dict[str, object], split: DatasetSplit) 
             if deterministic is None or ai_value is None or delta is None:
                 continue
             lines.append(f"| {label} | {deterministic:.6f} | {ai_value:.6f} | {delta:+.6f} |")
-    target = Path("artifacts/seed/ai-event-v0") / f"comparison-{split.value.lower()}.md"
+    runtime = cast("dict[str, object]", metrics["runtime"])
+    mean_latency = _number(runtime.get("mean_latency_ms")) or 0.0
+    p50_latency = _number(runtime.get("p50_latency_ms")) or 0.0
+    p95_latency = _number(runtime.get("p95_latency_ms")) or 0.0
+    lines.extend(
+        [
+            "",
+            "## Performance",
+            "",
+            "| Metric | Local AI |",
+            "| --- | ---: |",
+            f"| total calls | {runtime['api_calls']} |",
+            f"| cache hits | {runtime['cache_hits']} |",
+            f"| failures | {runtime['failed_calls']} |",
+            f"| input tokens | {runtime['input_tokens']} |",
+            f"| output tokens | {runtime['output_tokens']} |",
+            f"| mean latency ms | {mean_latency:.3f} |",
+            f"| p50 latency ms | {p50_latency:.3f} |",
+            f"| p95 latency ms | {p95_latency:.3f} |",
+        ]
+    )
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -518,6 +607,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-dir")
     parser.add_argument("--cache-dir", default=str(DEFAULT_AI_CACHE_DIRECTORY))
     parser.add_argument("--baseline-metrics")
+    parser.add_argument("--provider", choices=[item.value for item in AIProvider])
     parser.add_argument("--limit", type=int)
     parser.add_argument("--force-refresh", action="store_true")
     parser.add_argument("--allow-frozen-test", action="store_true")

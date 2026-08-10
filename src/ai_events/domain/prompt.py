@@ -39,13 +39,21 @@ Rules:
 - Extract only facts explicitly supported by the text. It is valid to return no events and no facts.
 - Mark at most one event as primary. Use UNKNOWN rather than inventing a type.
 - evidence_text must be one exact, contiguous, non-empty substring copied from the input.
+- Never translate, normalize, reconstruct, or paraphrase evidence_text. Preserve every source
+  character, space, separator, and punctuation mark exactly.
 - Use decimal strings with a dot, no thousands separators, and no exponent.
 - normalized_value is the numeric value after applying scale semantics; keep unit, currency,
-  and scale.
-- Use metric OTHER with a concise metric_name for unsupported named KPIs such as ROE or NIM.
+  and source scale. Multiply THOUSAND, MILLION, BILLION, and TRILLION values by their decimal
+  powers to obtain normalized_value.
+- Monetary amounts and dividends use unit MONEY. Do not select an unrelated physical unit.
+- Use metric OTHER with a concise metric_name for unsupported named KPIs such as ROE or NIM;
+  set metric_name to null for every named FinancialMetric.
 - A cooperation or partnership without a disclosed material commercial contract is OTHER,
   not MAJOR_CONTRACT.
 - Use UNKNOWN for missing or uncertain fact_role, period_type, comparison_type, or change_direction.
+- Set period_quarter only when period_type is QUARTER; otherwise it must be null. Set period_year
+  to null when the year is not explicit.
+- If no change amount is explicit, set change_value and change_unit to null; never invent zero.
 - Use UNCHANGED only when the evidence explicitly says the value did not change.
 - YEAR means a full year, HALF_YEAR six months, QUARTER one quarter, NINE_MONTHS nine months,
   MONTH one month, DATE_RANGE an explicit range. Do not infer a period from publication date.

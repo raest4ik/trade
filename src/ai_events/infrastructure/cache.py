@@ -32,6 +32,10 @@ class JsonFileAIEventCache:
             input_tokens=_optional_int(payload.get("input_tokens")),
             output_tokens=_optional_int(payload.get("output_tokens")),
             total_tokens=_optional_int(payload.get("total_tokens")),
+            provider_metadata=_provider_metadata(payload.get("provider_metadata")),
+            cloud_cost_usd=None
+            if payload.get("cloud_cost_usd") is None
+            else str(payload["cloud_cost_usd"]),
         )
 
     def _write(self, key: str, completion: AIModelCompletion) -> None:
@@ -46,6 +50,8 @@ class JsonFileAIEventCache:
             "output_tokens": completion.output_tokens,
             "response_id": completion.response_id,
             "total_tokens": completion.total_tokens,
+            "provider_metadata": completion.provider_metadata,
+            "cloud_cost_usd": completion.cloud_cost_usd,
         }
         temporary.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
@@ -59,3 +65,13 @@ class JsonFileAIEventCache:
 
 def _optional_int(value: object) -> int | None:
     return None if value is None else int(str(value))
+
+
+def _provider_metadata(value: object) -> dict[str, int | str | bool | None]:
+    if not isinstance(value, dict):
+        return {}
+    result: dict[str, int | str | bool | None] = {}
+    for key, item in cast("dict[object, object]", value).items():
+        if item is None or isinstance(item, (int, str, bool)):
+            result[str(key)] = item
+    return result

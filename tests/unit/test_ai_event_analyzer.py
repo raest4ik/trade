@@ -27,11 +27,15 @@ from src.ai_events.domain.exceptions import (
     AIModelError,
     AIModelTransientError,
     AIOutputValidationError,
+    OllamaUnavailableError,
 )
 from src.ai_events.domain.prompt import SYSTEM_PROMPT, output_schema
 from src.ai_events.domain.schema import AIEventOutput, parse_decimal_string
 from src.ai_events.infrastructure.cache import JsonFileAIEventCache
-from src.ai_events.infrastructure.factory import create_ai_event_analyzer
+from src.ai_events.infrastructure.factory import (
+    create_ai_event_analyzer,
+    resolve_ai_provider_config,
+)
 from src.evaluation.domain.entities import GoldEvent
 from src.evaluation.domain.enums import DatasetSplit
 from src.events.domain.enums import EventType
@@ -53,6 +57,8 @@ class FakeModelClient:
             input_tokens=20,
             output_tokens=10,
             total_tokens=30,
+            provider_metadata={},
+            cloud_cost_usd=None,
         )
 
 
@@ -74,6 +80,8 @@ class TransientFakeClient:
             input_tokens=None,
             output_tokens=None,
             total_tokens=None,
+            provider_metadata={},
+            cloud_cost_usd=None,
         )
 
 
@@ -121,10 +129,12 @@ def _output(*, events: list[dict[str, object]] | None = None) -> AIEventOutput:
 
 def _command(text: str = "Revenue was 100") -> AnalyzeAIEventCommand:
     return AnalyzeAIEventCommand(
+        provider="openai",
         raw_content=text,
         requested_model="gpt-5-mini",
         reasoning_effort="low",
         max_output_tokens=1000,
+        think=False,
     )
 
 
@@ -165,6 +175,8 @@ def test_decimal_strings_are_lossless_and_reject_noncanonical_values() -> None:
     assert parse_decimal_string("1234567890.0010") == Decimal("1234567890.0010")
     with pytest.raises(ValueError):
         parse_decimal_string("1,25")
+    with pytest.raises(ValueError):
+        parse_decimal_string("01")
     with pytest.raises(ValidationError):
         AIEventOutput.model_validate(
             {
@@ -253,6 +265,8 @@ def test_cache_key_changes_with_every_material_input() -> None:
         replace(request, analyzer_version="different-version"),
         replace(request, reasoning_effort="medium"),
         replace(request, max_output_tokens=999),
+        replace(request, provider="ollama"),
+        replace(request, think=True),
     )
     assert all(cache_key(item) != base for item in variants)
 
@@ -265,6 +279,10 @@ def test_failure_is_sanitized() -> None:
     payload = failure_to_json(failure)
     assert payload["status"] == "FAILED"
     assert payload["error_type"] == "AIModelError"
+
+    ollama_failure = sanitize_failure(OllamaUnavailableError("http://localhost:11434"))
+    assert ollama_failure.error_code == "OLLAMA_UNAVAILABLE"
+    assert ollama_failure.message == "Ollama is unavailable at http://localhost:11434"
 
 
 @pytest.mark.asyncio
@@ -293,14 +311,38 @@ async def test_retry_is_bounded_and_succeeds_after_transient_errors() -> None:
         max_concurrency=1,
         sleep=no_sleep,
     )
-    with pytest.raises(AIModelError, match="bounded retries"):
+    with pytest.raises(AIModelTransientError, match="temporary"):
         await reliable_exhausted.analyze(build_model_request(_command()))
     assert exhausted.calls == 3
 
 
-def test_no_api_key_is_a_configuration_error() -> None:
+def test_default_ollama_provider_needs_no_api_key() -> None:
+    settings = Settings(openai_api_key=None)
+    provider = resolve_ai_provider_config(settings)
+    assert provider.provider.value == "ollama"
+    assert provider.requested_model == "qwen3:8b"
+    assert provider.think is False
+    create_ai_event_analyzer(settings)
+
+
+def test_openai_provider_without_key_is_a_configuration_error() -> None:
     with pytest.raises(AIConfigurationError, match="OPENAI_API_KEY"):
-        create_ai_event_analyzer(Settings(openai_api_key=None))
+        create_ai_event_analyzer(Settings(openai_api_key=None), provider_override="openai")
+
+
+def test_openai_sdk_is_an_optional_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing_sdk(_: str) -> object:
+        raise ModuleNotFoundError("openai")
+
+    monkeypatch.setattr(
+        "src.ai_events.infrastructure.openai_client.importlib.import_module",
+        missing_sdk,
+    )
+    with pytest.raises(AIConfigurationError, match="uv sync --extra openai"):
+        create_ai_event_analyzer(
+            Settings(openai_api_key="test-only"),
+            provider_override="openai",
+        )
 
 
 @pytest.mark.asyncio
@@ -359,6 +401,9 @@ def test_frozen_test_guard_requires_flag_file_and_matching_config(tmp_path: Path
 
 def test_prompt_is_zero_shot_and_contains_no_dataset_identifiers() -> None:
     assert "zero-shot" in SYSTEM_PROMPT
+    assert "period_quarter only when period_type is QUARTER" in SYSTEM_PROMPT
+    assert "never invent zero" in SYSTEM_PROMPT
+    assert "Never translate, normalize, reconstruct, or paraphrase evidence_text" in SYSTEM_PROMPT
     assert "7dbd116f" not in SYSTEM_PROMPT
     assert "TRAIN" not in SYSTEM_PROMPT
     assert "VALIDATION" not in SYSTEM_PROMPT

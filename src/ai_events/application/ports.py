@@ -8,6 +8,7 @@ from src.ai_events.domain.schema import AIEventOutput
 
 @dataclass(frozen=True, slots=True)
 class AIModelRequest:
+    provider: str
     raw_content: str
     requested_model: str
     instructions: str
@@ -18,6 +19,7 @@ class AIModelRequest:
     analyzer_version: str
     reasoning_effort: str | None
     max_output_tokens: int
+    think: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +31,8 @@ class AIModelCompletion:
     input_tokens: int | None
     output_tokens: int | None
     total_tokens: int | None
+    provider_metadata: dict[str, int | str | bool | None]
+    cloud_cost_usd: str | None
 
 
 class AIEventModelClient(Protocol):

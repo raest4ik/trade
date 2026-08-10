@@ -25,7 +25,7 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
             {
                 "metric": fact.metric.value,
                 "metric_name": None
-                if fact.matched_rule == "openai-responses-structured-output"
+                if fact.matched_rule == "ai-structured-output"
                 else fact.matched_rule,
                 "normalized_value": str(fact.normalized_value),
                 "unit": fact.unit.value,
@@ -52,7 +52,9 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
             "record_id": result.metadata.record_id,
             "news_id": None if result.metadata.news_id is None else str(result.metadata.news_id),
             "raw_content_hash": result.metadata.raw_content_hash,
+            "provider": result.metadata.provider,
             "requested_model": result.metadata.requested_model,
+            "actual_model": result.metadata.actual_model,
             "actual_response_model": result.metadata.actual_model,
             "prompt_version": result.metadata.prompt_version,
             "prompt_sha256": result.metadata.prompt_hash,
@@ -68,6 +70,8 @@ def analysis_result_to_json(result: AIEventAnalysisResult) -> dict[str, object]:
             "total_tokens": result.metadata.total_tokens,
             "cached": result.metadata.cached,
             "cache_key": result.metadata.cache_key,
+            "provider_metadata": result.metadata.provider_metadata,
+            "cloud_cost_usd": result.metadata.cloud_cost_usd,
         },
     }
 

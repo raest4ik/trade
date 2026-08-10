@@ -36,10 +36,12 @@ from src.news.domain.time import utc_now
 
 @dataclass(frozen=True, slots=True)
 class AnalyzeAIEventCommand:
+    provider: str
     raw_content: str
     requested_model: str
     reasoning_effort: str | None
     max_output_tokens: int
+    think: bool
     news_id: UUID | None = None
     record_id: str | None = None
     force_refresh: bool = False
@@ -50,6 +52,7 @@ class AIAnalysisMetadata:
     record_id: str | None
     news_id: UUID | None
     raw_content_hash: str
+    provider: str
     requested_model: str
     actual_model: str
     prompt_version: str
@@ -66,6 +69,8 @@ class AIAnalysisMetadata:
     total_tokens: int | None
     cached: bool
     cache_key: str
+    provider_metadata: dict[str, int | str | bool | None]
+    cloud_cost_usd: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +113,7 @@ class AnalyzeAIEvent:
 
 def build_model_request(command: AnalyzeAIEventCommand) -> AIModelRequest:
     return AIModelRequest(
+        provider=command.provider,
         raw_content=command.raw_content,
         requested_model=command.requested_model,
         instructions=SYSTEM_PROMPT,
@@ -118,18 +124,21 @@ def build_model_request(command: AnalyzeAIEventCommand) -> AIModelRequest:
         analyzer_version=ANALYSIS_VERSION,
         reasoning_effort=command.reasoning_effort,
         max_output_tokens=command.max_output_tokens,
+        think=command.think,
     )
 
 
 def cache_key(request: AIModelRequest) -> str:
     payload = {
         "analyzer_version": request.analyzer_version,
+        "provider": request.provider,
         "prompt_hash": request.prompt_hash,
         "raw_content_hash": sha256_text(request.raw_content),
         "reasoning_effort": request.reasoning_effort,
         "requested_model": request.requested_model,
         "schema_hash": request.schema_hash,
         "max_output_tokens": request.max_output_tokens,
+        "think": request.think,
     }
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
@@ -141,14 +150,14 @@ def sanitize_failure(
     news_id: UUID | None = None,
 ) -> AIItemFailure:
     if isinstance(exc, AIEventError):
-        code = type(exc).__name__
+        code = str(getattr(exc, "error_code", type(exc).__name__))
     else:
         code = "AIEventUnexpectedError"
     return AIItemFailure(
         record_id=record_id,
         news_id=news_id,
         error_code=code,
-        message="AI event analysis failed",
+        message=str(getattr(exc, "public_message", "AI event analysis failed")),
     )
 
 
@@ -174,7 +183,7 @@ def _build_result(
                 event_type=prediction.event_type,
                 confidence=Decimal(str(prediction.confidence)),
                 rule_id=PROMPT_VERSION,
-                matched_rule="openai-responses-structured-output",
+                matched_rule="ai-structured-output",
                 evidence_text=prediction.evidence_text,
                 start_position=span.start,
                 end_position=span.end,
@@ -214,7 +223,7 @@ def _build_result(
                 start_position=span.start,
                 end_position=span.end,
                 extractor_version=FACT_EXTRACTOR_VERSION,
-                matched_rule=prediction.metric_name or "openai-responses-structured-output",
+                matched_rule=prediction.metric_name or "ai-structured-output",
             )
         )
     primary = next(
@@ -238,6 +247,7 @@ def _build_result(
         record_id=command.record_id,
         news_id=command.news_id,
         raw_content_hash=sha256_text(command.raw_content),
+        provider=command.provider,
         requested_model=command.requested_model,
         actual_model=completion.actual_model,
         prompt_version=PROMPT_VERSION,
@@ -254,6 +264,8 @@ def _build_result(
         total_tokens=completion.total_tokens,
         cached=cached,
         cache_key=key,
+        provider_metadata=completion.provider_metadata,
+        cloud_cost_usd=completion.cloud_cost_usd,
     )
     return AIEventAnalysisResult(analysis=analysis, warnings=warnings, metadata=metadata)
 

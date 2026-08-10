@@ -422,15 +422,20 @@ facts, and facts without periods.
 
 The optional AI analyzer is an experimental research/evaluation module isolated
 under `src/ai_events/`. Its application layer depends on the
-`AIEventModelClient` protocol rather than the OpenAI SDK.
-The infrastructure adapter uses the OpenAI Responses API with strict Pydantic
-Structured Outputs. The zero-shot prompt is versioned as `ai-event-prompt-v0`;
+`AIEventModelClient` protocol rather than a provider SDK. Local Ollama is the
+default backend; the OpenAI Responses API remains an optional alternative.
+Both adapters use the same strict Pydantic Structured Output schema. The
+zero-shot prompt is versioned as `ai-event-prompt-v0`;
 predictions use analysis version `ai-event-v0` and fact extractor version
 `ai-financial-facts-v0`.
 
 Configure the runtime through environment variables:
 
 ```bash
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen3:8b
+OLLAMA_THINK=false
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-mini
 AI_REQUEST_TIMEOUT_SECONDS=60
@@ -440,13 +445,28 @@ AI_MAX_OUTPUT_TOKENS=4096
 AI_REASONING_EFFORT=low
 ```
 
-`OPENAI_API_KEY` is read only from the environment. It is never written to
+Install Ollama, pull the default model, and start an interactive check:
+
+```bash
+ollama pull qwen3:8b
+ollama run qwen3:8b
+```
+
+Enter `/bye` after the check. Ollama runs locally, requires no API key, and
+keeps news text on the local machine. `OPENAI_API_KEY` is required only when
+`AI_PROVIDER=openai` or `--provider openai` is selected. It is never written to
 predictions, cache files, manifests, or logs, and must never be committed.
+Install the optional SDK before using that backend:
+
+```bash
+uv sync --extra openai
+```
 Analyze raw text or a stored news item:
 
 ```bash
 uv run python -m apps.cli.analyze_event_ai --text "Company reported revenue of 100 million RUB."
 uv run python -m apps.cli.analyze_event_ai --news-id <news-id>
+uv run python -m apps.cli.analyze_event_ai --provider openai --text "Company reported revenue."
 ```
 
 Responses contain exact source offsets, prompt/schema hashes, requested and
@@ -470,13 +490,13 @@ uv run python -m apps.cli.evaluate_ai_event_extraction \
   --freeze-config-output artifacts/seed/ai-event-v0/frozen-config.json
 ```
 
-Validation artifacts are written to
-`artifacts/seed/ai-event-v0/validation/`: `predictions.jsonl`, `metrics.json`,
+Validation artifacts for the default backend are written to
+`artifacts/seed/ai-event-v0/ollama-qwen3-8b/validation/`: `predictions.jsonl`, `metrics.json`,
 `errors.jsonl`, `summary.md`, and `run-manifest.json`. Item-level API failures
 are reported and excluded from metric inputs; they are never represented as
 synthetic empty predictions.
 Aggregate comparisons are written to
-`artifacts/seed/ai-event-v0/comparison-validation.md` and, only after an allowed
+`artifacts/seed/ai-event-v0/ollama-qwen3-8b/comparison-validation.md` and, only after an allowed
 frozen TEST run, `artifacts/seed/ai-event-v0/comparison-test.md`.
 
 TEST is guarded and cannot run without both an explicit flag and an unchanged
@@ -488,8 +508,8 @@ uv run python -m apps.cli.evaluate_ai_event_extraction \
   --frozen-config artifacts/seed/ai-event-v0/frozen-config.json
 ```
 
-Normal tests use fake clients and never need an API key or make a live OpenAI
-request.
+Normal tests use fake clients and mocked HTTP. They make neither live Ollama
+nor live OpenAI requests and need no API key.
 
 Supported number formats include comma and dot decimals, spaced thousands,
 negative values, `%`, `п.п.`, Russian and English scales from thousands through

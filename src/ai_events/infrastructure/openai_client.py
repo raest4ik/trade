@@ -1,35 +1,61 @@
 from __future__ import annotations
 
+import importlib
 import time
-from typing import cast
-
-from openai import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    AsyncOpenAI,
-    OpenAIError,
-    RateLimitError,
-)
-from openai.types.shared.reasoning_effort import ReasoningEffort
-from openai.types.shared_params.reasoning import Reasoning
+from typing import Protocol, cast
 
 from src.ai_events.application.ports import AIModelCompletion, AIModelRequest
-from src.ai_events.domain.exceptions import AIModelError, AIModelTransientError
+from src.ai_events.domain.exceptions import (
+    AIConfigurationError,
+    AIModelError,
+    AIModelTransientError,
+)
 from src.ai_events.domain.schema import AIEventOutput
+
+
+class _OpenAIUsage(Protocol):
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+class _OpenAIResponse(Protocol):
+    id: str
+    model: str
+    output_parsed: object | None
+    usage: _OpenAIUsage | None
+
+
+class _OpenAIResponses(Protocol):
+    async def parse(self, **kwargs: object) -> _OpenAIResponse: ...
+
+
+class _OpenAIClient(Protocol):
+    responses: _OpenAIResponses
+
+
+class _AsyncOpenAIFactory(Protocol):
+    def __call__(self, *, api_key: str, max_retries: int) -> _OpenAIClient: ...
 
 
 class OpenAIEventModelClient:
     def __init__(self, *, api_key: str) -> None:
         if not api_key:
             raise ValueError("api_key must not be empty")
-        self._client = AsyncOpenAI(api_key=api_key, max_retries=0)
+        try:
+            module = importlib.import_module("openai")
+        except ModuleNotFoundError as exc:
+            raise AIConfigurationError(
+                "OpenAI backend requires the optional dependency; run: uv sync --extra openai"
+            ) from exc
+        factory = cast("_AsyncOpenAIFactory", module.__dict__["AsyncOpenAI"])
+        self._client = factory(api_key=api_key, max_retries=0)
 
     async def analyze(self, request: AIModelRequest) -> AIModelCompletion:
         started = time.perf_counter()
-        reasoning: Reasoning | None = None
+        reasoning: dict[str, str] | None = None
         if request.reasoning_effort is not None:
-            reasoning = {"effort": cast("ReasoningEffort", request.reasoning_effort)}
+            reasoning = {"effort": request.reasoning_effort}
         try:
             response = await self._client.responses.parse(
                 model=request.requested_model,
@@ -40,16 +66,18 @@ class OpenAIEventModelClient:
                 reasoning=reasoning,
                 store=False,
             )
-        except (RateLimitError, APITimeoutError, APIConnectionError) as exc:
-            raise AIModelTransientError("temporary OpenAI API failure") from exc
-        except APIStatusError as exc:
-            if exc.status_code >= 500:
+        except Exception as exc:
+            error_name = type(exc).__name__
+            status_code = getattr(exc, "status_code", None)
+            if error_name in {"RateLimitError", "APITimeoutError", "APIConnectionError"}:
                 raise AIModelTransientError("temporary OpenAI API failure") from exc
-            raise AIModelError("OpenAI API rejected the request") from exc
-        except OpenAIError as exc:
+            if isinstance(status_code, int) and status_code >= 500:
+                raise AIModelTransientError("temporary OpenAI API failure") from exc
+            if isinstance(status_code, int):
+                raise AIModelError("OpenAI API rejected the request") from exc
             raise AIModelError("OpenAI API request failed") from exc
         parsed = response.output_parsed
-        if parsed is None:
+        if not isinstance(parsed, AIEventOutput):
             raise AIModelError("OpenAI response did not contain structured output")
         usage = response.usage
         return AIModelCompletion(
@@ -60,4 +88,6 @@ class OpenAIEventModelClient:
             input_tokens=None if usage is None else usage.input_tokens,
             output_tokens=None if usage is None else usage.output_tokens,
             total_tokens=None if usage is None else usage.total_tokens,
+            provider_metadata={},
+            cloud_cost_usd=None,
         )

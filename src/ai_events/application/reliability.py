@@ -8,7 +8,11 @@ from src.ai_events.application.ports import (
     AIModelCompletion,
     AIModelRequest,
 )
-from src.ai_events.domain.exceptions import AIModelError, AIModelTransientError
+from src.ai_events.domain.exceptions import (
+    AIModelError,
+    AIModelTransientError,
+    OllamaTimeoutError,
+)
 
 
 class ReliableAIEventModelClient:
@@ -40,7 +44,11 @@ class ReliableAIEventModelClient:
                     async with asyncio.timeout(self._timeout_seconds):
                         return await self._client.analyze(request)
                 except TimeoutError as exc:
-                    transient: AIModelTransientError = AIModelTransientError("AI request timed out")
+                    transient: AIModelTransientError
+                    if request.provider == "ollama":
+                        transient = OllamaTimeoutError()
+                    else:
+                        transient = AIModelTransientError("AI request timed out")
                     transient.__cause__ = exc
                 except AIModelTransientError as exc:
                     transient = exc
@@ -49,6 +57,6 @@ class ReliableAIEventModelClient:
                 except Exception as exc:
                     raise AIModelError("AI model request failed") from exc
                 if attempt >= self._max_retries:
-                    raise AIModelError("AI request failed after bounded retries") from transient
+                    raise transient
                 await self._sleep(min(0.5 * (2**attempt), 8.0))
         raise AIModelError("AI request failed")

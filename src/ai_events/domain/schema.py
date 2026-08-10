@@ -18,7 +18,7 @@ from src.events.domain.enums import (
     ValueScale,
 )
 
-DECIMAL_PATTERN = r"^-?(?:0|[1-9]\d*)(?:\.\d+)?$"
+DECIMAL_PATTERN = r"^-?(0|[1-9][0-9]*)(\.[0-9]+)?$"
 _EXPLICIT_UNCHANGED = re.compile(
     r"(?:без\s+изменен|не\s+измен|остал(?:ся|ась|ось|ись)\s+на\s+уровне|unchanged|flat)",
     re.IGNORECASE,

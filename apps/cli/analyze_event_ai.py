@@ -7,7 +7,11 @@ from uuid import UUID
 
 from src.ai_events.application.serialization import analysis_result_to_json, failure_to_json
 from src.ai_events.application.use_cases import AnalyzeAIEventCommand, sanitize_failure
-from src.ai_events.infrastructure.factory import create_ai_event_analyzer
+from src.ai_events.domain.enums import AIProvider
+from src.ai_events.infrastructure.factory import (
+    create_ai_event_analyzer,
+    resolve_ai_provider_config,
+)
 from src.news.infrastructure.repositories import SqlAlchemyNewsRepository
 from src.shared.config.settings import get_settings
 from src.shared.database.session import create_engine, create_session_factory
@@ -30,15 +34,18 @@ async def run(args: argparse.Namespace) -> int:
         raw_content = news.raw_content
     assert raw_content is not None
     try:
-        analyzer = create_ai_event_analyzer(settings)
+        provider = resolve_ai_provider_config(settings, args.provider)
+        analyzer = create_ai_event_analyzer(settings, provider_override=args.provider)
         result = await analyzer.execute(
             AnalyzeAIEventCommand(
+                provider=provider.provider.value,
                 raw_content=raw_content,
                 news_id=news_id,
                 record_id=args.record_id,
-                requested_model=settings.openai_model,
-                reasoning_effort=settings.ai_reasoning_effort,
+                requested_model=provider.requested_model,
+                reasoning_effort=provider.reasoning_effort,
                 max_output_tokens=settings.ai_max_output_tokens,
+                think=provider.think,
                 force_refresh=args.force_refresh,
             )
         )
@@ -51,11 +58,12 @@ async def run(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Analyze corporate events with OpenAI Responses.")
+    parser = argparse.ArgumentParser(description="Analyze corporate events with a configured AI.")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--text")
     source.add_argument("--news-id")
     parser.add_argument("--record-id")
+    parser.add_argument("--provider", choices=[item.value for item in AIProvider])
     parser.add_argument("--force-refresh", action="store_true")
     return parser
 
