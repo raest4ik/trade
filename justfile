@@ -52,6 +52,12 @@ assign-temporal-split dataset_id train_until validation_until:
 evaluate-event-extraction dataset_id:
     uv run python -m apps.cli.evaluate_event_extraction --dataset-id {{dataset_id}} --fail-below-thresholds
 
+analyze-event-ai text:
+    uv run python -m apps.cli.analyze_event_ai --text "{{text}}"
+
+evaluate-ai-event-extraction dataset_id:
+    uv run python -m apps.cli.evaluate_ai_event_extraction --dataset-id {{dataset_id}} --split VALIDATION
+
 import-seed-event-batch:
     uv run python -m apps.cli.import_seed_event_batch --input artifacts/seed/ru_corporate_events_seed_50.jsonl
 

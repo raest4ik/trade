@@ -13,6 +13,12 @@ DEFAULT_MOEX_HTTP_TIMEOUT_SECONDS = 10.0
 DEFAULT_MOEX_HTTP_MAX_RETRIES = 3
 DEFAULT_MOEX_HTTP_MAX_PAGES = 1000
 DEFAULT_MOEX_HTTP_USER_AGENT = "trade-ai-news-mvp/0.1"
+DEFAULT_OPENAI_MODEL = "gpt-5-mini"
+DEFAULT_AI_REQUEST_TIMEOUT_SECONDS = 60.0
+DEFAULT_AI_MAX_RETRIES = 3
+DEFAULT_AI_MAX_CONCURRENCY = 2
+DEFAULT_AI_MAX_OUTPUT_TOKENS = 4096
+DEFAULT_AI_REASONING_EFFORT = "low"
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +32,13 @@ class Settings:
     moex_http_max_retries: int = DEFAULT_MOEX_HTTP_MAX_RETRIES
     moex_http_max_pages: int = DEFAULT_MOEX_HTTP_MAX_PAGES
     moex_http_user_agent: str = DEFAULT_MOEX_HTTP_USER_AGENT
+    openai_api_key: str | None = None
+    openai_model: str = DEFAULT_OPENAI_MODEL
+    ai_request_timeout_seconds: float = DEFAULT_AI_REQUEST_TIMEOUT_SECONDS
+    ai_max_retries: int = DEFAULT_AI_MAX_RETRIES
+    ai_max_concurrency: int = DEFAULT_AI_MAX_CONCURRENCY
+    ai_max_output_tokens: int = DEFAULT_AI_MAX_OUTPUT_TOKENS
+    ai_reasoning_effort: str | None = DEFAULT_AI_REASONING_EFFORT
 
     @property
     def sync_database_url(self) -> str:
@@ -52,4 +65,18 @@ def get_settings() -> Settings:
         ),
         moex_http_max_pages=int(os.getenv("MOEX_HTTP_MAX_PAGES", str(DEFAULT_MOEX_HTTP_MAX_PAGES))),
         moex_http_user_agent=os.getenv("MOEX_HTTP_USER_AGENT", DEFAULT_MOEX_HTTP_USER_AGENT),
+        openai_api_key=os.getenv("OPENAI_API_KEY") or None,
+        openai_model=os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
+        ai_request_timeout_seconds=float(
+            os.getenv(
+                "AI_REQUEST_TIMEOUT_SECONDS",
+                str(DEFAULT_AI_REQUEST_TIMEOUT_SECONDS),
+            )
+        ),
+        ai_max_retries=int(os.getenv("AI_MAX_RETRIES", str(DEFAULT_AI_MAX_RETRIES))),
+        ai_max_concurrency=int(os.getenv("AI_MAX_CONCURRENCY", str(DEFAULT_AI_MAX_CONCURRENCY))),
+        ai_max_output_tokens=int(
+            os.getenv("AI_MAX_OUTPUT_TOKENS", str(DEFAULT_AI_MAX_OUTPUT_TOKENS))
+        ),
+        ai_reasoning_effort=os.getenv("AI_REASONING_EFFORT", DEFAULT_AI_REASONING_EFFORT) or None,
     )
