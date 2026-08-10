@@ -17,6 +17,11 @@ from src.events.infrastructure.models import (
     ExtractedFinancialFactRecord,
     NewsEventAnalysisRecord,
 )
+from src.historical_news.infrastructure.models import (
+    HistoricalNewsCandidateRecord,
+    HistoricalNewsImportRunRecord,
+    HistoricalNewsSourceRecord,
+)
 from src.instruments.infrastructure.models import (
     InstrumentRecord,
     IssuerAliasRecord,
@@ -102,4 +107,7 @@ _ = (
     GoldEventRecord,
     GoldFinancialFactRecord,
     EvaluationRunRecord,
+    HistoricalNewsSourceRecord,
+    HistoricalNewsImportRunRecord,
+    HistoricalNewsCandidateRecord,
 )
