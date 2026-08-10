@@ -33,6 +33,7 @@ from src.market_data.infrastructure.models import (
     MarketCandleRecord,
     MarketDataImportRecord,
 )
+from src.ml_features.infrastructure.models import MlFeatureDatasetRunRecord
 from src.news.infrastructure.models import NewsItemRecord
 from src.reactions.infrastructure.models import (
     NewsMarketReactionRecord,
@@ -110,4 +111,5 @@ _ = (
     HistoricalNewsSourceRecord,
     HistoricalNewsImportRunRecord,
     HistoricalNewsCandidateRecord,
+    MlFeatureDatasetRunRecord,
 )
