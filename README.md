@@ -129,6 +129,8 @@ just validate-annotation-dataset <file>
 just import-annotation-dataset <file> <name>
 just assign-temporal-split <dataset-id> <train-until> <validation-until>
 just evaluate-event-extraction <dataset-id>
+just analyze-event-ai <text>
+just evaluate-ai-event-extraction <dataset-id>
 just import-seed-event-batch
 just run
 just docker-up
@@ -416,6 +418,111 @@ are explicit through `period_type=UNKNOWN`; and
 API responses include warnings for absent events, absent facts, low-confidence
 facts, and facts without periods.
 
+## AI Event Analyzer v0
+
+The optional AI analyzer is an experimental research/evaluation module isolated
+under `src/ai_events/`. Its application layer depends on the
+`AIEventModelClient` protocol rather than a provider SDK. Local Ollama is the
+default backend; the OpenAI Responses API remains an optional alternative.
+Both adapters use the same strict Pydantic Structured Output schema. The
+zero-shot prompt is versioned as `ai-event-prompt-v0`;
+predictions use analysis version `ai-event-v0` and fact extractor version
+`ai-financial-facts-v0`.
+
+Configure the runtime through environment variables:
+
+```bash
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen3.5:9b
+OLLAMA_THINK=false
+OLLAMA_CONTEXT_LENGTH=4096
+AI_RANDOM_SEED=0
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-5-mini
+AI_REQUEST_TIMEOUT_SECONDS=60
+AI_MAX_RETRIES=3
+AI_MAX_CONCURRENCY=2
+AI_MAX_OUTPUT_TOKENS=4096
+AI_REASONING_EFFORT=low
+```
+
+Install Ollama, pull the default model, and start an interactive check:
+
+```bash
+ollama pull qwen3.5:9b
+ollama run qwen3.5:9b
+```
+
+Enter `/bye` after the check. Ollama runs locally, requires no API key, and
+keeps news text on the local machine. `OPENAI_API_KEY` is required only when
+`AI_PROVIDER=openai` or `--provider openai` is selected. It is never written to
+predictions, cache files, manifests, or logs, and must never be committed.
+Install the optional SDK before using that backend:
+
+```bash
+uv sync --extra openai
+```
+
+The local RTX 4060 Ti 8 GB benchmark loaded this quantized model fully on the
+GPU. Hardware, quantization, drivers, and context settings affect residency, so
+this observation is not a guarantee for every 8 GB GPU.
+Analyze raw text or a stored news item:
+
+```bash
+uv run python -m apps.cli.analyze_event_ai --text "Company reported revenue of 100 million RUB."
+uv run python -m apps.cli.analyze_event_ai --news-id <news-id>
+uv run python -m apps.cli.analyze_event_ai --provider openai --text "Company reported revenue."
+```
+
+Responses contain exact source offsets, prompt/schema hashes, requested and
+actual model names, response ID, latency, token counts, and cache status. Model
+reasoning content is neither requested for output nor persisted. The local
+cache lives under `artifacts/ai-event-v0/cache/`; use `--force-refresh` to bypass
+a hit. The analyzer does not save AI rows to the database and cannot overwrite
+the deterministic extractor.
+Evidence is located exactly first, then through deterministic whitespace/NBSP,
+line-ending, and Unicode-quote normalization with offsets mapped back to the
+original text. No fuzzy matching is used. A non-literal quote keeps its semantic
+prediction, emits a warning, sets `evidence_valid=false`, and serializes character
+offsets as `null`.
+Its output is not a trading recommendation and is not used for impact scores,
+market reactions, sentiment, routing, fallback, or ensemble decisions.
+
+Evaluate a three-record TRAIN smoke, then the full VALIDATION split:
+
+```bash
+uv run python -m apps.cli.evaluate_ai_event_extraction \
+  --dataset-id <dataset-id> --split TRAIN --limit 3
+
+uv run python -m apps.cli.evaluate_ai_event_extraction \
+  --dataset-id <dataset-id> --split VALIDATION \
+  --baseline-metrics <deterministic-validation-metrics.json> \
+  --freeze-config-output artifacts/seed/ai-event-v0/frozen-config.json
+```
+
+Validation artifacts for the default backend are written to
+`artifacts/seed/ai-event-v0/ollama-qwen3.5-9b/validation/`: `predictions.jsonl`, `metrics.json`,
+`errors.jsonl`, `summary.md`, and `run-manifest.json`. Item-level API failures
+are reported explicitly. The `successful_only` view excludes them for model-quality
+diagnosis; the `end_to_end` view represents them as empty predictions and reports
+requested/successful/failed counts plus `item_success_rate`.
+Aggregate comparisons are written to
+`artifacts/seed/ai-event-v0/ollama-qwen3.5-9b/comparison-validation.md` and, only after an allowed
+frozen TEST run, `artifacts/seed/ai-event-v0/comparison-test.md`.
+
+TEST is guarded and cannot run without both an explicit flag and an unchanged
+frozen configuration produced from VALIDATION:
+
+```bash
+uv run python -m apps.cli.evaluate_ai_event_extraction \
+  --dataset-id <dataset-id> --split TEST --allow-frozen-test \
+  --frozen-config artifacts/seed/ai-event-v0/qwen3.5-9b-frozen-config.json
+```
+
+Normal tests use fake clients and mocked HTTP. They make neither live Ollama
+nor live OpenAI requests and need no API key.
+
 Supported number formats include comma and dot decimals, spaced thousands,
 negative values, `%`, `п.п.`, Russian and English scales from thousands through
 trillions, and RUB/USD/EUR/CNY symbols or names. Period extraction supports
@@ -426,7 +533,7 @@ and `FY2025`/`1H 2026` forms.
 
 - No news source connectors.
 - No separate issuer registry yet; issuer fields currently live on instruments.
-- No impact scoring, LLM usage, sentiment analysis, or market reaction prediction.
+- No impact scoring, sentiment analysis, or market reaction prediction.
 - No real-time polling, WebSocket, trades, order book, market-adjusted return, or
   forecasting.
 - No Redis, Kafka, Elasticsearch, frontend, user authentication, or broker integration.
