@@ -28,6 +28,18 @@ seed:
 backfill-candles:
     uv run python -m apps.cli.backfill_candles --ticker SBER --from 2026-07-01 --till 2026-07-07 --interval 1
 
+backfill-benchmark code date_from date_till:
+    uv run python -m apps.cli.backfill_benchmark {{code}} --from {{date_from}} --till {{date_till}}
+
+compute-abnormal-reactions news_id:
+    uv run python -m apps.cli.compute_abnormal_reactions --news-id {{news_id}}
+
+compute-abnormal-reactions-all limit="100":
+    uv run python -m apps.cli.compute_abnormal_reactions --all --limit {{limit}}
+
+export-market-reaction-dataset output="artifacts/market-reaction-dataset-v2.jsonl":
+    uv run python -m apps.cli.export_market_reaction_dataset --output {{output}}
+
 moex-smoke:
     uv run python -m apps.cli.moex_smoke
 

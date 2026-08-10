@@ -15,3 +15,7 @@ class ReactionNewsNotFoundError(ReactionApplicationError):
 
 class ReactionMissingInstrumentMatchesError(ReactionApplicationError):
     """Raised when matching was not run before reaction calculation."""
+
+
+class ReactionTimestampIneligibleError(ReactionApplicationError):
+    """Raised when publication time is not trusted enough for reaction labels."""

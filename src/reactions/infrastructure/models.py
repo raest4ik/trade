@@ -7,8 +7,16 @@ from uuid import UUID
 from sqlalchemy import ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from src.reactions.domain.entities import NewsMarketReaction, ReactionPoint
-from src.reactions.domain.enums import ReactionPointStatus, ReactionStatus
+from src.reactions.domain.entities import (
+    NewsMarketReaction,
+    ReactionBenchmarkAdjustment,
+    ReactionPoint,
+)
+from src.reactions.domain.enums import (
+    BenchmarkAdjustmentStatus,
+    ReactionPointStatus,
+    ReactionStatus,
+)
 from src.shared.database.base import Base
 from src.shared.database.types import UtcDateTime
 
@@ -113,10 +121,16 @@ class ReactionPointRecord(Base):
     status: Mapped[str] = mapped_column(String(32))
 
     reaction: Mapped[NewsMarketReactionRecord] = relationship(back_populates="points")
+    benchmark_adjustment: Mapped[ReactionBenchmarkAdjustmentRecord | None] = relationship(
+        back_populates="reaction_point",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        uselist=False,
+    )
 
     @classmethod
     def from_entity(cls, item: ReactionPoint) -> ReactionPointRecord:
-        return cls(
+        record = cls(
             id=item.id,
             reaction_id=item.reaction_id,
             horizon_minutes=item.horizon_minutes,
@@ -127,6 +141,11 @@ class ReactionPointRecord(Base):
             log_return=item.log_return,
             status=item.status.value,
         )
+        if item.benchmark_adjustment is not None:
+            record.benchmark_adjustment = ReactionBenchmarkAdjustmentRecord.from_entity(
+                item.benchmark_adjustment
+            )
+        return record
 
     def to_entity(self) -> ReactionPoint:
         return ReactionPoint(
@@ -139,4 +158,83 @@ class ReactionPointRecord(Base):
             simple_return=self.simple_return,
             log_return=self.log_return,
             status=ReactionPointStatus(self.status),
+            benchmark_adjustment=None
+            if self.benchmark_adjustment is None
+            else self.benchmark_adjustment.to_entity(),
+        )
+
+
+class ReactionBenchmarkAdjustmentRecord(Base):
+    __tablename__ = "reaction_benchmark_adjustments"
+    __table_args__ = (
+        UniqueConstraint(
+            "reaction_point_id",
+            "benchmark_id",
+            name="uq_reaction_benchmark_adjustments_point_benchmark",
+        ),
+        Index(
+            "ix_reaction_benchmark_adjustments_benchmark_status",
+            "benchmark_id",
+            "status",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    reaction_point_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reaction_points.id", ondelete="CASCADE")
+    )
+    benchmark_id: Mapped[UUID] = mapped_column(
+        ForeignKey("market_benchmarks.id", ondelete="RESTRICT")
+    )
+    benchmark_code: Mapped[str] = mapped_column(String(32))
+    baseline_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 10), nullable=True)
+    target_value: Mapped[Decimal | None] = mapped_column(Numeric(24, 10), nullable=True)
+    baseline_observed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    target_observed_at: Mapped[datetime | None] = mapped_column(UtcDateTime(), nullable=True)
+    simple_return: Mapped[Decimal | None] = mapped_column(Numeric(28, 18), nullable=True)
+    log_return: Mapped[Decimal | None] = mapped_column(Numeric(28, 18), nullable=True)
+    abnormal_simple_return: Mapped[Decimal | None] = mapped_column(Numeric(28, 18), nullable=True)
+    abnormal_log_return: Mapped[Decimal | None] = mapped_column(Numeric(28, 18), nullable=True)
+    status: Mapped[str] = mapped_column(String(32))
+    missing_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    reaction_point: Mapped[ReactionPointRecord] = relationship(
+        back_populates="benchmark_adjustment"
+    )
+
+    @classmethod
+    def from_entity(cls, item: ReactionBenchmarkAdjustment) -> ReactionBenchmarkAdjustmentRecord:
+        return cls(
+            id=item.id,
+            reaction_point_id=item.reaction_point_id,
+            benchmark_id=item.benchmark_id,
+            benchmark_code=item.benchmark_code,
+            baseline_value=item.baseline_value,
+            target_value=item.target_value,
+            baseline_observed_at=item.baseline_observed_at,
+            target_observed_at=item.target_observed_at,
+            simple_return=item.simple_return,
+            log_return=item.log_return,
+            abnormal_simple_return=item.abnormal_simple_return,
+            abnormal_log_return=item.abnormal_log_return,
+            status=item.status.value,
+            missing_reason=item.missing_reason,
+        )
+
+    def to_entity(self) -> ReactionBenchmarkAdjustment:
+        return ReactionBenchmarkAdjustment(
+            id=self.id,
+            reaction_point_id=self.reaction_point_id,
+            benchmark_id=self.benchmark_id,
+            benchmark_code=self.benchmark_code,
+            baseline_value=self.baseline_value,
+            target_value=self.target_value,
+            baseline_observed_at=self.baseline_observed_at,
+            target_observed_at=self.target_observed_at,
+            simple_return=self.simple_return,
+            log_return=self.log_return,
+            abnormal_simple_return=self.abnormal_simple_return,
+            abnormal_log_return=self.abnormal_log_return,
+            status=BenchmarkAdjustmentStatus(self.status),
+            missing_reason=self.missing_reason,
         )

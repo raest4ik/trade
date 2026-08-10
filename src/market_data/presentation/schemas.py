@@ -20,7 +20,9 @@ class BackfillCandlesRequest(BaseModel):
 class MarketDataImportResponse(BaseModel):
     id: UUID
     provider: str
-    instrument_id: UUID
+    instrument_id: UUID | None
+    benchmark_id: UUID | None
+    dataset_type: str
     ticker: str
     board: str
     interval_minutes: int
@@ -64,6 +66,8 @@ class BackfillCandlesResponse(BaseModel):
 
     @classmethod
     def from_import(cls, item: MarketDataImport) -> BackfillCandlesResponse:
+        if item.instrument_id is None:
+            raise ValueError("security import must reference an instrument")
         return cls(
             import_id=item.id,
             status=item.status,

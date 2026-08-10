@@ -7,6 +7,7 @@ from sqlalchemy import String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.news.domain.entities import NewsItem
+from src.news.domain.enums import PublicationTimestampQuality
 from src.shared.database.base import Base
 from src.shared.database.types import UtcDateTime
 
@@ -31,6 +32,9 @@ class NewsItemRecord(Base):
     raw_content_hash: Mapped[str] = mapped_column(String(64), index=True)
     language: Mapped[str] = mapped_column(String(16))
     published_at: Mapped[datetime] = mapped_column(UtcDateTime(), index=True)
+    publication_timestamp_quality: Mapped[str] = mapped_column(
+        String(16), default=PublicationTimestampQuality.UNKNOWN.value, index=True
+    )
     received_at: Mapped[datetime] = mapped_column(UtcDateTime())
     created_at: Mapped[datetime] = mapped_column(UtcDateTime())
 
@@ -46,6 +50,7 @@ class NewsItemRecord(Base):
             raw_content_hash=item.raw_content_hash,
             language=item.language,
             published_at=item.published_at,
+            publication_timestamp_quality=item.publication_timestamp_quality.value,
             received_at=item.received_at,
             created_at=item.created_at,
         )
@@ -61,6 +66,9 @@ class NewsItemRecord(Base):
             raw_content_hash=self.raw_content_hash,
             language=self.language,
             published_at=self.published_at,
+            publication_timestamp_quality=PublicationTimestampQuality(
+                self.publication_timestamp_quality
+            ),
             received_at=self.received_at,
             created_at=self.created_at,
         )

@@ -17,6 +17,7 @@ from src.reactions.application.exceptions import (
     ReactionMissingInstrumentMatchesError,
     ReactionNewsNotFoundError,
     ReactionStorageError,
+    ReactionTimestampIneligibleError,
 )
 from src.reactions.application.use_cases import (
     CalculateNewsMarketReactions,
@@ -54,6 +55,11 @@ async def calculate_news_market_reactions(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="instrument matching was not run",
+        ) from exc
+    except ReactionTimestampIneligibleError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="trusted exact publication timestamp is required",
         ) from exc
     except ReactionStorageError as exc:
         raise HTTPException(

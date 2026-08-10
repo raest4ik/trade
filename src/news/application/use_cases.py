@@ -6,6 +6,7 @@ from uuid import UUID
 
 from src.news.application.ports import NewsRepository, SaveNewsItemResult
 from src.news.domain.entities import NewsItem
+from src.news.domain.enums import PublicationTimestampQuality
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +19,7 @@ class CreateNewsItemCommand:
     language: str
     published_at: datetime
     received_at: datetime | None
+    publication_timestamp_quality: PublicationTimestampQuality = PublicationTimestampQuality.UNKNOWN
 
 
 class CreateNewsItem:
@@ -33,6 +35,7 @@ class CreateNewsItem:
             raw_content=command.raw_content,
             language=command.language,
             published_at=command.published_at,
+            publication_timestamp_quality=command.publication_timestamp_quality,
             received_at=command.received_at,
         )
         return await self._repository.save(item)

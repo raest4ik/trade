@@ -6,10 +6,71 @@ from decimal import Decimal
 from uuid import UUID, uuid4
 
 from src.news.domain.time import ensure_aware_utc, utc_now
-from src.reactions.domain.enums import ReactionPointStatus, ReactionStatus
+from src.reactions.domain.enums import (
+    BenchmarkAdjustmentStatus,
+    ReactionPointStatus,
+    ReactionStatus,
+)
 
-REACTION_VERSION = "reaction-v1-minute-candles"
+REACTION_VERSION = "reaction-v2-benchmark-adjusted"
 DEFAULT_REACTION_HORIZONS_MINUTES = (1, 5, 15, 30, 60)
+
+
+@dataclass(frozen=True, slots=True)
+class ReactionBenchmarkAdjustment:
+    id: UUID
+    reaction_point_id: UUID
+    benchmark_id: UUID
+    benchmark_code: str
+    baseline_value: Decimal | None
+    target_value: Decimal | None
+    baseline_observed_at: datetime | None
+    target_observed_at: datetime | None
+    simple_return: Decimal | None
+    log_return: Decimal | None
+    abnormal_simple_return: Decimal | None
+    abnormal_log_return: Decimal | None
+    status: BenchmarkAdjustmentStatus
+    missing_reason: str | None
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        reaction_point_id: UUID,
+        benchmark_id: UUID,
+        benchmark_code: str,
+        baseline_value: Decimal | None,
+        target_value: Decimal | None,
+        baseline_observed_at: datetime | None,
+        target_observed_at: datetime | None,
+        simple_return: Decimal | None,
+        log_return: Decimal | None,
+        abnormal_simple_return: Decimal | None,
+        abnormal_log_return: Decimal | None,
+        status: BenchmarkAdjustmentStatus,
+        missing_reason: str | None = None,
+    ) -> ReactionBenchmarkAdjustment:
+        return cls(
+            id=uuid4(),
+            reaction_point_id=reaction_point_id,
+            benchmark_id=benchmark_id,
+            benchmark_code=benchmark_code.strip().upper(),
+            baseline_value=baseline_value,
+            target_value=target_value,
+            baseline_observed_at=None
+            if baseline_observed_at is None
+            else ensure_aware_utc(baseline_observed_at, "benchmark_baseline_observed_at"),
+            target_observed_at=None
+            if target_observed_at is None
+            else ensure_aware_utc(target_observed_at, "benchmark_target_observed_at"),
+            simple_return=simple_return,
+            log_return=log_return,
+            abnormal_simple_return=abnormal_simple_return,
+            abnormal_log_return=abnormal_log_return,
+            status=status,
+            missing_reason=missing_reason,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +84,7 @@ class ReactionPoint:
     simple_return: Decimal | None
     log_return: Decimal | None
     status: ReactionPointStatus
+    benchmark_adjustment: ReactionBenchmarkAdjustment | None = None
 
     @classmethod
     def create(
@@ -36,9 +98,29 @@ class ReactionPoint:
         simple_return: Decimal | None,
         log_return: Decimal | None,
         status: ReactionPointStatus,
+        benchmark_adjustment: ReactionBenchmarkAdjustment | None = None,
     ) -> ReactionPoint:
+        point_id = uuid4()
+        adjustment = benchmark_adjustment
+        if adjustment is not None and adjustment.reaction_point_id != point_id:
+            adjustment = ReactionBenchmarkAdjustment(
+                id=adjustment.id,
+                reaction_point_id=point_id,
+                benchmark_id=adjustment.benchmark_id,
+                benchmark_code=adjustment.benchmark_code,
+                baseline_value=adjustment.baseline_value,
+                target_value=adjustment.target_value,
+                baseline_observed_at=adjustment.baseline_observed_at,
+                target_observed_at=adjustment.target_observed_at,
+                simple_return=adjustment.simple_return,
+                log_return=adjustment.log_return,
+                abnormal_simple_return=adjustment.abnormal_simple_return,
+                abnormal_log_return=adjustment.abnormal_log_return,
+                status=adjustment.status,
+                missing_reason=adjustment.missing_reason,
+            )
         return cls(
-            id=uuid4(),
+            id=point_id,
             reaction_id=reaction_id,
             horizon_minutes=horizon_minutes,
             target_at=ensure_aware_utc(target_at, "target_at"),
@@ -49,6 +131,7 @@ class ReactionPoint:
             simple_return=simple_return,
             log_return=log_return,
             status=status,
+            benchmark_adjustment=adjustment,
         )
 
 
@@ -127,6 +210,24 @@ class NewsMarketReaction:
                     simple_return=point.simple_return,
                     log_return=point.log_return,
                     status=point.status,
+                    benchmark_adjustment=None
+                    if point.benchmark_adjustment is None
+                    else ReactionBenchmarkAdjustment(
+                        id=point.benchmark_adjustment.id,
+                        reaction_point_id=point.id,
+                        benchmark_id=point.benchmark_adjustment.benchmark_id,
+                        benchmark_code=point.benchmark_adjustment.benchmark_code,
+                        baseline_value=point.benchmark_adjustment.baseline_value,
+                        target_value=point.benchmark_adjustment.target_value,
+                        baseline_observed_at=point.benchmark_adjustment.baseline_observed_at,
+                        target_observed_at=point.benchmark_adjustment.target_observed_at,
+                        simple_return=point.benchmark_adjustment.simple_return,
+                        log_return=point.benchmark_adjustment.log_return,
+                        abnormal_simple_return=point.benchmark_adjustment.abnormal_simple_return,
+                        abnormal_log_return=point.benchmark_adjustment.abnormal_log_return,
+                        status=point.benchmark_adjustment.status,
+                        missing_reason=point.benchmark_adjustment.missing_reason,
+                    ),
                 )
                 for point in points
             ],

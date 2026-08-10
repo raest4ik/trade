@@ -22,9 +22,18 @@ from src.instruments.infrastructure.models import (
     IssuerAliasRecord,
     NewsInstrumentMatchRecord,
 )
-from src.market_data.infrastructure.models import MarketCandleRecord, MarketDataImportRecord
+from src.market_data.infrastructure.models import (
+    BenchmarkCandleRecord,
+    MarketBenchmarkRecord,
+    MarketCandleRecord,
+    MarketDataImportRecord,
+)
 from src.news.infrastructure.models import NewsItemRecord
-from src.reactions.infrastructure.models import NewsMarketReactionRecord, ReactionPointRecord
+from src.reactions.infrastructure.models import (
+    NewsMarketReactionRecord,
+    ReactionBenchmarkAdjustmentRecord,
+    ReactionPointRecord,
+)
 from src.shared.config.settings import get_settings
 from src.shared.database.base import Base
 
@@ -79,9 +88,12 @@ _ = (
     NewsInstrumentMatchRecord,
     MarketCandleRecord,
     MarketDataImportRecord,
+    MarketBenchmarkRecord,
+    BenchmarkCandleRecord,
     NewsItemRecord,
     NewsMarketReactionRecord,
     ReactionPointRecord,
+    ReactionBenchmarkAdjustmentRecord,
     NewsEventAnalysisRecord,
     DetectedEventRecord,
     ExtractedFinancialFactRecord,

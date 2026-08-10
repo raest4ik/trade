@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from src.market_data.application.exceptions import (
+    BenchmarkDataPartialProviderError,
     MarketDataPartialProviderError,
     MarketDataProviderContractError,
     MarketDataProviderUnavailableError,
@@ -21,8 +22,12 @@ from src.market_data.application.exceptions import (
 )
 from src.market_data.domain.entities import (
     MOEX_ADAPTER_VERSION,
+    MOEX_ENGINE_STOCK,
+    MOEX_MARKET_SHARES,
     MOEX_SOURCE_TIMEZONE,
     SUPPORTED_INTERVAL_MINUTES,
+    BenchmarkCandle,
+    MarketBenchmark,
     MarketCandle,
     RejectedCandleRow,
 )
@@ -38,6 +43,16 @@ _PAGE_SIZE_FALLBACK = 500
 @dataclass(frozen=True, slots=True)
 class MoexFetchResult:
     candles: list[MarketCandle]
+    pages_received: int
+    rows_received: int
+    rows_valid: int
+    rows_rejected: int
+    rejected_rows: list[RejectedCandleRow]
+
+
+@dataclass(frozen=True, slots=True)
+class MoexBenchmarkFetchResult:
+    candles: list[BenchmarkCandle]
     pages_received: int
     rows_received: int
     rows_valid: int
@@ -132,7 +147,9 @@ class MoexIssClient:
         for page in range(self._max_pages):
             try:
                 payload = await self._request_page(
-                    ticker=ticker,
+                    security_code=ticker,
+                    engine=MOEX_ENGINE_STOCK,
+                    market=MOEX_MARKET_SHARES,
                     board=board,
                     date_from=date_from,
                     date_till=date_till,
@@ -182,10 +199,109 @@ class MoexIssClient:
             rejected_rows=rejected_rows,
         )
 
+    async def fetch_benchmark_candles(
+        self,
+        *,
+        benchmark: MarketBenchmark,
+        date_from: date,
+        date_till: date,
+        interval_minutes: int,
+    ) -> tuple[list[BenchmarkCandle], int, int, int, int]:
+        result = await self.fetch_benchmark_candles_with_rejections(
+            benchmark=benchmark,
+            date_from=date_from,
+            date_till=date_till,
+            interval_minutes=interval_minutes,
+        )
+        return (
+            result.candles,
+            result.pages_received,
+            result.rows_received,
+            result.rows_valid,
+            result.rows_rejected,
+        )
+
+    async def fetch_benchmark_candles_with_rejections(
+        self,
+        *,
+        benchmark: MarketBenchmark,
+        date_from: date,
+        date_till: date,
+        interval_minutes: int,
+    ) -> MoexBenchmarkFetchResult:
+        code = validate_market_path_value(benchmark.code, "benchmark_code")
+        board = validate_market_path_value(benchmark.board, "board")
+        engine = validate_market_path_value(benchmark.engine, "engine").lower()
+        market = validate_market_path_value(benchmark.market, "market").lower()
+        validate_date_range(date_from, date_till)
+        if interval_minutes != SUPPORTED_INTERVAL_MINUTES:
+            raise MarketDataValidationError("only interval_minutes=1 is supported")
+
+        candles: list[BenchmarkCandle] = []
+        rejected_rows: list[RejectedCandleRow] = []
+        rows_received = 0
+        rows_valid = 0
+        rows_rejected = 0
+        start = 0
+        pages_received = 0
+        for page in range(self._max_pages):
+            try:
+                payload = await self._request_page(
+                    security_code=code,
+                    engine=engine,
+                    market=market,
+                    board=board,
+                    date_from=date_from,
+                    date_till=date_till,
+                    interval_minutes=interval_minutes,
+                    start=start,
+                    page=page,
+                )
+            except MarketDataProviderUnavailableError as exc:
+                if pages_received == 0:
+                    raise
+                raise BenchmarkDataPartialProviderError(
+                    "MOEX failed after returning partial benchmark candle data",
+                    candles=candles,
+                    pages_received=pages_received,
+                    rows_received=rows_received,
+                    rows_valid=rows_valid,
+                    rows_rejected=rows_rejected,
+                ) from exc
+            parsed = _parse_benchmark_page(
+                payload,
+                benchmark_id=benchmark.id,
+                interval_minutes=interval_minutes,
+                page=page,
+            )
+            pages_received += 1
+            rows_received += parsed.rows_received
+            rows_valid += len(parsed.candles)
+            rows_rejected += len(parsed.rejected_rows)
+            candles.extend(parsed.candles)
+            rejected_rows.extend(parsed.rejected_rows)
+            if parsed.rows_received == 0:
+                break
+            start += parsed.rows_received
+            if parsed.rows_received < _PAGE_SIZE_FALLBACK:
+                break
+        else:
+            raise MarketDataProviderContractError("MOEX pagination exceeded configured max pages")
+        return MoexBenchmarkFetchResult(
+            candles=candles,
+            pages_received=pages_received,
+            rows_received=rows_received,
+            rows_valid=rows_valid,
+            rows_rejected=rows_rejected,
+            rejected_rows=rejected_rows,
+        )
+
     async def _request_page(
         self,
         *,
-        ticker: str,
+        security_code: str,
+        engine: str,
+        market: str,
         board: str,
         date_from: date,
         date_till: date,
@@ -195,8 +311,8 @@ class MoexIssClient:
     ) -> dict[str, object]:
         request_id = str(uuid4())
         url = (
-            f"{self._base_url}/engines/stock/markets/shares/boards/{board}"
-            f"/securities/{ticker}/candles.json"
+            f"{self._base_url}/engines/{engine}/markets/{market}/boards/{board}"
+            f"/securities/{security_code}/candles.json"
         )
         params = {
             "interval": str(interval_minutes),
@@ -224,7 +340,7 @@ class MoexIssClient:
                 "moex_iss_request",
                 extra={
                     "request_id": request_id,
-                    "ticker": ticker,
+                    "security_code": security_code,
                     "board": board,
                     "date_from": date_from.isoformat(),
                     "date_till": date_till.isoformat(),
@@ -262,7 +378,7 @@ class MoexIssClient:
                 raise exc
             raise MarketDataProviderUnavailableError("MOEX request retries exhausted") from exc
         retry_after = None if response is None else response.headers.get("Retry-After")
-        delay = _retry_delay(attempt, retry_after)
+        delay = retry_delay_seconds(attempt, retry_after)
         if self._sleep:
             await asyncio.sleep(delay)
 
@@ -270,6 +386,13 @@ class MoexIssClient:
 @dataclass(frozen=True, slots=True)
 class _ParsedPage:
     candles: list[MarketCandle]
+    rows_received: int
+    rejected_rows: list[RejectedCandleRow]
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedBenchmarkPage:
+    candles: list[BenchmarkCandle]
     rows_received: int
     rejected_rows: list[RejectedCandleRow]
 
@@ -350,6 +473,65 @@ def _parse_page(
     return _ParsedPage(candles=parsed, rows_received=len(typed_rows), rejected_rows=rejected)
 
 
+def _parse_benchmark_page(
+    payload: dict[str, Any],
+    *,
+    benchmark_id: UUID,
+    interval_minutes: int,
+    page: int,
+) -> _ParsedBenchmarkPage:
+    columns, rows = _candle_columns_and_rows(payload)
+    column_index = {column: index for index, column in enumerate(columns)}
+    parsed: list[BenchmarkCandle] = []
+    rejected: list[RejectedCandleRow] = []
+    for row_index, row in enumerate(rows):
+        if not isinstance(row, list):
+            rejected.append(
+                RejectedCandleRow(page=page, row_index=row_index, reason="row_not_array")
+            )
+            continue
+        try:
+            parsed.append(
+                _row_to_benchmark_candle(
+                    cast("list[object]", row),
+                    column_index,
+                    benchmark_id=benchmark_id,
+                    interval_minutes=interval_minutes,
+                )
+            )
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            rejected.append(RejectedCandleRow(page=page, row_index=row_index, reason=str(exc)))
+    return _ParsedBenchmarkPage(
+        candles=parsed,
+        rows_received=len(rows),
+        rejected_rows=rejected,
+    )
+
+
+def _candle_columns_and_rows(payload: dict[str, Any]) -> tuple[list[str], list[Any]]:
+    candles_obj = payload.get("candles")
+    if not isinstance(candles_obj, dict):
+        raise MarketDataProviderContractError("MOEX response misses candles object")
+    typed_candles = cast("dict[str, Any]", candles_obj)
+    columns: object = typed_candles.get("columns")
+    data: object = typed_candles.get("data")
+    if not isinstance(columns, list):
+        raise MarketDataProviderContractError("MOEX candles.columns must be a string array")
+    raw_columns = cast("list[object]", columns)
+    if not all(isinstance(item, str) for item in raw_columns):
+        raise MarketDataProviderContractError("MOEX candles.columns must be a string array")
+    if not isinstance(data, list):
+        raise MarketDataProviderContractError("MOEX candles.data must be an array")
+    typed_columns = cast("list[str]", raw_columns)
+    typed_rows = cast("list[Any]", data)
+    missing = [column for column in _REQUIRED_COLUMNS if column not in typed_columns]
+    if missing:
+        raise MarketDataProviderContractError(
+            f"MOEX candles.columns misses required fields: {', '.join(missing)}"
+        )
+    return typed_columns, typed_rows
+
+
 def _row_to_candle(
     row: list[object],
     column_index: dict[str, int],
@@ -384,6 +566,28 @@ def _row_to_candle(
     )
 
 
+def _row_to_benchmark_candle(
+    row: list[object],
+    column_index: dict[str, int],
+    *,
+    benchmark_id: UUID,
+    interval_minutes: int,
+) -> BenchmarkCandle:
+    return BenchmarkCandle.create(
+        benchmark_id=benchmark_id,
+        interval_minutes=interval_minutes,
+        begin_at=_moex_datetime(row, column_index, "begin"),
+        end_at=_moex_datetime(row, column_index, "end"),
+        open_price=_decimal(row, column_index, "open"),
+        high=_decimal(row, column_index, "high"),
+        low=_decimal(row, column_index, "low"),
+        close=_decimal(row, column_index, "close"),
+        volume=_decimal(row, column_index, "volume"),
+        value=_decimal(row, column_index, "value"),
+        adapter_version=MOEX_ADAPTER_VERSION,
+    )
+
+
 def _decimal(row: list[object], column_index: dict[str, int], column: str) -> Decimal:
     value = _field(row, column_index, column)
     if value is None or value == "":
@@ -408,7 +612,7 @@ def _field(row: list[object], column_index: dict[str, int], column: str) -> obje
     return row[index]
 
 
-def _retry_delay(attempt: int, retry_after: str | None) -> float:
+def retry_delay_seconds(attempt: int, retry_after: str | None) -> float:
     if retry_after is not None:
         try:
             return min(float(retry_after), 30.0)

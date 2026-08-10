@@ -38,6 +38,7 @@ from src.instruments.domain.entities import NewsInstrumentMatch
 from src.instruments.infrastructure.repositories import SqlAlchemyInstrumentRepository
 from src.news.application.use_cases import CreateNewsItem, CreateNewsItemCommand
 from src.news.domain.entities import NewsItem
+from src.news.domain.enums import PublicationTimestampQuality
 from src.news.infrastructure.repositories import SqlAlchemyNewsRepository
 
 SEED_SCHEMA_VERSION = "event-seed-v1"
@@ -205,6 +206,7 @@ async def process_seed_batch(
             language="ru",
             published_at=_technical_published_at(record.source_published_date),
             received_at=_technical_published_at(record.source_published_date),
+            publication_timestamp_quality=PublicationTimestampQuality.DATE_ONLY,
         )
         save_result = await CreateNewsItem(news_repository).execute(command)
         created += 1 if save_result.created else 0
