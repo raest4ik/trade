@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class HistoricalNewsSourceKind(StrEnum):
+    DISCLOSURE_ARCHIVE = "DISCLOSURE_ARCHIVE"
+    INTERFAX_DISCLOSURE = "INTERFAX_DISCLOSURE"
+    ISSUER_RSS = "ISSUER_RSS"
+    ISSUER_ATOM = "ISSUER_ATOM"
+    ISSUER_JSON = "ISSUER_JSON"
+    LOCAL_ARCHIVE = "LOCAL_ARCHIVE"
+    MANUAL_RESEARCH = "MANUAL_RESEARCH"
+
+
+class ContentStoragePolicy(StrEnum):
+    FULL_TEXT_ALLOWED = "FULL_TEXT_ALLOWED"
+    METADATA_ONLY = "METADATA_ONLY"
+    EXCERPT_ALLOWED = "EXCERPT_ALLOWED"
+    UNKNOWN = "UNKNOWN"
+
+
+class HistoricalNewsCandidateStatus(StrEnum):
+    DISCOVERED = "DISCOVERED"
+    VALIDATED = "VALIDATED"
+    REJECTED = "REJECTED"
+    IMPORTED = "IMPORTED"
+    DUPLICATE = "DUPLICATE"
+    METADATA_ONLY = "METADATA_ONLY"
+
+
+class HistoricalNewsImportStatus(StrEnum):
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"

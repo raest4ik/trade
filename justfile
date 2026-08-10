@@ -73,6 +73,18 @@ evaluate-ai-event-extraction dataset_id:
 import-seed-event-batch:
     uv run python -m apps.cli.import_seed_event_batch --input artifacts/seed/ru_corporate_events_seed_50.jsonl
 
+import-historical-news file source_code date_from date_to limit="1000":
+    uv run python -m apps.cli.import_historical_news --input {{file}} --source-code {{source_code}} --storage-policy FULL_TEXT_ALLOWED --from {{date_from}} --to {{date_to}} --limit {{limit}}
+
+backfill-historical-news:
+    uv run python -m apps.cli.backfill_historical_news --help
+
+export-historical-corpus:
+    uv run python -m apps.cli.export_historical_corpus
+
+historical-news-stats:
+    uv run python -m apps.cli.historical_news_stats
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 

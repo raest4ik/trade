@@ -1,0 +1,1 @@
+"""Historical corporate news acquisition."""
