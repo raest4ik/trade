@@ -313,7 +313,11 @@ def rules_vs_shadow(
 
 
 def select_annotation_batch(
-    records: list[PublicationTimeRecord], *, limit: int = 50
+    records: list[PublicationTimeRecord],
+    *,
+    limit: int = 50,
+    batch_version: str = ANNOTATION_BATCH_VERSION,
+    record_prefix: str = "batch-002",
 ) -> list[dict[str, Any]]:
     if not 1 <= limit <= 50:
         raise ValueError("annotation batch limit must be between 1 and 50")
@@ -333,7 +337,12 @@ def select_annotation_batch(
         for key in keys:
             if groups[key] and len(selected) < limit:
                 selected.append(groups[key].popleft())
-    return [_annotation_payload(item) for item in selected]
+    if not batch_version.strip() or not record_prefix.strip():
+        raise ValueError("annotation batch version and record prefix are required")
+    return [
+        _annotation_payload(item, batch_version=batch_version, record_prefix=record_prefix)
+        for item in selected
+    ]
 
 
 def build_baseline(
@@ -428,10 +437,12 @@ def distributions(records: list[PublicationTimeRecord]) -> tuple[dict[str, int],
     return dict(sorted(tickers.items())), dict(sorted(events.items()))
 
 
-def _annotation_payload(item: PublicationTimeRecord) -> dict[str, Any]:
+def _annotation_payload(
+    item: PublicationTimeRecord, *, batch_version: str, record_prefix: str
+) -> dict[str, Any]:
     return {
-        "schema_version": ANNOTATION_BATCH_VERSION,
-        "record_id": f"batch-002-{item.news_id}",
+        "schema_version": batch_version,
+        "record_id": f"{record_prefix}-{item.news_id}",
         "news_id": str(item.news_id),
         "ticker": item.ticker,
         "source_code": item.source_code,
