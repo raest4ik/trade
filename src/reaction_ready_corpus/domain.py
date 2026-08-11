@@ -15,7 +15,7 @@ from src.reactions.domain.entities import REACTION_VERSION
 
 CORPUS_VERSION = "reaction-ready-corpus-v1"
 UNIVERSE = ("SBER", "SBERP", "GAZP", "LKOH", "ROSN", "NVTK", "YDEX", "T", "VTBR", "GMKN")
-REAL_SOURCE_CODES = frozenset({"ROSNEFT_PRESS_RELEASES_RSS"})
+REAL_SOURCE_CODES = frozenset({"ROSNEFT_PRESS_RELEASES_RSS", "YANDEX_IR_PRESS_RELEASES_RSS"})
 
 
 class CorpusProvenance(StrEnum):
@@ -201,20 +201,50 @@ def plan_market_windows(
         )
     windows: list[MarketBackfillWindow] = []
     for ticker, timestamps in sorted(grouped.items()):
-        earliest = min(timestamps)
-        latest = max(timestamps)
-        start = datetime.combine(
-            (earliest - timedelta(days=pre_safety_days)).date(),
-            datetime.min.time(),
-            tzinfo=UTC,
-        )
-        end = datetime.combine(
-            (latest + timedelta(days=post_safety_days)).date(),
-            datetime.max.time(),
-            tzinfo=UTC,
-        )
-        windows.append(MarketBackfillWindow(ticker=ticker, date_from=start, date_to=end))
+        intervals = [
+            _publication_interval(
+                timestamp,
+                pre_safety_days=pre_safety_days,
+                post_safety_days=post_safety_days,
+            )
+            for timestamp in sorted(timestamps)
+        ]
+        merged: list[tuple[datetime, datetime]] = []
+        for start, end in intervals:
+            if merged and start <= merged[-1][1]:
+                previous_start, previous_end = merged[-1]
+                merged[-1] = (previous_start, max(previous_end, end))
+            else:
+                merged.append((start, end))
+        for start, end in merged:
+            chunk_start = start
+            while end - chunk_start > timedelta(days=14):
+                chunk_end = chunk_start + timedelta(days=14) - timedelta(microseconds=1)
+                windows.append(
+                    MarketBackfillWindow(ticker=ticker, date_from=chunk_start, date_to=chunk_end)
+                )
+                chunk_start = chunk_end + timedelta(microseconds=1)
+            windows.append(MarketBackfillWindow(ticker=ticker, date_from=chunk_start, date_to=end))
     return windows
+
+
+def _publication_interval(
+    timestamp: datetime,
+    *,
+    pre_safety_days: int,
+    post_safety_days: int,
+) -> tuple[datetime, datetime]:
+    start = datetime.combine(
+        (timestamp - timedelta(days=pre_safety_days)).date(),
+        datetime.min.time(),
+        tzinfo=UTC,
+    )
+    end = datetime.combine(
+        (timestamp + timedelta(days=post_safety_days)).date(),
+        datetime.max.time(),
+        tzinfo=UTC,
+    )
+    return start, end
 
 
 def readiness_status(real_feature_rows: int) -> ReadinessStatus:

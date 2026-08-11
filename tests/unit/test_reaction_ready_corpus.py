@@ -63,7 +63,10 @@ def test_provenance_is_explicit_and_unknown_is_never_real(
 
 
 def test_only_audited_source_code_is_real() -> None:
-    assert REAL_SOURCE_CODES == {"ROSNEFT_PRESS_RELEASES_RSS"}
+    assert REAL_SOURCE_CODES == {
+        "ROSNEFT_PRESS_RELEASES_RSS",
+        "YANDEX_IR_PRESS_RELEASES_RSS",
+    }
     assert classify_provenance("TEST_ROSNEFT") != CorpusProvenance.REAL
     assert classify_provenance("SEED_ROSNEFT") != CorpusProvenance.REAL
 
@@ -171,8 +174,10 @@ def test_source_audit_schema_covers_universe_and_validates(tmp_path: Path) -> No
     payload = source_audit_payload(audited_sources())
     assert set(payload["universe"]) == set(UNIVERSE)
     compliant = [item for item in payload["sources"] if item["status"] == "COMPLIANT"]
-    assert len(compliant) == 1
-    assert compliant[0]["source_code"] == "ROSNEFT_PRESS_RELEASES_RSS"
+    assert {item["source_code"] for item in compliant} == {
+        "ROSNEFT_PRESS_RELEASES_RSS",
+        "YANDEX_IR_PRESS_RELEASES_RSS",
+    }
     output = tmp_path / "source-audit.json"
     write_source_audit(output)
     assert json.loads(output.read_text(encoding="utf-8"))["schema_version"].endswith("v1")
