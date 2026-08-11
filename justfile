@@ -97,6 +97,15 @@ ml-feature-stats:
 ml-feature-smoke:
     uv run python -m apps.cli.ml_feature_dataset_smoke
 
+audit-historical-sources:
+    uv run python -m apps.cli.audit_historical_sources
+
+prepare-reaction-ready-corpus date_from date_to:
+    uv run python -m apps.cli.prepare_reaction_ready_corpus --from {{date_from}} --to {{date_to}}
+
+build-reaction-ready-corpus:
+    uv run python -m apps.cli.build_reaction_ready_corpus --help
+
 migration name:
     uv run alembic revision --autogenerate -m "{{name}}"
 

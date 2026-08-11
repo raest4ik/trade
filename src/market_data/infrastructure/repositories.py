@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import Select
@@ -373,58 +374,92 @@ class SqlAlchemyMarketDataRepository:
         self,
         candles: list[MarketCandle],
     ) -> set[tuple[UUID, str, str, int, datetime]]:
-        clauses = [
-            and_(
-                MarketCandleRecord.instrument_id == candle.instrument_id,
-                MarketCandleRecord.provider == candle.provider.value,
-                MarketCandleRecord.board == candle.board,
-                MarketCandleRecord.interval_minutes == candle.interval_minutes,
-                MarketCandleRecord.begin_at == candle.begin_at,
-            )
-            for candle in candles
-        ]
+        grouped: dict[tuple[UUID, str, str, int], list[datetime]] = defaultdict(list)
+        for candle in candles:
+            grouped[
+                (
+                    candle.instrument_id,
+                    candle.provider.value,
+                    candle.board,
+                    candle.interval_minutes,
+                )
+            ].append(candle.begin_at)
+        existing: set[tuple[UUID, str, str, int, datetime]] = set()
         try:
-            result = await self._session.execute(
-                select(
-                    MarketCandleRecord.instrument_id,
-                    MarketCandleRecord.provider,
-                    MarketCandleRecord.board,
-                    MarketCandleRecord.interval_minutes,
-                    MarketCandleRecord.begin_at,
-                ).where(or_(*clauses))
-            )
+            for (instrument_id, provider, board, interval), timestamps in grouped.items():
+                for chunk in _chunks(timestamps):
+                    result = await self._session.execute(
+                        select(
+                            MarketCandleRecord.instrument_id,
+                            MarketCandleRecord.provider,
+                            MarketCandleRecord.board,
+                            MarketCandleRecord.interval_minutes,
+                            MarketCandleRecord.begin_at,
+                        ).where(
+                            MarketCandleRecord.instrument_id == instrument_id,
+                            MarketCandleRecord.provider == provider,
+                            MarketCandleRecord.board == board,
+                            MarketCandleRecord.interval_minutes == interval,
+                            MarketCandleRecord.begin_at.in_(chunk),
+                        )
+                    )
+                    existing.update(
+                        (
+                            row.instrument_id,
+                            row.provider,
+                            row.board,
+                            row.interval_minutes,
+                            row.begin_at,
+                        )
+                        for row in result.all()
+                    )
         except SQLAlchemyError as exc:
             raise MarketDataStorageError("could not check existing candles") from exc
-        return {
-            (row.instrument_id, row.provider, row.board, row.interval_minutes, row.begin_at)
-            for row in result.all()
-        }
+        return existing
 
     async def _existing_benchmark_candle_keys(
         self,
         candles: list[BenchmarkCandle],
     ) -> set[tuple[UUID, str, int, datetime]]:
-        clauses = [
-            and_(
-                BenchmarkCandleRecord.benchmark_id == candle.benchmark_id,
-                BenchmarkCandleRecord.provider == candle.provider.value,
-                BenchmarkCandleRecord.interval_minutes == candle.interval_minutes,
-                BenchmarkCandleRecord.begin_at == candle.begin_at,
-            )
-            for candle in candles
-        ]
+        grouped: dict[tuple[UUID, str, int], list[datetime]] = defaultdict(list)
+        for candle in candles:
+            grouped[
+                (
+                    candle.benchmark_id,
+                    candle.provider.value,
+                    candle.interval_minutes,
+                )
+            ].append(candle.begin_at)
+        existing: set[tuple[UUID, str, int, datetime]] = set()
         try:
-            result = await self._session.execute(
-                select(
-                    BenchmarkCandleRecord.benchmark_id,
-                    BenchmarkCandleRecord.provider,
-                    BenchmarkCandleRecord.interval_minutes,
-                    BenchmarkCandleRecord.begin_at,
-                ).where(or_(*clauses))
-            )
+            for (benchmark_id, provider, interval), timestamps in grouped.items():
+                for chunk in _chunks(timestamps):
+                    result = await self._session.execute(
+                        select(
+                            BenchmarkCandleRecord.benchmark_id,
+                            BenchmarkCandleRecord.provider,
+                            BenchmarkCandleRecord.interval_minutes,
+                            BenchmarkCandleRecord.begin_at,
+                        ).where(
+                            BenchmarkCandleRecord.benchmark_id == benchmark_id,
+                            BenchmarkCandleRecord.provider == provider,
+                            BenchmarkCandleRecord.interval_minutes == interval,
+                            BenchmarkCandleRecord.begin_at.in_(chunk),
+                        )
+                    )
+                    existing.update(
+                        (
+                            row.benchmark_id,
+                            row.provider,
+                            row.interval_minutes,
+                            row.begin_at,
+                        )
+                        for row in result.all()
+                    )
         except SQLAlchemyError as exc:
             raise MarketDataStorageError("could not check existing benchmark candles") from exc
-        return {
-            (row.benchmark_id, row.provider, row.interval_minutes, row.begin_at)
-            for row in result.all()
-        }
+        return existing
+
+
+def _chunks(values: list[datetime], size: int = 500) -> list[list[datetime]]:
+    return [values[index : index + size] for index in range(0, len(values), size)]

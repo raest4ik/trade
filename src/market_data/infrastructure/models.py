@@ -15,6 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
+from src.instruments.infrastructure.models import InstrumentRecord
 from src.market_data.domain.entities import (
     BenchmarkCandle,
     MarketBenchmark,
@@ -51,7 +52,9 @@ class MarketCandleRecord(Base):
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
-    instrument_id: Mapped[UUID] = mapped_column(ForeignKey("instruments.id", ondelete="RESTRICT"))
+    instrument_id: Mapped[UUID] = mapped_column(
+        ForeignKey(InstrumentRecord.id, ondelete="RESTRICT")
+    )
     provider: Mapped[str] = mapped_column(String(32))
     engine: Mapped[str] = mapped_column(String(32))
     market: Mapped[str] = mapped_column(String(32))
@@ -239,7 +242,7 @@ class MarketDataImportRecord(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True)
     provider: Mapped[str] = mapped_column(String(32))
     instrument_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("instruments.id", ondelete="RESTRICT"), nullable=True
+        ForeignKey(InstrumentRecord.id, ondelete="RESTRICT"), nullable=True
     )
     benchmark_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("market_benchmarks.id", ondelete="RESTRICT"), nullable=True
