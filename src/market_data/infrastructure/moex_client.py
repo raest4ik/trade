@@ -38,6 +38,7 @@ _MARKET_CODE_PATTERN = re.compile(r"^[A-Z0-9_-]{1,32}$")
 _REQUIRED_COLUMNS = ("open", "close", "high", "low", "value", "volume", "begin", "end")
 _MAX_REQUEST_DAYS = 31
 _PAGE_SIZE_FALLBACK = 500
+_DAILY_INTERVAL_MINUTES = 24
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +54,29 @@ class MoexFetchResult:
 @dataclass(frozen=True, slots=True)
 class MoexBenchmarkFetchResult:
     candles: list[BenchmarkCandle]
+    pages_received: int
+    rows_received: int
+    rows_valid: int
+    rows_rejected: int
+    rejected_rows: list[RejectedCandleRow]
+
+
+@dataclass(frozen=True, slots=True)
+class MoexDailyCandle:
+    security_code: str
+    board: str
+    trade_date: date
+    open: Decimal
+    close: Decimal
+    high: Decimal
+    low: Decimal
+    value: Decimal
+    volume: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class MoexDailyFetchResult:
+    candles: list[MoexDailyCandle]
     pages_received: int
     rows_received: int
     rows_valid: int
@@ -93,6 +117,80 @@ class MoexIssClient:
 
     async def __aexit__(self, *_args: object) -> None:
         await self.aclose()
+
+    async def fetch_daily_candles(
+        self,
+        *,
+        security_code: str,
+        engine: str,
+        market: str,
+        board: str,
+        date_from: date,
+        date_till: date,
+    ) -> MoexDailyFetchResult:
+        """Fetch source daily candles without weakening the minute-candle contract."""
+        code = validate_market_path_value(security_code, "security_code")
+        board = validate_market_path_value(board, "board")
+        engine = validate_market_path_value(engine, "engine").lower()
+        market = validate_market_path_value(market, "market").lower()
+        if date_till < date_from:
+            raise MarketDataValidationError("date_till must not be before date_from")
+
+        candles: list[MoexDailyCandle] = []
+        rejected_rows: list[RejectedCandleRow] = []
+        rows_received = 0
+        start = 0
+        pages_received = 0
+        for page in range(self._max_pages):
+            payload = await self._request_page(
+                security_code=code,
+                engine=engine,
+                market=market,
+                board=board,
+                date_from=date_from,
+                date_till=date_till,
+                interval_minutes=_DAILY_INTERVAL_MINUTES,
+                start=start,
+                page=page,
+            )
+            columns, rows = _candle_columns_and_rows(payload)
+            column_index = {column: index for index, column in enumerate(columns)}
+            pages_received += 1
+            rows_received += len(rows)
+            for row_index, row in enumerate(rows):
+                if not isinstance(row, list):
+                    rejected_rows.append(
+                        RejectedCandleRow(page=page, row_index=row_index, reason="row_not_array")
+                    )
+                    continue
+                try:
+                    candles.append(
+                        _row_to_daily_candle(
+                            cast("list[object]", row),
+                            column_index,
+                            security_code=code,
+                            board=board,
+                        )
+                    )
+                except (InvalidOperation, TypeError, ValueError) as exc:
+                    rejected_rows.append(
+                        RejectedCandleRow(page=page, row_index=row_index, reason=str(exc))
+                    )
+            if not rows or len(rows) < _PAGE_SIZE_FALLBACK:
+                break
+            start += len(rows)
+        else:
+            raise MarketDataProviderContractError(
+                "MOEX daily pagination exceeded configured max pages"
+            )
+        return MoexDailyFetchResult(
+            candles=candles,
+            pages_received=pages_received,
+            rows_received=rows_received,
+            rows_valid=len(candles),
+            rows_rejected=len(rejected_rows),
+            rejected_rows=rejected_rows,
+        )
 
     async def fetch_candles(
         self,
@@ -588,6 +686,41 @@ def _row_to_benchmark_candle(
     )
 
 
+def _row_to_daily_candle(
+    row: list[object],
+    column_index: dict[str, int],
+    *,
+    security_code: str,
+    board: str,
+) -> MoexDailyCandle:
+    open_price = _decimal(row, column_index, "open")
+    close_price = _decimal(row, column_index, "close")
+    high_price = _decimal(row, column_index, "high")
+    low_price = _decimal(row, column_index, "low")
+    value = _decimal(row, column_index, "value")
+    volume = _decimal(row, column_index, "volume")
+    trade_date = _moex_trade_date(row, column_index, "begin")
+    if min(open_price, close_price, high_price, low_price) <= 0:
+        raise ValueError("daily OHLC prices must be positive")
+    if low_price > high_price or not low_price <= open_price <= high_price:
+        raise ValueError("daily open must be inside low-high range")
+    if not low_price <= close_price <= high_price:
+        raise ValueError("daily close must be inside low-high range")
+    if volume < 0 or value < 0:
+        raise ValueError("daily value and volume must be non-negative")
+    return MoexDailyCandle(
+        security_code=security_code,
+        board=board,
+        trade_date=trade_date,
+        open=open_price,
+        close=close_price,
+        high=high_price,
+        low=low_price,
+        value=value,
+        volume=volume,
+    )
+
+
 def _decimal(row: list[object], column_index: dict[str, int], column: str) -> Decimal:
     value = _field(row, column_index, column)
     if value is None or value == "":
@@ -603,6 +736,13 @@ def _moex_datetime(row: list[object], column_index: dict[str, int], column: str)
     if parsed.tzinfo is not None:
         parsed = parsed.replace(tzinfo=None)
     return parsed.replace(tzinfo=ZoneInfo(MOEX_SOURCE_TIMEZONE)).astimezone(UTC)
+
+
+def _moex_trade_date(row: list[object], column_index: dict[str, int], column: str) -> date:
+    value = _field(row, column_index, column)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{column}_missing")
+    return datetime.fromisoformat(value).date()
 
 
 def _field(row: list[object], column_index: dict[str, int], column: str) -> object:
