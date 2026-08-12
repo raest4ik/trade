@@ -1,0 +1,343 @@
+from __future__ import annotations
+
+import asyncio
+import re
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
+from enum import StrEnum
+from typing import cast
+
+import httpx
+
+_PRODUCTION_BASE_URL = "https://invest-public-api.tbank.ru/rest"
+_SANDBOX_BASE_URL = "https://sandbox-invest-public-api.tbank.ru/rest"
+_SERVICE_PREFIX = "/tinkoff.public.invest.api.contract.v1."
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
+
+
+class TInvestContour(StrEnum):
+    READONLY_PRODUCTION = "READONLY_PRODUCTION"
+    SANDBOX_READONLY_CONNECTIVITY = "SANDBOX_READONLY_CONNECTIVITY"
+
+
+class TInvestClientError(RuntimeError):
+    """Sanitized T-Invest client failure."""
+
+
+class TInvestAuthError(TInvestClientError):
+    pass
+
+
+class TInvestRateLimitError(TInvestClientError):
+    pass
+
+
+class TInvestContractError(TInvestClientError):
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class TInvestInstrument:
+    ticker: str
+    class_code: str
+    instrument_uid: str
+    figi: str | None
+    instrument_type: str
+    first_1day_candle_date: date | None
+    name: str
+
+    def payload(self) -> dict[str, object]:
+        return {
+            "ticker": self.ticker,
+            "class_code": self.class_code,
+            "instrument_uid": self.instrument_uid,
+            "figi": self.figi,
+            "instrument_type": self.instrument_type,
+            "first_1day_candle_date": (
+                self.first_1day_candle_date.isoformat()
+                if self.first_1day_candle_date is not None
+                else None
+            ),
+            "name": self.name,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TInvestDailyCandle:
+    instrument_uid: str
+    trade_date: date
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int
+    is_complete: bool
+
+
+class TInvestReadOnlyClient:
+    """Explicitly allowlisted read client with no account or order service surface."""
+
+    def __init__(
+        self,
+        *,
+        token: str,
+        contour: TInvestContour,
+        timeout_seconds: float = 20.0,
+        max_retries: int = 3,
+        client: httpx.AsyncClient | None = None,
+        sleep: bool = True,
+    ) -> None:
+        if not token.strip():
+            raise ValueError("token must not be blank")
+        self._token = token
+        self._contour = contour
+        self._base_url = (
+            _PRODUCTION_BASE_URL
+            if contour == TInvestContour.READONLY_PRODUCTION
+            else _SANDBOX_BASE_URL
+        )
+        self._max_retries = max(0, max_retries)
+        self._sleep = sleep
+        self._owns_client = client is None
+        self._client = client or httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds))
+
+    @property
+    def contour(self) -> TInvestContour:
+        return self._contour
+
+    async def __aenter__(self) -> TInvestReadOnlyClient:
+        return self
+
+    async def __aexit__(self, *_args: object) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    async def find_instruments(
+        self, query: str, *, instrument_kind: str
+    ) -> tuple[TInvestInstrument, ...]:
+        normalized = query.strip()
+        if not normalized or len(normalized) > 128:
+            raise ValueError("instrument query is invalid")
+        payload = await self._post_read(
+            "InstrumentsService/FindInstrument",
+            {"query": normalized, "instrumentKind": instrument_kind},
+        )
+        rows = _object_list(payload, "instruments")
+        return tuple(_parse_instrument(item) for item in rows)
+
+    async def list_indicatives(self) -> tuple[TInvestInstrument, ...]:
+        payload = await self._post_read("InstrumentsService/Indicatives", {})
+        rows = _object_list(payload, "instruments")
+        return tuple(_parse_instrument(item) for item in rows)
+
+    async def get_instrument_by_uid(self, instrument_uid: str) -> TInvestInstrument:
+        uid = _safe_identifier(instrument_uid)
+        payload = await self._post_read(
+            "InstrumentsService/GetInstrumentBy",
+            {"idType": "INSTRUMENT_ID_TYPE_UID", "classCode": "", "id": uid},
+        )
+        instrument = payload.get("instrument")
+        if not isinstance(instrument, dict):
+            raise TInvestContractError("TINVEST_RESPONSE_INVALID")
+        return _parse_instrument(cast("dict[str, object]", instrument))
+
+    async def fetch_daily_candles(
+        self,
+        *,
+        instrument_uid: str,
+        date_from: date,
+        date_to: date,
+    ) -> tuple[TInvestDailyCandle, ...]:
+        uid = _safe_identifier(instrument_uid)
+        if date_to < date_from:
+            raise ValueError("date_to must not be before date_from")
+        if (date_to - date_from).days > 2192:
+            raise ValueError("daily candle request must not exceed six years")
+        payload = await self._post_read(
+            "MarketDataService/GetCandles",
+            {
+                "instrumentId": uid,
+                "from": datetime.combine(date_from, datetime.min.time(), UTC).isoformat(),
+                "to": datetime.combine(date_to, datetime.max.time(), UTC).isoformat(),
+                "interval": "CANDLE_INTERVAL_DAY",
+                "candleSourceType": "CANDLE_SOURCE_EXCHANGE",
+                "limit": 2400,
+            },
+        )
+        rows = _object_list(payload, "candles")
+        return tuple(_parse_candle(item, instrument_uid=uid) for item in rows)
+
+    async def fetch_schedules(
+        self, *, date_from: date, date_to: date, exchange: str = ""
+    ) -> dict[str, object]:
+        if date_to < date_from or (date_to - date_from).days > 7:
+            raise ValueError("schedule request must cover at most seven days")
+        return await self._post_read(
+            "InstrumentsService/TradingSchedules",
+            {
+                "exchange": exchange,
+                "from": datetime.combine(date_from, datetime.min.time(), UTC).isoformat(),
+                "to": datetime.combine(date_to, datetime.max.time(), UTC).isoformat(),
+            },
+        )
+
+    async def _post_read(self, method: str, body: dict[str, object]) -> dict[str, object]:
+        allowed = {
+            "InstrumentsService/FindInstrument",
+            "InstrumentsService/GetInstrumentBy",
+            "InstrumentsService/Indicatives",
+            "MarketDataService/GetCandles",
+            "InstrumentsService/TradingSchedules",
+        }
+        if method not in allowed:
+            raise TInvestClientError("read method is not allowlisted")
+        url = f"{self._base_url}{_SERVICE_PREFIX}{method}"
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = await self._client.post(
+                    url,
+                    json=body,
+                    headers={
+                        "Authorization": f"Bearer {self._token}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "trade-ai-news-mvp/0.1",
+                    },
+                )
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                if attempt >= self._max_retries:
+                    raise TInvestClientError("TINVEST_API_UNAVAILABLE") from exc
+                await self._backoff(attempt)
+                continue
+            if response.status_code in {401, 403}:
+                raise TInvestAuthError("TINVEST_AUTH_FAILED")
+            if response.status_code == 429:
+                if attempt >= self._max_retries:
+                    raise TInvestRateLimitError("TINVEST_RATE_LIMITED")
+                await self._backoff(attempt, response.headers.get("Retry-After"))
+                continue
+            if response.status_code >= 500:
+                if attempt >= self._max_retries:
+                    raise TInvestClientError("TINVEST_API_UNAVAILABLE")
+                await self._backoff(attempt)
+                continue
+            if response.status_code >= 400:
+                raise TInvestClientError(f"TINVEST_REQUEST_REJECTED_{response.status_code}")
+            try:
+                raw: object = response.json()
+            except ValueError as exc:
+                raise TInvestContractError("TINVEST_RESPONSE_INVALID") from exc
+            if not isinstance(raw, dict):
+                raise TInvestContractError("TINVEST_RESPONSE_INVALID")
+            return cast("dict[str, object]", raw)
+        raise TInvestClientError("TINVEST_API_UNAVAILABLE")
+
+    async def _backoff(self, attempt: int, retry_after: str | None = None) -> None:
+        delay = min(0.5 * (2**attempt), 8.0)
+        if retry_after is not None:
+            try:
+                delay = min(max(float(retry_after), 0.0), 30.0)
+            except ValueError:
+                pass
+        if self._sleep:
+            await asyncio.sleep(delay)
+
+
+def _parse_instrument(payload: dict[str, object]) -> TInvestInstrument:
+    ticker = _required_string(payload, "ticker").upper()
+    uid = _required_string(payload, "uid")
+    return TInvestInstrument(
+        ticker=ticker,
+        class_code=_required_string(payload, "classCode"),
+        instrument_uid=_safe_identifier(uid),
+        figi=_optional_string(payload.get("figi")),
+        instrument_type=(
+            _optional_string(payload.get("instrumentType"))
+            or _optional_string(payload.get("instrumentKind"))
+            or "UNKNOWN"
+        ),
+        first_1day_candle_date=_optional_datetime_date(payload.get("first1dayCandleDate")),
+        name=_required_string(payload, "name"),
+    )
+
+
+def _parse_candle(payload: dict[str, object], *, instrument_uid: str) -> TInvestDailyCandle:
+    open_price = _quotation(payload.get("open"))
+    high = _quotation(payload.get("high"))
+    low = _quotation(payload.get("low"))
+    close = _quotation(payload.get("close"))
+    volume = payload.get("volume")
+    timestamp = payload.get("time")
+    if min(open_price, high, low, close) <= 0:
+        raise TInvestContractError("TINVEST_CANDLE_INVALID_PRICE")
+    if low > high or not low <= open_price <= high or not low <= close <= high:
+        raise TInvestContractError("TINVEST_CANDLE_INVALID_OHLC")
+    if isinstance(volume, bool) or not isinstance(volume, (int, str)):
+        raise TInvestContractError("TINVEST_CANDLE_INVALID_VOLUME")
+    try:
+        parsed_volume = int(volume)
+    except ValueError as exc:
+        raise TInvestContractError("TINVEST_CANDLE_INVALID_VOLUME") from exc
+    if parsed_volume < 0 or not isinstance(timestamp, str):
+        raise TInvestContractError("TINVEST_CANDLE_INVALID")
+    return TInvestDailyCandle(
+        instrument_uid=instrument_uid,
+        trade_date=datetime.fromisoformat(timestamp.replace("Z", "+00:00")).date(),
+        open=open_price,
+        high=high,
+        low=low,
+        close=close,
+        volume=parsed_volume,
+        is_complete=bool(payload.get("isComplete", False)),
+    )
+
+
+def _quotation(value: object) -> Decimal:
+    if not isinstance(value, dict):
+        raise TInvestContractError("TINVEST_QUOTATION_INVALID")
+    typed = cast("dict[str, object]", value)
+    units = typed.get("units", 0)
+    nano = typed.get("nano", 0)
+    try:
+        return Decimal(str(units)) + Decimal(str(nano)) / Decimal("1000000000")
+    except (InvalidOperation, TypeError) as exc:
+        raise TInvestContractError("TINVEST_QUOTATION_INVALID") from exc
+
+
+def _object_list(payload: dict[str, object], key: str) -> list[dict[str, object]]:
+    value = payload.get(key)
+    if not isinstance(value, list):
+        raise TInvestContractError("TINVEST_RESPONSE_INVALID")
+    result: list[dict[str, object]] = []
+    for item in cast("list[object]", value):
+        if not isinstance(item, dict):
+            raise TInvestContractError("TINVEST_RESPONSE_INVALID")
+        result.append(cast("dict[str, object]", item))
+    return result
+
+
+def _required_string(payload: dict[str, object], key: str) -> str:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise TInvestContractError("TINVEST_RESPONSE_INVALID")
+    return value.strip()
+
+
+def _optional_string(value: object) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _optional_datetime_date(value: object) -> date | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
+
+
+def _safe_identifier(value: str) -> str:
+    normalized = value.strip()
+    if not _SAFE_IDENTIFIER.fullmatch(normalized):
+        raise ValueError("instrument identifier is invalid")
+    return normalized
