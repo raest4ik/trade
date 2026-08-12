@@ -28,8 +28,8 @@ async def load_publication_time_records(
     feature_news_ids: set[UUID] | None = None,
     limit: int = 100,
 ) -> list[PublicationTimeRecord]:
-    if not 1 <= limit <= 100:
-        raise ValueError("quality corpus load limit must be between 1 and 100")
+    if not 1 <= limit <= 1000:
+        raise ValueError("quality corpus load limit must be between 1 and 1000")
     snapshots = await load_candidate_snapshots(
         session, date_from=date_from, date_to=date_to, limit=limit
     )
