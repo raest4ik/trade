@@ -12,10 +12,16 @@ import pytest
 from src.events.domain.v3 import rules_v3_fingerprint
 from src.holdout_evaluation.domain import EXPECTED_RULES_FINGERPRINT
 from src.market_baseline.domain import (
+    BACKTEST_FOR_TRADING_ALLOWED,
     DATASET_VERSION,
     FEATURE_NAMES,
+    MARKET_USAGE_READINESS,
+    OVERALL_PRODUCTION_READINESS,
     PRICE_ADJUSTMENT_STATUS,
+    PRODUCTION_TRAINING_ALLOWED,
+    RESEARCH_DATASET_BUILD_ALLOWED,
     SOURCE_POLICY,
+    SOURCE_USAGE_STATUS,
     DailyBar,
     Readiness,
     SplitConfig,
@@ -23,6 +29,7 @@ from src.market_baseline.domain import (
     build_dataset,
     date_grouped_temporal_split,
     readiness_for_rows,
+    sha256_payload,
 )
 from src.market_baseline.reporting import (
     load_market_baseline_status,
@@ -174,18 +181,51 @@ def test_extreme_target_is_retained_and_not_used_for_cleaning() -> None:
     row_key = f"AAA:{item.trade_date.isoformat()}"
     target = next(value for value in result.targets if value.row_id == row_key)
     assert target.next_session_return > 2
+    assert result.price_integrity_audit["count_abs_return_gt_50pct"] >= 2
+    assert result.price_integrity_audit["rows_removed_by_audit"] == 0
+    assert result.price_integrity_audit["targets_clipped"] is False
+    assert result.price_integrity_audit["targets_winsorized"] is False
     assert result.quality["target_based_cleaning"] is False
     assert result.quality["extreme_targets_removed"] == 0
+    assert result.quality["targets_clipped"] is False
+    assert result.quality["targets_winsorized"] is False
 
 
 def test_readiness_thresholds_and_ticker_diversity() -> None:
-    assert readiness_for_rows(999, 10)["status"] == Readiness.NOT_READY.value
-    assert readiness_for_rows(1000, 10)["status"] == Readiness.MARKET_PILOT_READY.value
+    assert readiness_for_rows(999, 10)["market_data_readiness"] == Readiness.NOT_READY.value
     assert (
-        readiness_for_rows(5000, 10)["status"] == Readiness.MARKET_BASELINE_EXPERIMENT_READY.value
+        readiness_for_rows(1000, 10)["market_data_readiness"] == Readiness.MARKET_PILOT_READY.value
     )
-    assert readiness_for_rows(10000, 10)["status"] == Readiness.MARKET_BASELINE_TRAINING_READY.value
+    assert (
+        readiness_for_rows(5000, 10)["market_data_readiness"]
+        == Readiness.MARKET_BASELINE_EXPERIMENT_READY.value
+    )
+    assert (
+        readiness_for_rows(10000, 10)["market_data_readiness"]
+        == Readiness.MARKET_BASELINE_TRAINING_READY.value
+    )
     assert readiness_for_rows(10000, 4)["warnings"] == ["LOW_TICKER_DIVERSITY"]
+
+
+def test_row_count_cannot_bypass_source_usage_gate() -> None:
+    readiness = readiness_for_rows(1_000_000, 100)
+    assert readiness["market_data_readiness"] == Readiness.MARKET_BASELINE_TRAINING_READY
+    assert readiness["market_usage_readiness"] == MARKET_USAGE_READINESS
+    assert readiness["overall_production_readiness"] == OVERALL_PRODUCTION_READINESS
+    assert readiness["data_ready"] is True
+    assert readiness["trading_use_ready"] is False
+    assert readiness["production_training_allowed"] is False
+    assert readiness["backtest_for_trading_allowed"] is False
+
+
+def test_research_build_allowed_while_trading_use_is_blocked() -> None:
+    assert SOURCE_USAGE_STATUS == "RESEARCH_ONLY_PENDING_USAGE_RIGHTS"
+    assert RESEARCH_DATASET_BUILD_ALLOWED is True
+    assert PRODUCTION_TRAINING_ALLOWED is False
+    assert BACKTEST_FOR_TRADING_ALLOWED is False
+    assert PRICE_ADJUSTMENT_STATUS == "UNVERIFIED_MOEX_ISS_CANDLE_PRICES"
+    securities, benchmark = _history()
+    assert build_dataset(securities, benchmark).features
 
 
 def test_reports_preserve_market_event_separation_and_fingerprints(tmp_path: Path) -> None:
@@ -204,15 +244,33 @@ def test_reports_preserve_market_event_separation_and_fingerprints(tmp_path: Pat
     target = json.loads(paths["targets"].read_text(encoding="utf-8").splitlines()[0])
     manifest = json.loads(paths["dataset_manifest"].read_text(encoding="utf-8"))
     quality = json.loads(paths["quality_report"].read_text(encoding="utf-8"))
+    audit = json.loads(paths["price_integrity_audit"].read_text(encoding="utf-8"))
     assert "next_session_return" not in feature["features"]
     assert "features" not in target
     assert manifest["dataset_version"] == DATASET_VERSION
     assert manifest["price_adjustment_status"] == PRICE_ADJUSTMENT_STATUS
+    assert manifest["source_usage_status"] == SOURCE_USAGE_STATUS
+    assert manifest["production_training_allowed"] is False
+    assert manifest["backtest_for_trading_allowed"] is False
+    assert manifest["paid_services"] is False
     assert manifest["event_features_included"] is False
     assert quality["target_day_present_in_features"] is False
+    assert audit["diagnostic_only"] is True
+    legacy_dataset_sha = sha256_payload(
+        {
+            "dataset_version": DATASET_VERSION,
+            "features": [item.payload() for item in dataset.features],
+            "targets": [item.payload() for item in dataset.targets],
+        }
+    )
+    assert dataset.dataset_sha256 != legacy_dataset_sha
     status = load_market_baseline_status(tmp_path)
     assert status["event_daily_feature_ready"] == 34
     assert status["model_trained"] is False
+    assert status["DATA_READY"] == "NO"
+    assert status["TRADING_USE_READY"] == "NO"
+    assert status["usage"]["production_training_allowed"] is False
+    assert status["usage"]["backtest_for_trading_allowed"] is False
     assert SOURCE_POLICY == "ZERO_COST_OFFICIAL_ISS_ONLY"
     assert rules_v3_fingerprint() == EXPECTED_RULES_FINGERPRINT
     assert DEFAULT_OLLAMA_MODEL == "qwen3.5:9b"

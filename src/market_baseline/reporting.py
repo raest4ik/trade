@@ -16,7 +16,9 @@ from src.market_baseline.domain import (
     SOURCE_POLICY,
     DatasetBuildResult,
     TemporalSplit,
+    dataset_semantics,
     readiness_for_rows,
+    usage_policy,
 )
 
 
@@ -64,6 +66,7 @@ def write_market_baseline_artifacts(
         **readiness_for_rows(len(result.features), len(ticker_distribution)),
         "event_daily_feature_ready": event_daily_feature_ready,
         "event_and_market_counts_combined": False,
+        "production_blockers": ["SOURCE_USAGE_RIGHTS_UNVERIFIED_OR_CONTRACT_REQUIRED"],
     }
     manifest = {
         "dataset_version": DATASET_VERSION,
@@ -71,6 +74,7 @@ def write_market_baseline_artifacts(
         "git_sha": git_sha,
         "source": SOURCE_NAME,
         "source_policy": SOURCE_POLICY,
+        **usage_policy(),
         "tickers": sorted(ticker_distribution),
         "date_from": min(dates).isoformat() if dates else None,
         "date_to": max(dates).isoformat() if dates else None,
@@ -85,6 +89,7 @@ def write_market_baseline_artifacts(
         "classification_policy_version": CLASSIFICATION_POLICY_VERSION,
         "flat_return_threshold": FLAT_RETURN_THRESHOLD,
         "price_adjustment_status": PRICE_ADJUSTMENT_STATUS,
+        "dataset_semantics": dataset_semantics(),
         "model_trained": False,
         "paid_services": False,
         "event_features_included": False,
@@ -124,6 +129,7 @@ def write_market_baseline_artifacts(
         "dataset_manifest": output_dir / "dataset-manifest.json",
         "split_manifest": output_dir / "split-manifest.json",
         "quality_report": output_dir / "quality-report.json",
+        "price_integrity_audit": output_dir / "price-integrity-audit.json",
     }
     _write_jsonl(paths["features"], [item.payload() for item in result.features])
     _write_jsonl(paths["targets"], [item.payload() for item in result.targets])
@@ -132,6 +138,7 @@ def write_market_baseline_artifacts(
     _write_json(paths["dataset_manifest"], manifest)
     _write_json(paths["split_manifest"], split_manifest)
     _write_json(paths["quality_report"], quality)
+    _write_json(paths["price_integrity_audit"], result.price_integrity_audit)
     return paths
 
 
@@ -142,6 +149,7 @@ def load_market_baseline_status(output_dir: Path) -> dict[str, Any]:
         "manifest": output_dir / "dataset-manifest.json",
         "split": output_dir / "split-manifest.json",
         "quality": output_dir / "quality-report.json",
+        "price_integrity_audit": output_dir / "price-integrity-audit.json",
     }
     missing = [str(path) for path in required.values() if not path.exists()]
     if missing:
@@ -162,11 +170,39 @@ def load_market_baseline_status(output_dir: Path) -> dict[str, Any]:
         "split_sizes": split["counts"],
         "purged_rows": split["purged_rows"],
         "embargoed_rows": split["embargoed_rows"],
-        "readiness": readiness["status"],
-        "warnings": readiness["warnings"],
+        "data": {
+            "feature_ready": coverage["feature_ready"],
+            "ticker_count": coverage["ticker_count"],
+            "readiness": readiness["market_data_readiness"],
+            "data_ready": readiness["data_ready"],
+            "warnings": readiness["warnings"],
+        },
+        "usage": {
+            "readiness": readiness["market_usage_readiness"],
+            "trading_use_ready": readiness["trading_use_ready"],
+            "source_usage_status": readiness["source_usage_status"],
+            "blocker": readiness["source_usage_blocker"],
+            "production_training_allowed": readiness["production_training_allowed"],
+            "backtest_for_trading_allowed": readiness["backtest_for_trading_allowed"],
+            "live_signal_use_allowed": readiness["live_signal_use_allowed"],
+        },
+        "overall_production_readiness": readiness["overall_production_readiness"],
+        "DATA_READY": "YES" if readiness["data_ready"] else "NO",
+        "TRADING_USE_READY": "YES" if readiness["trading_use_ready"] else "NO",
         "price_adjustment_status": manifest["price_adjustment_status"],
         "event_daily_feature_ready": readiness["event_daily_feature_ready"],
         "model_trained": readiness["model_trained"],
+        "extreme_return_audit": {
+            key: payloads["price_integrity_audit"][key]
+            for key in (
+                "count_abs_return_gt_10pct",
+                "count_abs_return_gt_20pct",
+                "count_abs_return_gt_50pct",
+                "affected_tickers",
+                "largest_positive_raw_return",
+                "largest_negative_raw_return",
+            )
+        },
     }
 
 

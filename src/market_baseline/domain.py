@@ -14,7 +14,15 @@ from typing import Any
 DATASET_VERSION = "market-baseline-features-v1"
 SOURCE_NAME = "MOEX_ISS"
 SOURCE_POLICY = "ZERO_COST_OFFICIAL_ISS_ONLY"
+SOURCE_USAGE_STATUS = "RESEARCH_ONLY_PENDING_USAGE_RIGHTS"
+SOURCE_USAGE_BLOCKER = "SOURCE_USAGE_RIGHTS_UNVERIFIED_OR_CONTRACT_REQUIRED"
+MARKET_USAGE_READINESS = "BLOCKED_BY_SOURCE_USAGE_RIGHTS"
+OVERALL_PRODUCTION_READINESS = "TRAINING_BLOCKED_FOR_TRADING_USE"
 PRICE_ADJUSTMENT_STATUS = "UNVERIFIED_MOEX_ISS_CANDLE_PRICES"
+PRODUCTION_TRAINING_ALLOWED = False
+BACKTEST_FOR_TRADING_ALLOWED = False
+LIVE_SIGNAL_USE_ALLOWED = False
+RESEARCH_DATASET_BUILD_ALLOWED = True
 FEATURE_WINDOW_SESSIONS = 20
 CLASSIFICATION_POLICY_VERSION = "market-direction-thresholds-v1"
 FLAT_RETURN_THRESHOLD = 0.002
@@ -169,6 +177,7 @@ class DatasetBuildResult:
     source_ticker_distribution: dict[str, int]
     source_date_ranges: dict[str, dict[str, str]]
     quality: dict[str, Any]
+    price_integrity_audit: dict[str, Any]
     dataset_sha256: str
     feature_schema_sha256: str
 
@@ -288,8 +297,10 @@ def build_dataset(
     ordered = sorted(zip(features, targets, strict=True), key=lambda pair: pair[0].row_id)
     features_tuple = tuple(pair[0] for pair in ordered)
     targets_tuple = tuple(pair[1] for pair in ordered)
+    price_integrity_audit = audit_price_integrity(security_bars, benchmark_bars)
     dataset_payload = {
         "dataset_version": DATASET_VERSION,
+        "dataset_semantics": dataset_semantics(),
         "features": [item.payload() for item in features_tuple],
         "targets": [item.payload() for item in targets_tuple],
     }
@@ -304,6 +315,8 @@ def build_dataset(
         "synthetic_market_rows": 0,
         "target_based_cleaning": False,
         "extreme_targets_removed": 0,
+        "targets_clipped": False,
+        "targets_winsorized": False,
         "listing_boundaries_respected": True,
         "target_day_present_in_features": False,
         "rolling_window_ends_at": "t-1",
@@ -317,6 +330,7 @@ def build_dataset(
         source_ticker_distribution=source_distribution,
         source_date_ranges=source_ranges,
         quality=quality,
+        price_integrity_audit=price_integrity_audit,
         dataset_sha256=sha256_payload(dataset_payload),
         feature_schema_sha256=sha256_payload(list(FEATURE_NAMES)),
     )
@@ -395,17 +409,127 @@ def readiness_for_rows(feature_ready: int, ticker_count: int) -> dict[str, Any]:
         status = Readiness.MARKET_BASELINE_TRAINING_READY
     warnings = [] if ticker_count >= 5 else ["LOW_TICKER_DIVERSITY"]
     return {
-        "status": status.value,
+        "market_data_readiness": status.value,
+        "market_usage_readiness": MARKET_USAGE_READINESS,
+        "overall_production_readiness": OVERALL_PRODUCTION_READINESS,
+        "data_ready": status == Readiness.MARKET_BASELINE_TRAINING_READY,
+        "trading_use_ready": False,
         "feature_ready": feature_ready,
         "ticker_count": ticker_count,
         "warnings": warnings,
         "model_trained": False,
+        **usage_policy(),
         "thresholds": {
             "pilot": 1000,
             "experiment": 5000,
             "training": 10000,
             "minimum_tickers": 5,
         },
+    }
+
+
+def usage_policy() -> dict[str, Any]:
+    return {
+        "source_usage_status": SOURCE_USAGE_STATUS,
+        "source_usage_blocker": SOURCE_USAGE_BLOCKER,
+        "production_training_allowed": PRODUCTION_TRAINING_ALLOWED,
+        "backtest_for_trading_allowed": BACKTEST_FOR_TRADING_ALLOWED,
+        "live_signal_use_allowed": LIVE_SIGNAL_USE_ALLOWED,
+        "research_dataset_build_allowed": RESEARCH_DATASET_BUILD_ALLOWED,
+        "paid_contract_purchase_allowed": False,
+    }
+
+
+def dataset_semantics() -> dict[str, Any]:
+    return {
+        "source": SOURCE_NAME,
+        "source_policy": SOURCE_POLICY,
+        "price_adjustment_status": PRICE_ADJUSTMENT_STATUS,
+        **usage_policy(),
+    }
+
+
+def audit_price_integrity(
+    security_bars: dict[str, tuple[DailyBar, ...]],
+    benchmark_bars: tuple[DailyBar, ...],
+) -> dict[str, Any]:
+    benchmark = _unique_bars(benchmark_bars, expected_ticker="IMOEX")
+    per_ticker: dict[str, dict[str, Any]] = {}
+    all_observations: list[dict[str, Any]] = []
+    for ticker in sorted(security_bars):
+        bars = _unique_bars(security_bars[ticker], expected_ticker=ticker)
+        observations: list[dict[str, Any]] = []
+        ordered = [bars[item] for item in sorted(bars)]
+        for previous, current in pairwise(ordered):
+            raw_return = _return(current.close, previous.close)
+            abnormal_return: float | None = None
+            if previous.trade_date in benchmark and current.trade_date in benchmark:
+                benchmark_return = _return(
+                    benchmark[current.trade_date].close,
+                    benchmark[previous.trade_date].close,
+                )
+                abnormal_return = raw_return - benchmark_return
+            observation = {
+                "ticker": ticker,
+                "baseline_trade_date": previous.trade_date.isoformat(),
+                "trade_date": current.trade_date.isoformat(),
+                "raw_return": raw_return,
+                "abnormal_return": abnormal_return,
+            }
+            observations.append(observation)
+            all_observations.append(observation)
+        raw_values = [float(item["raw_return"]) for item in observations]
+        abnormal = [item for item in observations if item["abnormal_return"] is not None]
+        per_ticker[ticker] = {
+            "observations": len(observations),
+            "min_next_session_return": min(raw_values) if raw_values else None,
+            "max_next_session_return": max(raw_values) if raw_values else None,
+            "percentiles": {
+                "p0_1": _percentile(raw_values, 0.001),
+                "p1": _percentile(raw_values, 0.01),
+                "p99": _percentile(raw_values, 0.99),
+                "p99_9": _percentile(raw_values, 0.999),
+            },
+            "count_abs_return_gt_10pct": _extreme_count(raw_values, 0.10),
+            "count_abs_return_gt_20pct": _extreme_count(raw_values, 0.20),
+            "count_abs_return_gt_50pct": _extreme_count(raw_values, 0.50),
+            "extreme_discontinuities": [
+                item for item in observations if abs(float(item["raw_return"])) > 0.10
+            ],
+            "abnormal_return_min": _extreme_record(abnormal, "abnormal_return", minimum=True),
+            "abnormal_return_max": _extreme_record(abnormal, "abnormal_return", minimum=False),
+        }
+    raw_values = [float(item["raw_return"]) for item in all_observations]
+    abnormal = [item for item in all_observations if item["abnormal_return"] is not None]
+    affected = sorted(
+        {str(item["ticker"]) for item in all_observations if abs(float(item["raw_return"])) > 0.10}
+    )
+    return {
+        "audit_scope": "RAW_CONSECUTIVE_MOEX_DAILY_CANDLES",
+        "diagnostic_only": True,
+        "rows_removed_by_audit": 0,
+        "targets_clipped": False,
+        "targets_winsorized": False,
+        "target_based_filtering": False,
+        "price_adjustment_status": PRICE_ADJUSTMENT_STATUS,
+        "observations": len(all_observations),
+        "count_abs_return_gt_10pct": _extreme_count(raw_values, 0.10),
+        "count_abs_return_gt_20pct": _extreme_count(raw_values, 0.20),
+        "count_abs_return_gt_50pct": _extreme_count(raw_values, 0.50),
+        "affected_tickers": affected,
+        "largest_positive_raw_return": _extreme_record(
+            all_observations, "raw_return", minimum=False
+        ),
+        "largest_negative_raw_return": _extreme_record(
+            all_observations, "raw_return", minimum=True
+        ),
+        "largest_positive_abnormal_return": _extreme_record(
+            abnormal, "abnormal_return", minimum=False
+        ),
+        "largest_negative_abnormal_return": _extreme_record(
+            abnormal, "abnormal_return", minimum=True
+        ),
+        "per_ticker": per_ticker,
     }
 
 
@@ -505,3 +629,29 @@ def _date_range(values: list[date]) -> dict[str, str]:
     if not values:
         return {}
     return {"from": min(values).isoformat(), "to": max(values).isoformat()}
+
+
+def _percentile(values: list[float], quantile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * quantile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    weight = position - lower
+    return ordered[lower] * (1 - weight) + ordered[upper] * weight
+
+
+def _extreme_count(values: list[float], threshold: float) -> int:
+    return sum(abs(value) > threshold for value in values)
+
+
+def _extreme_record(
+    observations: list[dict[str, Any]], field: str, *, minimum: bool
+) -> dict[str, Any] | None:
+    if not observations:
+        return None
+    selector = min if minimum else max
+    return dict(selector(observations, key=lambda item: float(item[field])))
