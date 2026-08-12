@@ -10,6 +10,8 @@ from typing import cast
 
 import httpx
 
+from src.tinvest_market.config import tbank_tls_context
+
 _PRODUCTION_BASE_URL = "https://invest-public-api.tbank.ru/rest"
 _SANDBOX_BASE_URL = "https://sandbox-invest-public-api.tbank.ru/rest"
 _SERVICE_PREFIX = "/tinkoff.public.invest.api.contract.v1."
@@ -100,7 +102,10 @@ class TInvestReadOnlyClient:
         self._max_retries = max(0, max_retries)
         self._sleep = sleep
         self._owns_client = client is None
-        self._client = client or httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds))
+        self._client = client or httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_seconds),
+            verify=tbank_tls_context(),
+        )
 
     @property
     def contour(self) -> TInvestContour:

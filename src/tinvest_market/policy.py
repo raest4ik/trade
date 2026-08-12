@@ -91,6 +91,14 @@ POLICY_EVIDENCE: Final = (
         "accessed_at": "2026-08-13",
         "summary": "The sandbox is an isolated endpoint; this project performs connectivity only.",
     },
+    {
+        "url": "https://developer.tbank.ru/invest/intro/developer/network",
+        "accessed_at": "2026-08-13",
+        "summary": (
+            "Python SDK 1.49.2 or newer supports SSL_TBANK_VERIFY=True and validates "
+            "T-Invest TLS with its bundled Russian trusted root certificate."
+        ),
+    },
 )
 
 

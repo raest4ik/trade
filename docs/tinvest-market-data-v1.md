@@ -32,6 +32,9 @@ Evidence was checked on 2026-08-13 using only official T-Bank/T-Invest pages:
 - [Sandbox](https://developer.tbank.ru/invest/intro/developer/sandbox) documents the isolated
   sandbox endpoint. This version performs harmless read connectivity only and never creates,
   funds, or trades a sandbox account.
+- [Network troubleshooting](https://developer.tbank.ru/invest/intro/developer/network) documents
+  `SSL_TBANK_VERIFY=True` for Python SDK 1.49.2 or newer and validation with the SDK's bundled
+  Russian trusted root certificate.
 - [Corporate actions](https://developer.tbank.ru/invest/intro/useful-info/faq_corp_action) documents
   split, reverse-split, spinoff, stock-dividend, delisting, and conversion effects.
 
@@ -46,6 +49,12 @@ Only `TINVEST_READONLY_TOKEN` is accepted by the production market-data contour.
 from environment variables, hidden from dataclass representations, and never stored in logs,
 exceptions, manifests, fixtures, or artifacts. Missing variables fail closed and report only the
 missing environment-variable name.
+
+TLS verification requires `SSL_TBANK_VERIFY=True`. The project pins the official T-Invest Python
+SDK `1.49.3` from the explicit official T-Bank package index and loads its bundled
+`RussianTrustedRootCA.pem` into a normal verified `SSLContext`. System trust roots remain active,
+hostname verification remains enabled, and `CERT_REQUIRED` remains mandatory. The application
+does not disable certificate validation or expose the SDK's trading services.
 
 `TInvestReadOnlyClient` exposes only instrument lookup, indicative lookup, historical candles, and
 trading schedules. It has no generic arbitrary-endpoint method and no Orders, StopOrders,

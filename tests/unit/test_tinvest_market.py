@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+import ssl
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from importlib.metadata import version
 from itertools import pairwise
 from pathlib import Path
 
@@ -24,10 +26,12 @@ from src.tinvest_market.client import (
 from src.tinvest_market.config import (
     READONLY_TOKEN_ENV,
     SANDBOX_TOKEN_ENV,
+    TBANK_TLS_VERIFY_ENV,
     MissingTokenError,
     TInvestTokens,
     load_readonly_token,
     load_sandbox_token,
+    tbank_tls_context,
 )
 from src.tinvest_market.domain import (
     BENCHMARK_TICKER,
@@ -71,6 +75,17 @@ def test_token_repr_and_errors_never_disclose_secret(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv(READONLY_TOKEN_ENV, secret)
     assert load_readonly_token() == secret
     assert secret not in str(TInvestAuthError("TINVEST_AUTH_FAILED"))
+
+
+def test_tbank_tls_requires_explicit_verified_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(TBANK_TLS_VERIFY_ENV, raising=False)
+    with pytest.raises(RuntimeError, match=TBANK_TLS_VERIFY_ENV):
+        tbank_tls_context()
+    monkeypatch.setenv(TBANK_TLS_VERIFY_ENV, "True")
+    context = tbank_tls_context()
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+    assert version("t-tech-investments") == "1.49.3"
 
 
 async def test_client_uses_exact_readonly_rest_path_and_sanitizes_auth() -> None:
@@ -142,6 +157,9 @@ def test_client_has_no_generic_or_execution_surface() -> None:
     assert not any(item in source for item in banned)
     assert "OrdersService" not in source
     assert "SandboxService" not in source
+    assert "t_tech.invest.Client" not in source
+    assert "verify=False" not in source
+    assert "CERT_NONE" not in source
 
 
 def test_execution_safety_is_immutable_at_false() -> None:
