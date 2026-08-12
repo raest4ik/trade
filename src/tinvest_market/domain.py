@@ -78,6 +78,8 @@ class ResolvedInstrument:
     instrument_type: str
     first_1day_candle_date: date | None
     name: str
+    exchange: str | None
+    currency: str | None
     resolved_at: datetime
 
     def payload(self) -> dict[str, object]:
@@ -91,6 +93,8 @@ class ResolvedInstrument:
             if self.first_1day_candle_date
             else None,
             "name": self.name,
+            "exchange": self.exchange,
+            "currency": self.currency,
             "resolved_at": self.resolved_at.isoformat(),
         }
 
@@ -258,10 +262,19 @@ class TemporalSplit:
 
 
 def resolve_instrument(
-    ticker: str, candidates: tuple[TInvestInstrument, ...], *, resolved_at: datetime
+    ticker: str,
+    candidates: tuple[TInvestInstrument, ...],
+    *,
+    resolved_at: datetime,
+    expected_class_code: str | None = "TQBR",
 ) -> ResolvedInstrument:
     normalized = ticker.strip().upper()
-    exact = [item for item in candidates if item.ticker == normalized]
+    exact = [
+        item
+        for item in candidates
+        if item.ticker == normalized
+        and (expected_class_code is None or item.class_code == expected_class_code)
+    ]
     unique = {item.instrument_uid: item for item in exact}
     if len(unique) != 1:
         raise ValueError(f"AMBIGUOUS_OR_MISSING_INSTRUMENT:{normalized}")
@@ -274,6 +287,8 @@ def resolve_instrument(
         instrument_type=item.instrument_type,
         first_1day_candle_date=item.first_1day_candle_date,
         name=item.name,
+        exchange=item.exchange,
+        currency=item.currency,
         resolved_at=resolved_at,
     )
 
@@ -512,11 +527,15 @@ def feature_names(benchmark_available: bool) -> tuple[str, ...]:
 
 def audit_prices(security_bars: dict[str, tuple[DailyBar, ...]]) -> dict[str, object]:
     observations: list[tuple[str, str, float]] = []
+    ticker_returns: dict[str, list[float]] = {}
     for ticker, rows in sorted(security_bars.items()):
         ordered = sorted(rows, key=lambda item: item.trade_date)
+        values_for_ticker: list[float] = []
         for previous, current in pairwise(ordered):
             value = _return(current.close, previous.close)
             observations.append((ticker, current.trade_date.isoformat(), value))
+            values_for_ticker.append(value)
+        ticker_returns[ticker] = values_for_ticker
     values = [item[2] for item in observations]
     largest_positive = max(observations, key=lambda item: item[2]) if observations else None
     largest_negative = min(observations, key=lambda item: item[2]) if observations else None
@@ -530,8 +549,36 @@ def audit_prices(security_bars: dict[str, tuple[DailyBar, ...]]) -> dict[str, ob
         "count_abs_return_gt_50pct": sum(abs(item) > 0.50 for item in values),
         "largest_positive_return": _observation_payload(largest_positive),
         "largest_negative_return": _observation_payload(largest_negative),
+        "ticker_statistics": {
+            ticker: _return_statistics(items) for ticker, items in sorted(ticker_returns.items())
+        },
         "price_adjustment_status": PRICE_ADJUSTMENT_STATUS,
     }
+
+
+def _return_statistics(values: list[float]) -> dict[str, float | int | None]:
+    ordered = sorted(values)
+    return {
+        "count": len(ordered),
+        "min": ordered[0] if ordered else None,
+        "max": ordered[-1] if ordered else None,
+        "p0.1": _percentile(ordered, 0.001),
+        "p1": _percentile(ordered, 0.01),
+        "p99": _percentile(ordered, 0.99),
+        "p99.9": _percentile(ordered, 0.999),
+    }
+
+
+def _percentile(ordered: list[float], quantile: float) -> float | None:
+    if not ordered:
+        return None
+    position = (len(ordered) - 1) * quantile
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return ordered[lower]
+    weight = position - lower
+    return ordered[lower] * (1 - weight) + ordered[upper] * weight
 
 
 def _observation_payload(value: tuple[str, str, float] | None) -> dict[str, object] | None:

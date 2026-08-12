@@ -9,10 +9,12 @@ from datetime import UTC, date, datetime, timedelta
 from importlib.metadata import version
 from itertools import pairwise
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
 
+from apps.cli.tinvest_market_build import build_parser
 from src.events.domain.v3 import rules_v3_fingerprint
 from src.holdout_evaluation.domain import EXPECTED_RULES_FINGERPRINT
 from src.shared.config.settings import DEFAULT_OLLAMA_MODEL
@@ -135,6 +137,46 @@ async def test_client_retries_429_bounded_and_contours_never_fallback() -> None:
     assert all(request.url.host == "sandbox-invest-public-api.tbank.ru" for request in requests)
 
 
+async def test_daily_candle_request_uses_exchange_source_without_incompatible_limit() -> None:
+    request_body: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        request_body.update(json.loads(request.content))
+        return httpx.Response(200, json={"candles": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = TInvestReadOnlyClient(
+            token="secret",
+            contour=TInvestContour.READONLY_PRODUCTION,
+            client=http_client,
+        )
+        await client.fetch_daily_candles(
+            instrument_uid="uid-SBER",
+            date_from=date(2020, 1, 1),
+            date_to=date(2020, 1, 2),
+        )
+    assert request_body["interval"] == "CANDLE_INTERVAL_DAY"
+    assert request_body["candleSourceType"] == "CANDLE_SOURCE_EXCHANGE"
+    assert "limit" not in request_body
+
+
+async def test_indicative_parser_allows_optional_class_code() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        payload = _instrument_payload("IMOEX", "uid-IMOEX", "INSTRUMENT_TYPE_INDEX")
+        payload.pop("classCode")
+        return httpx.Response(200, json={"instruments": [payload]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = TInvestReadOnlyClient(
+            token="secret",
+            contour=TInvestContour.READONLY_PRODUCTION,
+            client=http_client,
+        )
+        rows = await client.list_indicatives()
+    assert rows[0].ticker == "IMOEX"
+    assert rows[0].class_code == ""
+
+
 def test_client_has_no_generic_or_execution_surface() -> None:
     public = {name for name in dir(TInvestReadOnlyClient) if not name.startswith("_")}
     assert public == {
@@ -185,6 +227,11 @@ def test_instrument_resolution_is_exact_and_fails_on_ambiguity() -> None:
         resolve_instrument("SBER", (exact, replace(exact, instrument_uid="uid-3")), resolved_at=now)
     with pytest.raises(ValueError, match="MISSING"):
         resolve_instrument("SBER", (fuzzy,), resolved_at=now)
+    alternate_board = replace(exact, instrument_uid="uid-3", class_code="SPEQ")
+    assert (
+        resolve_instrument("SBER", (alternate_board, exact), resolved_at=now).instrument_uid
+        == "uid-1"
+    )
 
 
 def test_chunks_are_bounded_and_cover_each_day_once() -> None:
@@ -195,6 +242,10 @@ def test_chunks_are_bounded_and_cover_each_day_once() -> None:
     assert all(
         previous[1] + timedelta(days=1) == current[0] for previous, current in pairwise(chunks)
     )
+
+
+def test_default_history_floor_precedes_api_reported_instrument_starts() -> None:
+    assert build_parser().parse_args([]).date_from == "1970-01-01"
 
 
 async def test_acquisition_is_real_uid_based_checkpointed_and_idempotent(tmp_path: Path) -> None:
@@ -256,8 +307,100 @@ async def test_acquisition_is_real_uid_based_checkpointed_and_idempotent(tmp_pat
     assert first.manifest["dataset_sha"] == second.manifest["dataset_sha"]
     assert set(second.manifest["cache_hits"]) == {*SECURITY_TICKERS, BENCHMARK_TICKER}
     assert first.manifest["source"] == SOURCE
+    assert first.manifest["resolved_securities_count"] == len(SECURITY_TICKERS)
+    assert first.manifest["unresolved_security_tickers"] == []
+    assert all(item["rows_synthesized"] == 0 for item in first.manifest["gap_diagnostics"].values())
     artifact_text = await asyncio.to_thread(_read_tree, tmp_path)
     assert "secret" not in artifact_text
+
+
+async def test_incomplete_candle_is_not_persisted_or_cached_as_complete(tmp_path: Path) -> None:
+    candle_calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal candle_calls
+        body = json.loads(request.content)
+        if request.url.path.endswith("InstrumentsService/FindInstrument"):
+            ticker = body["query"]
+            return httpx.Response(
+                200, json={"instruments": [_instrument_payload(ticker, f"uid-{ticker}")]}
+            )
+        if request.url.path.endswith("InstrumentsService/Indicatives"):
+            return httpx.Response(200, json={"instruments": []})
+        if request.url.path.endswith("InstrumentsService/GetInstrumentBy"):
+            uid = str(body["id"])
+            ticker = uid.removeprefix("uid-")
+            return httpx.Response(200, json={"instrument": _instrument_payload(ticker, uid)})
+        if request.url.path.endswith("MarketDataService/GetCandles"):
+            candle_calls += 1
+            candle = _candle_payload(date(2020, 1, 2), 100.0)
+            candle["isComplete"] = False
+            return httpx.Response(200, json={"candles": [candle]})
+        raise AssertionError(request.url.path)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = TInvestReadOnlyClient(
+            token="secret", contour=TInvestContour.READONLY_PRODUCTION, client=http_client
+        )
+        first = await acquire_history(
+            client,
+            raw_dir=tmp_path,
+            date_from=date(2020, 1, 1),
+            date_to=date(2020, 1, 3),
+            tickers=("SBER",),
+            resolved_at=datetime(2026, 8, 13, tzinfo=UTC),
+        )
+        await acquire_history(
+            client,
+            raw_dir=tmp_path,
+            date_from=date(2020, 1, 1),
+            date_to=date(2020, 1, 3),
+            tickers=("SBER",),
+            resolved_at=datetime(2026, 8, 13, tzinfo=UTC),
+        )
+    assert first.security_bars["SBER"] == ()
+    assert candle_calls == 2
+    checkpoint = json.loads((tmp_path / "checkpoints/SBER.json").read_text(encoding="utf-8"))
+    assert checkpoint["complete"] is False
+
+
+async def test_ambiguous_security_fails_closed_without_blocking_other_tickers(
+    tmp_path: Path,
+) -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if request.url.path.endswith("InstrumentsService/FindInstrument"):
+            ticker = body["query"]
+            instruments = [_instrument_payload(ticker, f"uid-{ticker}")]
+            if ticker == "SBER":
+                instruments.append(_instrument_payload(ticker, "uid-SBER-duplicate"))
+            return httpx.Response(200, json={"instruments": instruments})
+        if request.url.path.endswith("InstrumentsService/Indicatives"):
+            return httpx.Response(200, json={"instruments": []})
+        if request.url.path.endswith("InstrumentsService/GetInstrumentBy"):
+            uid = str(body["id"])
+            ticker = uid.removeprefix("uid-")
+            return httpx.Response(200, json={"instrument": _instrument_payload(ticker, uid)})
+        if request.url.path.endswith("MarketDataService/GetCandles"):
+            return httpx.Response(200, json={"candles": [_candle_payload(date(2020, 1, 2), 100.0)]})
+        raise AssertionError(request.url.path)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = TInvestReadOnlyClient(
+            token="secret", contour=TInvestContour.READONLY_PRODUCTION, client=http_client
+        )
+        result = await acquire_history(
+            client,
+            raw_dir=tmp_path,
+            date_from=date(2020, 1, 1),
+            date_to=date(2020, 1, 3),
+            tickers=("SBER", "GAZP"),
+            resolved_at=datetime(2026, 8, 13, tzinfo=UTC),
+        )
+    assert set(result.security_bars) == {"GAZP"}
+    assert result.manifest["unresolved_security_tickers"] == ["SBER"]
+    diagnostics = cast("list[dict[str, object]]", result.manifest["resolution_diagnostics"])
+    assert any(item["ticker"] == "SBER" for item in diagnostics)
 
 
 def test_dataset_is_deterministic_and_targets_are_separate() -> None:
@@ -360,6 +503,11 @@ def test_extremes_are_retained_without_clipping_or_winsorization() -> None:
     assert result.price_audit["rows_removed_by_audit"] == 0
     assert result.price_audit["targets_clipped"] is False
     assert result.price_audit["targets_winsorized"] is False
+    ticker_statistics = cast(
+        "dict[str, dict[str, object]]", result.price_audit["ticker_statistics"]
+    )
+    statistics = ticker_statistics["SBER"]
+    assert set(statistics) == {"count", "min", "max", "p0.1", "p1", "p99", "p99.9"}
 
 
 def test_temporal_split_is_grouped_purged_embargoed_and_deterministic() -> None:
@@ -407,6 +555,8 @@ def test_reports_keep_sources_separate_and_moex_comparison_diagnostic(tmp_path: 
     assert manifest["dataset_semantics"]["moex_data_used"] is False
     assert manifest["model_trained"] is False
     assert diagnostic["overlap_rows"] == 1
+    assert diagnostic["missing_in_moex_rows"] == len(result.targets) - 1
+    assert diagnostic["moex_rows"] == 1
     assert diagnostic["data_sources_combined"] is False
     assert diagnostic["t_invest_filled_from_moex"] is False
     assert compare_moex_targets(result, None)["status"] == "MOEX_DIAGNOSTIC_UNAVAILABLE"

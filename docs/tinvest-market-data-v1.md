@@ -69,7 +69,9 @@ future PR and user decision.
 ## Instrument Identity And History
 
 The security universe is `SBER`, `SBERP`, `GAZP`, `LKOH`, `ROSN`, `NVTK`, `YDEX`, `T`, `VTBR`, and
-`GMKN`. The resolver accepts exactly one exact-ticker UID. Missing or ambiguous matches fail closed.
+`GMKN`. The resolver accepts exactly one exact-ticker `TQBR` UID, so alternate trading boards and
+foreign shares with a reused ticker cannot be selected accidentally. Missing or ambiguous matches
+fail closed per ticker without guessing an identity.
 The persisted mapping includes ticker, class code, UID, optional FIGI, instrument type,
 `first_1day_candle_date`, name, and resolution time. Different historical UIDs are never joined.
 
@@ -80,7 +82,13 @@ built without benchmark features and abnormal targets. MOEX ISS never fills a T-
 Daily history starts at the later of the requested date and the provider's
 `first_1day_candle_date`. Requests are split into 1800-day chunks, respect provider limits, and use
 bounded retry/backoff for transient failures and 429 responses. Per-UID checkpoints make reruns
-idempotent and resumable. No forward fill, synthetic session, or synthetic candle is created.
+idempotent and resumable. Only candles marked complete by T-Invest are persisted; an incomplete
+right edge leaves its checkpoint incomplete so a later run can refresh it. No forward fill,
+synthetic session, or synthetic candle is created.
+
+The CLI's broad `1970-01-01` request floor is only a lower bound. It does not assert that such
+history exists: each UID is clamped to the API-provided first daily candle date, and the resulting
+manifest records the dates actually returned.
 
 ## Dataset And Leakage Policy
 

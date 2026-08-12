@@ -119,9 +119,16 @@ def compare_moex_targets(result: DatasetResult, path: Path | None) -> dict[str, 
         "diagnostic_only": True,
         "data_sources_combined": False,
         "t_invest_filled_from_moex": False,
+        "t_invest_rows": len(result.targets),
+        "moex_rows": 0,
         "overlap_rows": 0,
+        "missing_in_tinvest_rows": 0,
+        "missing_in_moex_rows": len(result.targets),
         "mean_absolute_return_difference": None,
         "max_absolute_return_difference": None,
+        "absolute_difference_gt_1pct": 0,
+        "absolute_difference_gt_5pct": 0,
+        "absolute_difference_gt_10pct": 0,
     }
     if path is None or not path.exists():
         return {**base, "status": "MOEX_DIAGNOSTIC_UNAVAILABLE"}
@@ -129,19 +136,24 @@ def compare_moex_targets(result: DatasetResult, path: Path | None) -> dict[str, 
     for line in path.read_text(encoding="utf-8").splitlines():
         row = cast("dict[str, object]", json.loads(line))
         moex[str(row["row_id"])] = float(str(row["next_session_return"]))
+    t_invest = {item.row_id: item.next_session_return for item in result.targets}
     differences = [
-        abs(item.next_session_return - moex[item.row_id])
-        for item in result.targets
-        if item.row_id in moex
+        abs(value - moex[row_id]) for row_id, value in t_invest.items() if row_id in moex
     ]
     return {
         **base,
         "status": "OVERLAP_DIAGNOSTIC_COMPLETE",
+        "moex_rows": len(moex),
         "overlap_rows": len(differences),
+        "missing_in_tinvest_rows": len(set(moex) - set(t_invest)),
+        "missing_in_moex_rows": len(set(t_invest) - set(moex)),
         "mean_absolute_return_difference": sum(differences) / len(differences)
         if differences
         else None,
         "max_absolute_return_difference": max(differences) if differences else None,
+        "absolute_difference_gt_1pct": sum(item > 0.01 for item in differences),
+        "absolute_difference_gt_5pct": sum(item > 0.05 for item in differences),
+        "absolute_difference_gt_10pct": sum(item > 0.10 for item in differences),
     }
 
 

@@ -94,7 +94,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build a private T-Invest read-only daily market dataset."
     )
-    parser.add_argument("--from", dest="date_from", default="2000-01-01")
+    parser.add_argument("--from", dest="date_from", default="1970-01-01")
     parser.add_argument("--to", dest="date_to", default=yesterday.isoformat())
     parser.add_argument("--tickers", default=",".join(SECURITY_TICKERS))
     parser.add_argument("--raw-dir", default="artifacts/tinvest-market-raw-v1")

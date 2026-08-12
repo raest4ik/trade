@@ -48,6 +48,8 @@ class TInvestInstrument:
     instrument_type: str
     first_1day_candle_date: date | None
     name: str
+    exchange: str | None = None
+    currency: str | None = None
 
     def payload(self) -> dict[str, object]:
         return {
@@ -62,6 +64,8 @@ class TInvestInstrument:
                 else None
             ),
             "name": self.name,
+            "exchange": self.exchange,
+            "currency": self.currency,
         }
 
 
@@ -170,7 +174,6 @@ class TInvestReadOnlyClient:
                 "to": datetime.combine(date_to, datetime.max.time(), UTC).isoformat(),
                 "interval": "CANDLE_INTERVAL_DAY",
                 "candleSourceType": "CANDLE_SOURCE_EXCHANGE",
-                "limit": 2400,
             },
         )
         rows = _object_list(payload, "candles")
@@ -256,7 +259,7 @@ def _parse_instrument(payload: dict[str, object]) -> TInvestInstrument:
     uid = _required_string(payload, "uid")
     return TInvestInstrument(
         ticker=ticker,
-        class_code=_required_string(payload, "classCode"),
+        class_code=_optional_string(payload.get("classCode")) or "",
         instrument_uid=_safe_identifier(uid),
         figi=_optional_string(payload.get("figi")),
         instrument_type=(
@@ -265,7 +268,9 @@ def _parse_instrument(payload: dict[str, object]) -> TInvestInstrument:
             or "UNKNOWN"
         ),
         first_1day_candle_date=_optional_datetime_date(payload.get("first1dayCandleDate")),
-        name=_required_string(payload, "name"),
+        name=_optional_string(payload.get("name")) or ticker,
+        exchange=_optional_string(payload.get("exchange")),
+        currency=_optional_string(payload.get("currency")),
     )
 
 
