@@ -207,10 +207,12 @@ def test_client_has_no_generic_or_execution_surface() -> None:
         "aclose",
         "contour",
         "fetch_daily_candles",
+        "fetch_daily_candles_audited",
         "fetch_schedules",
         "find_instruments",
         "get_instrument_by_uid",
         "list_indicatives",
+        "list_shares",
     }
     source = (
         Path("src/tinvest_market").read_text(encoding="utf-8")
