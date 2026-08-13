@@ -256,6 +256,7 @@ async def _acquire_series(
     date_to: date,
     series_path: Path,
     checkpoint_path: Path,
+    allow_rejected_candles: bool = False,
 ) -> tuple[tuple[DailyBar, ...], bool]:
     expected: dict[str, object] = {
         "ticker": instrument.ticker,
@@ -276,14 +277,37 @@ async def _acquire_series(
     if cached is not None:
         return cached, True
 
-    by_date: dict[date, DailyBar] = {}
+    existing = await asyncio.to_thread(
+        _load_extendable_series,
+        checkpoint_path,
+        series_path,
+        expected,
+        instrument.ticker,
+        instrument.instrument_uid,
+    )
+    by_date: dict[date, DailyBar] = {
+        item.trade_date: item for item in (existing[0] if existing is not None else ())
+    }
+    fetch_from = existing[1] + timedelta(days=1) if existing is not None else date_from
     incomplete_seen = False
-    for chunk_from, chunk_to in date_chunks(date_from, date_to):
-        candles = await client.fetch_daily_candles(
-            instrument_uid=instrument.instrument_uid,
-            date_from=chunk_from,
-            date_to=chunk_to,
-        )
+    rejected_candle_count = 0
+    rejected_reasons: Counter[str] = Counter()
+    for chunk_from, chunk_to in date_chunks(fetch_from, date_to):
+        if allow_rejected_candles:
+            batch = await client.fetch_daily_candles_audited(
+                instrument_uid=instrument.instrument_uid,
+                date_from=chunk_from,
+                date_to=chunk_to,
+            )
+            candles = batch.candles
+            rejected_candle_count += len(batch.rejected_reasons)
+            rejected_reasons.update(batch.rejected_reasons)
+        else:
+            candles = await client.fetch_daily_candles(
+                instrument_uid=instrument.instrument_uid,
+                date_from=chunk_from,
+                date_to=chunk_to,
+            )
         for candle in candles:
             if not candle.is_complete:
                 incomplete_seen = True
@@ -304,9 +328,36 @@ async def _acquire_series(
         series_path,
         checkpoint_path,
         bars,
-        {**expected, "complete": not incomplete_seen},
+        {
+            **expected,
+            "complete": not incomplete_seen,
+            "rejected_candle_count": rejected_candle_count,
+            "rejected_candle_reasons": dict(sorted(rejected_reasons.items())),
+        },
     )
     return bars, False
+
+
+async def acquire_instrument_series(
+    client: TInvestReadOnlyClient,
+    *,
+    instrument: ResolvedInstrument,
+    date_from: date,
+    date_to: date,
+    raw_dir: Path,
+    allow_rejected_candles: bool = False,
+) -> tuple[tuple[DailyBar, ...], bool]:
+    """Acquire one UID-bound series through the shared bounded read-only path."""
+    await asyncio.to_thread(_prepare_directories, raw_dir)
+    return await _acquire_series(
+        client,
+        instrument=instrument,
+        date_from=date_from,
+        date_to=date_to,
+        series_path=raw_dir / "series" / f"{instrument.ticker}.jsonl",
+        checkpoint_path=raw_dir / "checkpoints" / f"{instrument.ticker}.json",
+        allow_rejected_candles=allow_rejected_candles,
+    )
 
 
 def date_chunks(date_from: date, date_to: date) -> tuple[tuple[date, date], ...]:
@@ -371,6 +422,28 @@ def _load_cached_series(
     if not all(checkpoint.get(key) == value for key, value in expected.items()):
         return None
     return _load_series(series_path, ticker, instrument_uid)
+
+
+def _load_extendable_series(
+    checkpoint_path: Path,
+    series_path: Path,
+    expected: dict[str, object],
+    ticker: str,
+    instrument_uid: str,
+) -> tuple[tuple[DailyBar, ...], date] | None:
+    if not checkpoint_path.exists() or not series_path.exists():
+        return None
+    checkpoint = cast("dict[str, object]", json.loads(checkpoint_path.read_text(encoding="utf-8")))
+    stable = ("ticker", "instrument_uid", "date_from", "storage_policy")
+    if not all(checkpoint.get(key) == expected.get(key) for key in stable):
+        return None
+    if checkpoint.get("complete") is not True:
+        return None
+    previous_to = date.fromisoformat(str(checkpoint.get("date_to")))
+    requested_to = date.fromisoformat(str(expected["date_to"]))
+    if previous_to >= requested_to:
+        return None
+    return _load_series(series_path, ticker, instrument_uid), previous_to
 
 
 def _write_series_and_checkpoint(

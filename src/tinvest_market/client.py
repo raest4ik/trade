@@ -50,6 +50,12 @@ class TInvestInstrument:
     name: str
     exchange: str | None = None
     currency: str | None = None
+    real_exchange: str | None = None
+    trading_status: str | None = None
+    api_trade_available: bool | None = None
+    buy_available: bool | None = None
+    sell_available: bool | None = None
+    last_1day_candle_date: date | None = None
 
     def payload(self) -> dict[str, object]:
         return {
@@ -66,6 +72,16 @@ class TInvestInstrument:
             "name": self.name,
             "exchange": self.exchange,
             "currency": self.currency,
+            "real_exchange": self.real_exchange,
+            "trading_status": self.trading_status,
+            "api_trade_available_flag": self.api_trade_available,
+            "buy_available_flag": self.buy_available,
+            "sell_available_flag": self.sell_available,
+            "last_1day_candle_date": (
+                self.last_1day_candle_date.isoformat()
+                if self.last_1day_candle_date is not None
+                else None
+            ),
         }
 
 
@@ -79,6 +95,12 @@ class TInvestDailyCandle:
     close: Decimal
     volume: int
     is_complete: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TInvestCandleBatch:
+    candles: tuple[TInvestDailyCandle, ...]
+    rejected_reasons: tuple[str, ...]
 
 
 class TInvestReadOnlyClient:
@@ -143,6 +165,14 @@ class TInvestReadOnlyClient:
         rows = _object_list(payload, "instruments")
         return tuple(_parse_instrument(item) for item in rows)
 
+    async def list_shares(self) -> tuple[TInvestInstrument, ...]:
+        payload = await self._post_read(
+            "InstrumentsService/Shares",
+            {"instrumentStatus": "INSTRUMENT_STATUS_ALL"},
+        )
+        rows = _object_list(payload, "instruments")
+        return tuple(_parse_instrument(item, default_kind="INSTRUMENT_TYPE_SHARE") for item in rows)
+
     async def get_instrument_by_uid(self, instrument_uid: str) -> TInvestInstrument:
         uid = _safe_identifier(instrument_uid)
         payload = await self._post_read(
@@ -161,6 +191,20 @@ class TInvestReadOnlyClient:
         date_from: date,
         date_to: date,
     ) -> tuple[TInvestDailyCandle, ...]:
+        batch = await self.fetch_daily_candles_audited(
+            instrument_uid=instrument_uid, date_from=date_from, date_to=date_to
+        )
+        if batch.rejected_reasons:
+            raise TInvestContractError(batch.rejected_reasons[0])
+        return batch.candles
+
+    async def fetch_daily_candles_audited(
+        self,
+        *,
+        instrument_uid: str,
+        date_from: date,
+        date_to: date,
+    ) -> TInvestCandleBatch:
         uid = _safe_identifier(instrument_uid)
         if date_to < date_from:
             raise ValueError("date_to must not be before date_from")
@@ -177,7 +221,14 @@ class TInvestReadOnlyClient:
             },
         )
         rows = _object_list(payload, "candles")
-        return tuple(_parse_candle(item, instrument_uid=uid) for item in rows)
+        candles: list[TInvestDailyCandle] = []
+        rejected: list[str] = []
+        for item in rows:
+            try:
+                candles.append(_parse_candle(item, instrument_uid=uid))
+            except TInvestContractError as exc:
+                rejected.append(str(exc))
+        return TInvestCandleBatch(tuple(candles), tuple(rejected))
 
     async def fetch_schedules(
         self, *, date_from: date, date_to: date, exchange: str = ""
@@ -198,6 +249,7 @@ class TInvestReadOnlyClient:
             "InstrumentsService/FindInstrument",
             "InstrumentsService/GetInstrumentBy",
             "InstrumentsService/Indicatives",
+            "InstrumentsService/Shares",
             "MarketDataService/GetCandles",
             "InstrumentsService/TradingSchedules",
         }
@@ -254,7 +306,9 @@ class TInvestReadOnlyClient:
             await asyncio.sleep(delay)
 
 
-def _parse_instrument(payload: dict[str, object]) -> TInvestInstrument:
+def _parse_instrument(
+    payload: dict[str, object], *, default_kind: str = "UNKNOWN"
+) -> TInvestInstrument:
     ticker = _required_string(payload, "ticker").upper()
     uid = _required_string(payload, "uid")
     return TInvestInstrument(
@@ -265,12 +319,18 @@ def _parse_instrument(payload: dict[str, object]) -> TInvestInstrument:
         instrument_type=(
             _optional_string(payload.get("instrumentType"))
             or _optional_string(payload.get("instrumentKind"))
-            or "UNKNOWN"
+            or default_kind
         ),
         first_1day_candle_date=_optional_datetime_date(payload.get("first1dayCandleDate")),
         name=_optional_string(payload.get("name")) or ticker,
         exchange=_optional_string(payload.get("exchange")),
         currency=_optional_string(payload.get("currency")),
+        real_exchange=_optional_scalar(payload.get("realExchange")),
+        trading_status=_optional_scalar(payload.get("tradingStatus")),
+        api_trade_available=_optional_bool(payload.get("apiTradeAvailableFlag")),
+        buy_available=_optional_bool(payload.get("buyAvailableFlag")),
+        sell_available=_optional_bool(payload.get("sellAvailableFlag")),
+        last_1day_candle_date=_optional_datetime_date(payload.get("last1dayCandleDate")),
     )
 
 
@@ -338,6 +398,19 @@ def _required_string(payload: dict[str, object], key: str) -> str:
 
 def _optional_string(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _optional_scalar(value: object) -> str | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (str, int)):
+        normalized = str(value).strip()
+        return normalized or None
+    return None
+
+
+def _optional_bool(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None
 
 
 def _optional_datetime_date(value: object) -> date | None:
