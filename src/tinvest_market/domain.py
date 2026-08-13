@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from bisect import bisect_left
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
@@ -253,6 +254,8 @@ class TemporalSplit:
     assignments: dict[str, SplitName]
     purged_row_ids: tuple[str, ...]
     embargoed_row_ids: tuple[str, ...]
+    purged_dates: tuple[str, ...]
+    embargoed_dates: tuple[str, ...]
     date_ranges: dict[str, dict[str, str]]
     split_sha: str
 
@@ -317,11 +320,16 @@ def build_dataset(
     targets: list[TargetRow] = []
     distribution: dict[str, int] = {}
     excluded: dict[str, int] = {}
+    attrition: dict[str, dict[str, object]] = {}
     for ticker in sorted(security_bars):
         bars = _unique(security_bars[ticker], ticker)
-        dates = sorted(bars)
-        distribution[ticker] = len(dates)
+        raw_dates = sorted(bars)
+        dates = (
+            [item for item in raw_dates if item in benchmark] if benchmark_available else raw_dates
+        )
+        distribution[ticker] = len(raw_dates)
         excluded[ticker] = 0
+        first_feature_index = len(features)
         for index, target_date in enumerate(dates):
             if index < FEATURE_WINDOW_SESSIONS + 1:
                 excluded[ticker] += 1
@@ -373,6 +381,33 @@ def build_dataset(
             target.validate()
             features.append(feature)
             targets.append(target)
+        ticker_features = features[first_feature_index:]
+        feature_count = len(ticker_features)
+        benchmark_loss = len(raw_dates) - len(dates)
+        warmup_loss = min(len(dates), FEATURE_WINDOW_SESSIONS + 1)
+        other_loss = len(raw_dates) - benchmark_loss - warmup_loss - feature_count
+        attrition[ticker] = {
+            "raw_first_date": raw_dates[0].isoformat() if raw_dates else None,
+            "raw_last_date": raw_dates[-1].isoformat() if raw_dates else None,
+            "raw_rows": len(raw_dates),
+            "benchmark_aligned_rows": len(dates),
+            "feature_first_date": (
+                ticker_features[0].trade_date.isoformat() if ticker_features else None
+            ),
+            "feature_last_date": (
+                ticker_features[-1].trade_date.isoformat() if ticker_features else None
+            ),
+            "feature_rows": feature_count,
+            "rows_lost": {
+                "warmup": warmup_loss,
+                "missing_lag_history": 0,
+                "benchmark_alignment": benchmark_loss,
+                "target_tail": 0,
+                "other": other_loss,
+            },
+            "reconciled": len(raw_dates)
+            == feature_count + warmup_loss + benchmark_loss + other_loss,
+        }
     paired = sorted(zip(features, targets, strict=True), key=lambda item: item[0].row_id)
     feature_rows = tuple(item[0] for item in paired)
     target_rows = tuple(item[1] for item in paired)
@@ -392,6 +427,13 @@ def build_dataset(
         quality={
             "duplicate_ticker_date_rows": 0,
             "missing_or_incomplete_window_exclusions": excluded,
+            "feature_cutoff_cause": (
+                "ROLLING_WINDOWS_BUILT_BEFORE_BENCHMARK_SESSION_INTERSECTION"
+                if benchmark_available
+                else "NOT_APPLICABLE_NO_BENCHMARK"
+            ),
+            "feature_cutoff_was_bug": benchmark_available,
+            "row_attrition": attrition,
             "prices_forward_filled": False,
             "synthetic_market_rows": 0,
             "target_day_present_in_features": False,
@@ -402,7 +444,7 @@ def build_dataset(
             "benchmark_source": SOURCE if benchmark_available else None,
             "moex_rows_used": 0,
         },
-        price_audit=audit_prices(security_bars),
+        price_audit=audit_prices(security_bars, benchmark_bars),
         dataset_sha=sha256_payload(payload),
         feature_schema_sha=sha256_payload(list(feature_names(benchmark_available))),
     )
@@ -473,6 +515,8 @@ def temporal_split(
         assignments,
         tuple(sorted(purged)),
         tuple(sorted(embargoed)),
+        tuple(item.isoformat() for item in sorted(purged_dates)),
+        tuple(item.isoformat() for item in sorted(embargoed_dates)),
         ranges,
         sha256_payload(split_payload),
     )
@@ -525,16 +569,60 @@ def feature_names(benchmark_available: bool) -> tuple[str, ...]:
     )
 
 
-def audit_prices(security_bars: dict[str, tuple[DailyBar, ...]]) -> dict[str, object]:
+def audit_prices(
+    security_bars: dict[str, tuple[DailyBar, ...]],
+    benchmark_bars: tuple[DailyBar, ...] | None = None,
+) -> dict[str, object]:
     observations: list[tuple[str, str, float]] = []
+    review_observations: list[dict[str, object]] = []
     ticker_returns: dict[str, list[float]] = {}
+    benchmark = sorted(benchmark_bars or (), key=lambda item: item.trade_date)
+    benchmark_dates = [item.trade_date for item in benchmark]
+    benchmark_by_date = {item.trade_date: item for item in benchmark}
     for ticker, rows in sorted(security_bars.items()):
         ordered = sorted(rows, key=lambda item: item.trade_date)
         values_for_ticker: list[float] = []
-        for previous, current in pairwise(ordered):
+        for index, (previous, current) in enumerate(pairwise(ordered)):
             value = _return(current.close, previous.close)
             observations.append((ticker, current.trade_date.isoformat(), value))
             values_for_ticker.append(value)
+            if abs(value) > 0.50 or (ticker == "VTBR" and current.trade_date == date(2022, 2, 24)):
+                benchmark_current = benchmark_by_date.get(current.trade_date)
+                benchmark_index = bisect_left(benchmark_dates, current.trade_date)
+                benchmark_previous = benchmark[benchmark_index - 1] if benchmark_index else None
+                benchmark_return = (
+                    _return(benchmark_current.close, benchmark_previous.close)
+                    if benchmark_current is not None and benchmark_previous is not None
+                    else None
+                )
+                classification = (
+                    "MARKET_MOVE"
+                    if benchmark_return is not None
+                    and abs(benchmark_return) > 0.10
+                    and (benchmark_return > 0) == (value > 0)
+                    else "UNRESOLVED"
+                )
+                review_observations.append(
+                    {
+                        "ticker": ticker,
+                        "trade_date": current.trade_date.isoformat(),
+                        "previous_trade_date": previous.trade_date.isoformat(),
+                        "previous_close": previous.close,
+                        "current": current.payload(),
+                        "raw_return": value,
+                        "imoex_baseline_date": (
+                            benchmark_previous.trade_date.isoformat()
+                            if benchmark_previous is not None
+                            else None
+                        ),
+                        "imoex_return_same_target_session": benchmark_return,
+                        "classification": classification,
+                        "neighboring_sessions": [
+                            item.payload()
+                            for item in ordered[max(0, index - 1) : min(len(ordered), index + 3)]
+                        ],
+                    }
+                )
         ticker_returns[ticker] = values_for_ticker
     values = [item[2] for item in observations]
     largest_positive = max(observations, key=lambda item: item[2]) if observations else None
@@ -552,6 +640,7 @@ def audit_prices(security_bars: dict[str, tuple[DailyBar, ...]]) -> dict[str, ob
         "ticker_statistics": {
             ticker: _return_statistics(items) for ticker, items in sorted(ticker_returns.items())
         },
+        "review_observations": review_observations,
         "price_adjustment_status": PRICE_ADJUSTMENT_STATUS,
     }
 

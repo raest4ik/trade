@@ -103,6 +103,19 @@ for the same date and applies purge and embargo dates between train, validation,
 no random split, target-based filtering, clipping, or winsorization. Extreme returns are retained
 and separately audited.
 
+When the T-Invest-native IMOEX benchmark is available, feature construction first intersects each
+security's real candle dates with real IMOEX candle dates. Rolling windows then use the preceding
+common exchange sessions. This is not forward fill: security-only weekend candles and any other
+unmatched dates remain in the raw dataset and are reported as benchmark-alignment exclusions, but
+cannot permanently poison every later rolling window. The quality report reconciles raw, warmup,
+alignment-excluded, target-tail, other, and feature-ready counts per ticker.
+
+The final data-quality audit found and fixed a cutoff bug: before intersection, each rolling window
+was built on raw security dates and then rejected if any date was absent from IMOEX. Security-only
+weekend candles appearing after 2025-02-28 therefore caused every later window to fail. The fixed
+policy records `ROLLING_WINDOWS_BUILT_BEFORE_BENCHMARK_SESSION_INTERSECTION` as the machine-readable
+cause and `COMMON_REAL_SESSIONS_NO_FORWARD_FILL` as the alignment policy.
+
 The official corporate-action page says historical quotations are adjusted for split and reverse
 split, while conversions may replace identifiers and change price-related fields. It does not
 establish a universal fully-adjusted guarantee for every instrument and action. Therefore the

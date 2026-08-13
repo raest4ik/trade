@@ -58,6 +58,11 @@ def write_feature_artifacts(
         "feature_schema_sha": result.feature_schema_sha,
         "split_sha": split.split_sha,
         "dataset_semantics": dataset_semantics(benchmark_available),
+        "feature_cutoff_audit": {
+            "cause": result.quality["feature_cutoff_cause"],
+            "was_bug": result.quality["feature_cutoff_was_bug"],
+            "alignment_policy": "COMMON_REAL_SESSIONS_NO_FORWARD_FILL",
+        },
         "price_adjustment_status": PRICE_ADJUSTMENT_STATUS,
         "targets_stored_separately": True,
         "model_trained": False,
@@ -77,6 +82,8 @@ def write_feature_artifacts(
         "counts": split.counts(),
         "purged_rows": len(split.purged_row_ids),
         "embargoed_rows": len(split.embargoed_row_ids),
+        "purged_dates": list(split.purged_dates),
+        "embargoed_dates": list(split.embargoed_dates),
         "date_ranges": split.date_ranges,
         "split_sha": split.split_sha,
         "assignments": [

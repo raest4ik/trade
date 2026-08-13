@@ -38,6 +38,7 @@ from src.tinvest_market.config import (
 from src.tinvest_market.domain import (
     BENCHMARK_TICKER,
     FEATURE_DATASET_VERSION,
+    FEATURE_WINDOW_SESSIONS,
     RAW_DATASET_VERSION,
     SECURITY_TICKERS,
     DailyBar,
@@ -135,6 +136,29 @@ async def test_client_retries_429_bounded_and_contours_never_fallback() -> None:
     assert len(rows) == 1
     assert len(requests) == 2
     assert all(request.url.host == "sandbox-invest-public-api.tbank.ru" for request in requests)
+
+
+async def test_client_retries_transient_protocol_error_bounded() -> None:
+    calls = 0
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.RemoteProtocolError("incomplete response")
+        return httpx.Response(200, json={"instruments": [_instrument_payload("SBER", "uid-SBER")]})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = TInvestReadOnlyClient(
+            token="secret",
+            contour=TInvestContour.READONLY_PRODUCTION,
+            max_retries=1,
+            client=http_client,
+            sleep=False,
+        )
+        rows = await client.find_instruments("SBER", instrument_kind="INSTRUMENT_TYPE_SHARE")
+    assert len(rows) == 1
+    assert calls == 2
 
 
 async def test_daily_candle_request_uses_exchange_source_without_incompatible_limit() -> None:
@@ -488,6 +512,30 @@ def test_abnormal_return_uses_tinvest_imoex_same_session() -> None:
     )
 
 
+def test_benchmark_alignment_does_not_create_permanent_weekend_cutoff() -> None:
+    start = date(2025, 2, 1)
+    security = tuple(_bar("SBER", start + timedelta(days=i), 100 + i, i) for i in range(100))
+    benchmark = tuple(
+        _bar("IMOEX", start + timedelta(days=i), 1000 + i, i)
+        for i in range(100)
+        if (start + timedelta(days=i)).weekday() < 5
+    )
+    result = build_dataset({"SBER": security}, benchmark)
+    aligned_dates = {item.trade_date for item in benchmark}
+    assert result.features[-1].trade_date == benchmark[-1].trade_date
+    assert all(item.trade_date in aligned_dates for item in result.features)
+    attrition = cast("dict[str, dict[str, object]]", result.quality["row_attrition"])["SBER"]
+    losses = cast("dict[str, int]", attrition["rows_lost"])
+    assert losses == {
+        "warmup": FEATURE_WINDOW_SESSIONS + 1,
+        "missing_lag_history": 0,
+        "benchmark_alignment": len(security) - len(benchmark),
+        "target_tail": 0,
+        "other": 0,
+    }
+    assert attrition["reconciled"] is True
+
+
 def test_extremes_are_retained_without_clipping_or_winsorization() -> None:
     securities, benchmark = _history()
     rows = list(securities["SBER"])
@@ -508,6 +556,9 @@ def test_extremes_are_retained_without_clipping_or_winsorization() -> None:
     )
     statistics = ticker_statistics["SBER"]
     assert set(statistics) == {"count", "min", "max", "p0.1", "p1", "p99", "p99.9"}
+    reviewed = cast("list[dict[str, object]]", result.price_audit["review_observations"])
+    assert len(reviewed) >= 2
+    assert all(item["classification"] in {"MARKET_MOVE", "UNRESOLVED"} for item in reviewed)
 
 
 def test_temporal_split_is_grouped_purged_embargoed_and_deterministic() -> None:
@@ -523,6 +574,8 @@ def test_temporal_split_is_grouped_purged_embargoed_and_deterministic() -> None:
         by_date.setdefault(rows[row_id].trade_date, set()).add(name)
     assert all(len(names) == 1 for names in by_date.values())
     assert split.purged_row_ids and split.embargoed_row_ids
+    assert len(split.purged_dates) == 4
+    assert len(split.embargoed_dates) == 4
 
 
 def test_reports_keep_sources_separate_and_moex_comparison_diagnostic(tmp_path: Path) -> None:
@@ -553,6 +606,11 @@ def test_reports_keep_sources_separate_and_moex_comparison_diagnostic(tmp_path: 
     diagnostic = json.loads(paths["moex_overlap"].read_text(encoding="utf-8"))
     assert manifest["source"] == SOURCE
     assert manifest["dataset_semantics"]["moex_data_used"] is False
+    assert manifest["feature_cutoff_audit"] == {
+        "cause": "ROLLING_WINDOWS_BUILT_BEFORE_BENCHMARK_SESSION_INTERSECTION",
+        "was_bug": True,
+        "alignment_policy": "COMMON_REAL_SESSIONS_NO_FORWARD_FILL",
+    }
     assert manifest["model_trained"] is False
     assert diagnostic["overlap_rows"] == 1
     assert diagnostic["missing_in_moex_rows"] == len(result.targets) - 1

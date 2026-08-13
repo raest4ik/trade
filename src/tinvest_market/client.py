@@ -215,7 +215,7 @@ class TInvestReadOnlyClient:
                         "User-Agent": "trade-ai-news-mvp/0.1",
                     },
                 )
-            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError) as exc:
                 if attempt >= self._max_retries:
                     raise TInvestClientError("TINVEST_API_UNAVAILABLE") from exc
                 await self._backoff(attempt)
