@@ -184,6 +184,44 @@ async def test_daily_candle_request_uses_exchange_source_without_incompatible_li
     assert "limit" not in request_body
 
 
+async def test_minute_candle_request_is_read_only_bounded_and_exchange_only() -> None:
+    request_body: dict[str, object] = {}
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        request_body.update(json.loads(request.content))
+        return httpx.Response(200, json={"candles": []})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = TInvestReadOnlyClient(
+            token="secret",
+            contour=TInvestContour.READONLY_PRODUCTION,
+            client=http_client,
+        )
+        await client.fetch_minute_candles_audited(
+            instrument_uid="uid-SBER",
+            date_from=datetime(2026, 8, 10, tzinfo=UTC),
+            date_to=datetime(2026, 8, 11, tzinfo=UTC),
+        )
+    assert request_body["interval"] == "CANDLE_INTERVAL_1_MIN"
+    assert request_body["candleSourceType"] == "CANDLE_SOURCE_EXCHANGE"
+    assert "limit" not in request_body
+
+
+async def test_minute_candle_request_rejects_ranges_over_one_day() -> None:
+    client = TInvestReadOnlyClient(
+        token="secret",
+        contour=TInvestContour.READONLY_PRODUCTION,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200))),
+    )
+    with pytest.raises(ValueError, match="must not exceed one day"):
+        await client.fetch_minute_candles_audited(
+            instrument_uid="uid-SBER",
+            date_from=datetime(2026, 8, 10, tzinfo=UTC),
+            date_to=datetime(2026, 8, 11, 0, 1, tzinfo=UTC),
+        )
+    await client.aclose()
+
+
 async def test_indicative_parser_allows_optional_class_code() -> None:
     async def handler(_request: httpx.Request) -> httpx.Response:
         payload = _instrument_payload("IMOEX", "uid-IMOEX", "INSTRUMENT_TYPE_INDEX")
@@ -208,6 +246,7 @@ def test_client_has_no_generic_or_execution_surface() -> None:
         "contour",
         "fetch_daily_candles",
         "fetch_daily_candles_audited",
+        "fetch_minute_candles_audited",
         "fetch_schedules",
         "find_instruments",
         "get_instrument_by_uid",

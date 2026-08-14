@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import cast
@@ -100,6 +100,25 @@ class TInvestDailyCandle:
 @dataclass(frozen=True, slots=True)
 class TInvestCandleBatch:
     candles: tuple[TInvestDailyCandle, ...]
+    rejected_reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class TInvestMinuteCandle:
+    instrument_uid: str
+    begin_at: datetime
+    end_at: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int
+    is_complete: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TInvestMinuteCandleBatch:
+    candles: tuple[TInvestMinuteCandle, ...]
     rejected_reasons: tuple[str, ...]
 
 
@@ -229,6 +248,42 @@ class TInvestReadOnlyClient:
             except TInvestContractError as exc:
                 rejected.append(str(exc))
         return TInvestCandleBatch(tuple(candles), tuple(rejected))
+
+    async def fetch_minute_candles_audited(
+        self,
+        *,
+        instrument_uid: str,
+        date_from: datetime,
+        date_to: datetime,
+    ) -> TInvestMinuteCandleBatch:
+        uid = _safe_identifier(instrument_uid)
+        if date_from.tzinfo is None or date_to.tzinfo is None:
+            raise ValueError("minute candle bounds must be timezone-aware")
+        begin = date_from.astimezone(UTC)
+        end = date_to.astimezone(UTC)
+        if end <= begin:
+            raise ValueError("date_to must be after date_from")
+        if end - begin > timedelta(days=1):
+            raise ValueError("minute candle request must not exceed one day")
+        payload = await self._post_read(
+            "MarketDataService/GetCandles",
+            {
+                "instrumentId": uid,
+                "from": begin.isoformat(),
+                "to": end.isoformat(),
+                "interval": "CANDLE_INTERVAL_1_MIN",
+                "candleSourceType": "CANDLE_SOURCE_EXCHANGE",
+            },
+        )
+        rows = _object_list(payload, "candles")
+        candles: list[TInvestMinuteCandle] = []
+        rejected: list[str] = []
+        for item in rows:
+            try:
+                candles.append(_parse_minute_candle(item, instrument_uid=uid))
+            except TInvestContractError as exc:
+                rejected.append(str(exc))
+        return TInvestMinuteCandleBatch(tuple(candles), tuple(rejected))
 
     async def fetch_schedules(
         self, *, date_from: date, date_to: date, exchange: str = ""
@@ -362,6 +417,30 @@ def _parse_candle(payload: dict[str, object], *, instrument_uid: str) -> TInvest
         close=close,
         volume=parsed_volume,
         is_complete=bool(payload.get("isComplete", False)),
+    )
+
+
+def _parse_minute_candle(payload: dict[str, object], *, instrument_uid: str) -> TInvestMinuteCandle:
+    daily = _parse_candle(payload, instrument_uid=instrument_uid)
+    timestamp = payload.get("time")
+    if not isinstance(timestamp, str):
+        raise TInvestContractError("TINVEST_CANDLE_INVALID")
+    try:
+        begin_at = datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone(UTC)
+    except ValueError as exc:
+        raise TInvestContractError("TINVEST_CANDLE_INVALID") from exc
+    if begin_at.second or begin_at.microsecond:
+        raise TInvestContractError("TINVEST_MINUTE_CANDLE_NOT_ALIGNED")
+    return TInvestMinuteCandle(
+        instrument_uid=instrument_uid,
+        begin_at=begin_at,
+        end_at=begin_at + timedelta(minutes=1),
+        open=daily.open,
+        high=daily.high,
+        low=daily.low,
+        close=daily.close,
+        volume=daily.volume,
+        is_complete=daily.is_complete,
     )
 
 
