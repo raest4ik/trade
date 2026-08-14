@@ -11,23 +11,35 @@ import pytest
 from src.ai_events.domain.prompt import prompt_hash, schema_hash
 from src.event_market_dataset.application import (
     EXPECTED_RULES_FINGERPRINT,
+    FROZEN_V1_DATASET_SHA,
+    FROZEN_V1_FEATURE_SCHEMA_SHA,
+    FROZEN_V1_PROVENANCE_SHA,
+    FROZEN_V1_SOURCE_REGISTRY_SHA,
     build_source_registry,
     daily_target,
     leakage_pass,
     market_context,
 )
 from src.event_market_dataset.domain import (
+    DATASET_VERSION,
     PREDICTIVE_UNIT,
     QWEN_PROMPT_SHA,
     QWEN_SCHEMA_SHA,
     REACTION_DAILY,
+    SOURCE_REGISTRY_VERSION,
     AcquiredEvent,
     EventMarketRow,
     SourceRegistryStatus,
     deduplicate_events,
+    readiness,
     require_unambiguous_ticker,
 )
-from src.event_market_dataset.sources import ArchiveSourceConfig, acquire_archive
+from src.event_market_dataset.sources import (
+    PARSER_VERSION,
+    ArchiveSourceConfig,
+    acquire_archive,
+    parse_official_archive,
+)
 from src.events.domain.v3 import rules_v3_fingerprint
 from src.news.domain.enums import PublicationTimestampQuality
 from src.shared.config.settings import (
@@ -46,6 +58,15 @@ def test_source_registry_is_deterministic_official_and_zero_cost(tmp_path: Path)
                     _instrument("YDEX", "Yandex", "uid-yandex"),
                     _instrument("NVTK", "NOVATEK", "uid-novatek"),
                     _instrument("ROSN", "Rosneft", "uid-rosneft"),
+                    _instrument("LKOH", "LUKOIL", "uid-lukoil"),
+                    _instrument("GMKN", "Nornickel", "uid-nornickel"),
+                    _instrument("TATN", "Tatneft", "uid-tatneft"),
+                    _instrument("ALRS", "ALROSA", "uid-alrosa"),
+                    _instrument("PHOR", "PhosAgro", "uid-phosagro"),
+                    _instrument("PLZL", "Polyus", "uid-polyus"),
+                    _instrument("IRAO", "Inter RAO", "uid-interrao"),
+                    _instrument("MGNT", "Magnit", "uid-magnit"),
+                    _instrument("GAZP", "Gazprom", "uid-gazprom"),
                     _instrument("ZZZZ", "Unknown issuer", "uid-unknown"),
                     _instrument("IMOEX", "Benchmark", "uid-index"),
                 ]
@@ -57,7 +78,19 @@ def test_source_registry_is_deterministic_official_and_zero_cost(tmp_path: Path)
     second = build_source_registry(mapping, checked_on=date(2026, 8, 13))
     assert [item.payload() for item in first] == [item.payload() for item in second]
     ready = [item for item in first if item.status == SourceRegistryStatus.SOURCE_READY]
-    assert {item.ticker for item in ready} == {"ROSN", "YDEX", "NVTK"}
+    assert {item.ticker for item in ready} == {
+        "ALRS",
+        "GMKN",
+        "IRAO",
+        "LKOH",
+        "MGNT",
+        "NVTK",
+        "PHOR",
+        "PLZL",
+        "ROSN",
+        "TATN",
+        "YDEX",
+    }
     assert all(
         item.official_source_url is not None and item.official_source_url.startswith("https://")
         for item in ready
@@ -69,6 +102,113 @@ def test_source_registry_is_deterministic_official_and_zero_cost(tmp_path: Path)
     assert all(item.ticker != "IMOEX" for item in first)
     yandex = next(item for item in first if item.ticker == "YDEX")
     assert "2024-07-24" in str(yandex.historical_range)
+    gazprom = next(item for item in first if item.ticker == "GAZP")
+    assert gazprom.status == SourceRegistryStatus.BLOCKED_BY_ACCESS
+    assert all(item.parser_version == PARSER_VERSION for item in ready)
+    assert all(
+        item.payload()["source_registry_version"] == SOURCE_REGISTRY_VERSION for item in first
+    )
+
+
+def test_v2_versions_and_research_readiness_are_explicit() -> None:
+    assert DATASET_VERSION == "event-market-predictive-dataset-v2"
+    assert SOURCE_REGISTRY_VERSION == "event-source-registry-v2"
+    assert readiness(746, 3)["event_model_data_status"] == "NOT_READY"
+    assert readiness(500, 10)["event_model_data_status"] == "READY_FOR_BASELINE_EXPERIMENT"
+    assert readiness(500, 4)["event_diversity_status"] == "VERY_LOW_EVENT_DIVERSITY"
+    assert FROZEN_V1_DATASET_SHA == (
+        "21053ddf973f08837b719c28119ae20af8563b6caa88fe603cbef6a6e114e4f5"
+    )
+    assert FROZEN_V1_SOURCE_REGISTRY_SHA == (
+        "3cd7a8a268be5c6146ce9793971940787de8cd0fb4ed493ca5d63f097658f13d"
+    )
+    assert FROZEN_V1_PROVENANCE_SHA == (
+        "73e9c2cfe9a1709979a78a4b9f674f3b963ae79e288747e85a32c7560146b838"
+    )
+    assert FROZEN_V1_FEATURE_SCHEMA_SHA == (
+        "4be00e812ba4e23a5245c0d132057bbb5d2e4fc1c6b50ea40a85ae476cfe34cc"
+    )
+
+
+@pytest.mark.parametrize(
+    ("profile", "payload", "expected_title"),
+    [
+        (
+            "TATNEFT",
+            '<div class="material"><span class="material__date">9 августа 2024</span>'
+            '<a href="/press-tsentr/press-relizi/more/9140/?lang=ru" '
+            'class="material__title">Tatneft release</a></div>',
+            "Tatneft release",
+        ),
+        (
+            "PHOSAGRO",
+            '<a href="/press/company/release/" class="press__card link">'
+            '<h4>PhosAgro release</h4><div class="press__card-date">10 июля 2026</div></a>',
+            "PhosAgro release",
+        ),
+        (
+            "POLYUS",
+            '<article class="news-item"><a href="/ru/media/press-releases/release/">'
+            'Polyus release</a><time datetime="2026-07-27">27 июля</time></article>',
+            "Polyus release",
+        ),
+        (
+            "INTERRAO",
+            '<div class="news-item"><div class="date">12 мая 2026</div>'
+            '<div class="name"><a href="detail.php?ID=18945">Inter RAO release</a></div>',
+            "Inter RAO release",
+        ),
+    ],
+)
+def test_configured_official_html_profiles_are_reusable(
+    profile: str, payload: str, expected_title: str
+) -> None:
+    parsed = parse_official_archive(
+        payload,
+        base_url="https://issuer.example/archive/",
+        profile=profile,
+    )
+    assert len(parsed) == 1
+    assert parsed[0].title == expected_title
+    assert parsed[0].publication_date <= date(2026, 12, 31)
+
+
+def test_public_application_state_profiles_do_not_impute_time() -> None:
+    nornickel = (
+        '<script>App = {"items":[{"name":"Nornickel release","code":"release",'
+        '"detailPageUrl":"/news/release/","activeFrom":1785218400}]};</script>'
+    )
+    magnit = (
+        '<script>App = {"items":[{"date":1786088700,"name":"Magnit release",'
+        '"link":"/ru/media/press-releases/release/"}]};</script>'
+    )
+    for profile, payload in (("NORNICKEL_APP", nornickel), ("MAGNIT_APP", magnit)):
+        parsed = parse_official_archive(
+            payload,
+            base_url="https://issuer.example/",
+            profile=profile,
+        )
+        assert len(parsed) == 1
+        assert isinstance(parsed[0].publication_date, date)
+
+
+def test_lukoil_and_alrosa_public_json_profiles() -> None:
+    lukoil = (
+        '<script type="application/json" class="pressreleases-data">'
+        '{"Items":[{"FriendlyUrl":"release","Name":"LUKOIL release",'
+        '"PublicationDate":"2026-07-21T00:00:00"}]}</script>'
+    )
+    alrosa = (
+        '<ar-news :news="[{&quot;id&quot;:&quot;1&quot;,&quot;caption&quot;:'
+        "&quot;ALROSA release&quot;,&quot;date&quot;:&quot;27 дек 2025&quot;,"
+        '&quot;url&quot;:&quot;/press-center/news/2025/release/&quot;}]"></ar-news>'
+    )
+    assert parse_official_archive(lukoil, base_url="https://lukoil.ru/", profile="LUKOIL")[
+        0
+    ].publication_date == date(2026, 7, 21)
+    assert parse_official_archive(alrosa, base_url="https://www.alrosa.ru/", profile="ALROSA")[
+        0
+    ].publication_date == date(2025, 12, 27)
 
 
 def test_novatek_parser_canonicalizes_stable_release_id() -> None:
@@ -264,6 +404,9 @@ def test_generated_contract_has_no_order_or_secret_capability() -> None:
     assert not any(value in text.lower() for value in forbidden)
     assert 'observed_market_test_used": False' in text
     assert 'future_holdout_evaluated": False' in text
+    application = Path("src/event_market_dataset/application.py").read_text(encoding="utf-8")
+    assert '"source_selection_used_future_returns": False' in application
+    assert '"events_downsampled_by_reaction": False' in application
 
 
 def _instrument(ticker: str, name: str, uid: str) -> dict[str, str]:
@@ -285,6 +428,7 @@ def _archive_config() -> ArchiveSourceConfig:
         collection_method="bounded year page",
         historical_range="2026",
         live_supported=False,
+        parser_profile="YANDEX",
     )
 
 
