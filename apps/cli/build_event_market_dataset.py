@@ -27,7 +27,7 @@ from src.reaction_ready_corpus.domain import REAL_SOURCE_CODES
 from src.shared.config.settings import get_settings
 from src.shared.database.session import create_engine, create_session_factory
 
-DEFAULT_OUTPUT = Path("artifacts/event-market-predictive-dataset-v1")
+DEFAULT_OUTPUT = Path("artifacts/event-market-predictive-dataset-v2")
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -58,6 +58,8 @@ async def run(args: argparse.Namespace) -> int:
         existing_texts=existing_texts,
         old_corpus_path=Path(args.old_corpus),
         old_manifest_path=Path(args.old_manifest),
+        previous_dataset_manifest_path=Path(args.previous_dataset_manifest),
+        previous_dataset_dir=Path(args.previous_dataset_dir),
         market_feature_path=Path(args.market_features),
         market_manifest_path=Path(args.market_manifest),
         raw_series_dir=Path(args.raw_series_dir),
@@ -137,6 +139,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--old-corpus", default="artifacts/reaction-ready-corpus-v3/corpus.jsonl")
     parser.add_argument(
         "--old-manifest", default="artifacts/reaction-ready-corpus-v3/manifest.json"
+    )
+    parser.add_argument(
+        "--previous-dataset-manifest",
+        default="artifacts/event-market-predictive-dataset-v1/manifest.json",
+    )
+    parser.add_argument(
+        "--previous-dataset-dir",
+        default="artifacts/event-market-predictive-dataset-v1",
     )
     parser.add_argument(
         "--instrument-mapping",

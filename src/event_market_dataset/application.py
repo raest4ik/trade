@@ -5,6 +5,7 @@ from collections import Counter
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from pathlib import Path
+from statistics import median
 from typing import Any, cast
 
 from src.ai_events.domain.prompt import prompt_hash, schema_hash
@@ -28,13 +29,17 @@ from src.event_market_dataset.domain import (
     readiness,
     sha256_payload,
 )
-from src.event_market_dataset.sources import ArchiveSourceConfig, acquire_archive
+from src.event_market_dataset.sources import PARSER_VERSION, ArchiveSourceConfig, acquire_archive
 from src.events.domain.enums import EventType
 from src.events.domain.v3 import EventAnalyzerV3, rules_v3_fingerprint
 from src.news.domain.enums import PublicationTimestampQuality
 
 EXPECTED_RULES_FINGERPRINT = "3510511d1f7b3ce02a4efa245816b9422e6014088f1595b0339dcfd5be9e7f06"
 EXPECTED_FEATURE_SCHEMA_SHA = "f7a60ecf55d7d0f7d455035810312224a30ee637a3bab2dfede231ca9dc0bb45"
+FROZEN_V1_DATASET_SHA = "21053ddf973f08837b719c28119ae20af8563b6caa88fe603cbef6a6e114e4f5"
+FROZEN_V1_SOURCE_REGISTRY_SHA = "3cd7a8a268be5c6146ce9793971940787de8cd0fb4ed493ca5d63f097658f13d"
+FROZEN_V1_PROVENANCE_SHA = "73e9c2cfe9a1709979a78a4b9f674f3b963ae79e288747e85a32c7560146b838"
+FROZEN_V1_FEATURE_SCHEMA_SHA = "4be00e812ba4e23a5245c0d132057bbb5d2e4fc1c6b50ea40a85ae476cfe34cc"
 
 
 def build_source_registry(
@@ -44,7 +49,7 @@ def build_source_registry(
 ) -> tuple[EventSourceRegistryEntry, ...]:
     payload = cast("dict[str, Any]", json.loads(mapping_path.read_text(encoding="utf-8")))
     instruments = cast("list[dict[str, Any]]", payload["instruments"])
-    known = {
+    ready = {
         "ROSN": {
             "url": "https://www.rosneft.com/press/releases/rss/",
             "name": "Rosneft Press Releases RSS",
@@ -54,6 +59,11 @@ def build_source_registry(
             "history": "YES",
             "range": "current 20-item feed plus official dated archive",
             "live": True,
+            "parser": "ISSUER_RSS",
+            "timestamp": "RFC 822 pubDate with numeric +0300 offset",
+            "exact": True,
+            "date_only": True,
+            "rss": True,
         },
         "YDEX": {
             "url": "https://ir.yandex.ru/press-releases",
@@ -64,6 +74,11 @@ def build_source_registry(
             "history": "YES",
             "range": "YDEX identity accepted from 2024-07-24; older YNDX rows excluded",
             "live": True,
+            "parser": "YANDEX",
+            "timestamp": "RSS is exact; archive calendar dates remain DATE_ONLY",
+            "exact": True,
+            "date_only": True,
+            "rss": True,
         },
         "NVTK": {
             "url": "https://www.novatek.ru/en/press/releases/",
@@ -74,7 +89,159 @@ def build_source_registry(
             "history": "YES",
             "range": "multi-year official archive",
             "live": False,
+            "parser": "NOVATEK",
+            "timestamp": "Official archive exposes calendar date only",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
         },
+        "LKOH": {
+            "url": "https://lukoil.ru/PressCenter/Pressreleases",
+            "name": "LUKOIL Press Releases",
+            "owner": "PJSC LUKOIL",
+            "type": "ISSUER_ARCHIVE",
+            "method": "bounded offset pages with embedded public JSON",
+            "history": "YES",
+            "range": "multi-year official archive",
+            "live": True,
+            "parser": "LUKOIL",
+            "timestamp": "PublicationDate is calendar-date only; time is not imputed",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+        "GMKN": {
+            "url": "https://nornickel.ru/news-and-media/press-releases-and-news/",
+            "name": "Nornickel Press Releases and News",
+            "owner": "PJSC MMC Norilsk Nickel",
+            "type": "ISSUER_ARCHIVE",
+            "method": "single bounded archive page with public application state",
+            "history": "YES",
+            "range": "current official archive page",
+            "live": True,
+            "parser": "NORNICKEL_APP",
+            "timestamp": "Only the calendar date is accepted from archive state",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+        "TATN": {
+            "url": "https://old.tatneft.ru/press-tsentr/press-relizi?lang=ru",
+            "name": "Tatneft Press Releases",
+            "owner": "PJSC Tatneft",
+            "type": "ISSUER_ARCHIVE",
+            "method": "single bounded official legacy archive page",
+            "history": "YES",
+            "range": "official legacy archive",
+            "live": False,
+            "parser": "TATNEFT",
+            "timestamp": "Official archive exposes calendar date only",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+        "ALRS": {
+            "url": "https://www.alrosa.ru/press-center/news/",
+            "name": "ALROSA News",
+            "owner": "PJSC ALROSA",
+            "type": "ISSUER_ARCHIVE",
+            "method": "explicit bounded official year pages",
+            "history": "YES",
+            "range": "year archive pages",
+            "live": True,
+            "parser": "ALROSA",
+            "timestamp": "Visible source contract is calendar-date only",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+        "PHOR": {
+            "url": "https://www.phosagro.ru/press/company/",
+            "name": "PhosAgro Company News",
+            "owner": "PJSC PhosAgro",
+            "type": "ISSUER_ARCHIVE",
+            "method": "single bounded official archive page",
+            "history": "YES",
+            "range": "multi-year official archive page",
+            "live": True,
+            "parser": "PHOSAGRO",
+            "timestamp": "Official cards expose calendar date only",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+        "PLZL": {
+            "url": "https://polyus.com/ru/media/press-releases/",
+            "name": "Polyus Press Releases",
+            "owner": "PJSC Polyus",
+            "type": "ISSUER_ARCHIVE",
+            "method": "single bounded official archive page",
+            "history": "YES",
+            "range": "official year-filtered archive",
+            "live": True,
+            "parser": "POLYUS",
+            "timestamp": "Cards show time without timezone; only date is accepted",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+        "IRAO": {
+            "url": "https://www.interrao.ru/press-center/news/",
+            "name": "Inter RAO Company News",
+            "owner": "PJSC Inter RAO",
+            "type": "ISSUER_ARCHIVE",
+            "method": "single bounded official archive page",
+            "history": "YES",
+            "range": "multi-year official archive",
+            "live": True,
+            "parser": "INTERRAO",
+            "timestamp": "Official cards expose calendar date only",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+        "MGNT": {
+            "url": "https://www.magnit.com/ru/media/press-releases/",
+            "name": "Magnit Press Releases",
+            "owner": "PJSC Magnit",
+            "type": "ISSUER_ARCHIVE",
+            "method": "single bounded archive page with public application state",
+            "history": "YES",
+            "range": "official paginated archive",
+            "live": True,
+            "parser": "MAGNIT_APP",
+            "timestamp": "Only the calendar date is accepted from archive state",
+            "exact": False,
+            "date_only": True,
+            "rss": False,
+        },
+    }
+    discovered = {
+        "GAZP": (
+            "https://www.gazprom.ru/press/news/",
+            SourceRegistryStatus.BLOCKED_BY_ACCESS,
+            "Official archive verified, but controlled HTTPS requests time out in this environment",
+        ),
+        "SBER": (
+            "https://www.sberbank.com/news-and-media/press-releases",
+            SourceRegistryStatus.BLOCKED_BY_ACCESS,
+            "Official archive returns an access support page to the controlled client",
+        ),
+        "SBERP": (
+            "https://www.sberbank.com/news-and-media/press-releases",
+            SourceRegistryStatus.BLOCKED_BY_ACCESS,
+            "Shares issuer source with SBER; access and matching ambiguity remain unresolved",
+        ),
+        "T": (
+            "https://www.tbank.ru/about/news/",
+            SourceRegistryStatus.SOURCE_IMPLEMENTATION_REQUIRED,
+            "Official date-only archive discovered; deterministic collector not implemented",
+        ),
+        "VTBR": (
+            "https://www.vtb.com/ir/statements/results/",
+            SourceRegistryStatus.BLOCKED_BY_ACCESS,
+            "Official investor page discovered; stable public archive contract not accessible",
+        ),
     }
     entries: list[EventSourceRegistryEntry] = []
     ordered = sorted(
@@ -85,27 +252,33 @@ def build_source_registry(
         ticker = str(item["ticker"])
         if ticker == "IMOEX":
             continue
-        source = known.get(ticker)
+        source = ready.get(ticker)
         if source is None:
+            audit = discovered.get(ticker)
             entries.append(
                 EventSourceRegistryEntry(
                     ticker=ticker,
                     issuer_name=str(item["name"]),
                     instrument_uid=str(item["instrument_uid"]),
                     figi=_optional(item.get("figi")),
-                    official_source_url=None,
-                    source_name=None,
-                    source_type=None,
-                    official_owner=None,
-                    collection_method=None,
-                    history_available="UNKNOWN",
+                    official_source_url=audit[0] if audit else None,
+                    source_name="Official issuer news archive" if audit else None,
+                    source_type="ISSUER_ARCHIVE" if audit else None,
+                    official_owner=str(item["name"]) if audit else None,
+                    collection_method="bounded discovery request" if audit else None,
+                    history_available="UNKNOWN" if audit else "NO_VERIFIED_ARCHIVE",
                     historical_range=None,
                     live_supported=False,
-                    status=SourceRegistryStatus.NO_OFFICIAL_SOURCE_FOUND,
+                    status=audit[1] if audit else SourceRegistryStatus.NO_OFFICIAL_NEWS_ARCHIVE,
                     reason=(
-                        "No verified official free source URL is registered; no URL was guessed"
+                        audit[2]
+                        if audit
+                        else (
+                            "No verified official free archive was found in bounded v2 discovery; "
+                            "no URL was guessed"
+                        )
                     ),
-                    public_access=False,
+                    public_access=bool(audit),
                     payment_required=False,
                     authentication_required=False,
                     robots_rate_limit_notes=(
@@ -115,6 +288,7 @@ def build_source_registry(
                     internal_research_use_status="NOT_APPROVED",
                     first_seen=checked_on.isoformat(),
                     last_checked=checked_on.isoformat(),
+                    rights_status="UNKNOWN_FAIL_CLOSED",
                 )
             )
             continue
@@ -142,6 +316,16 @@ def build_source_registry(
                 internal_research_use_status="PRIVATE_INTERNAL_RESEARCH_APPROVED",
                 first_seen=checked_on.isoformat(),
                 last_checked=checked_on.isoformat(),
+                exact_timestamp_available=bool(source["exact"]),
+                date_only_available=bool(source["date_only"]),
+                rss_available=bool(source["rss"]),
+                api_available=False,
+                incremental_collection_supported=bool(source["live"]),
+                timestamp_semantics=str(source["timestamp"]),
+                stable_item_identity="Canonical issuer release URL or issuer publication id",
+                collector_family="BOUNDED_OFFICIAL_ARCHIVE_V2",
+                parser_version=PARSER_VERSION,
+                rights_status="PUBLIC_METADATA_PRIVATE_INTERNAL_RESEARCH",
             )
         )
     return tuple(entries)
@@ -172,6 +356,7 @@ async def acquire_new_events(
             collection_method="explicit bounded year pages",
             historical_range=f"{date_from.year}-{date_to.year}",
             live_supported=False,
+            parser_profile="YANDEX",
         ),
         ArchiveSourceConfig(
             source_code="NOVATEK_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
@@ -187,8 +372,138 @@ async def acquire_new_events(
             collection_method="bounded numbered archive pages",
             historical_range=f"{date_from.isoformat()}..{date_to.isoformat()}",
             live_supported=False,
+            parser_profile="NOVATEK",
+        ),
+        ArchiveSourceConfig(
+            source_code="LUKOIL_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            source_name="LUKOIL Press Releases",
+            official_owner="PJSC LUKOIL",
+            ticker="LKOH",
+            issuer_name=by_ticker["LKOH"].issuer_name,
+            instrument_uid=by_ticker["LKOH"].instrument_uid,
+            figi=by_ticker["LKOH"].figi,
+            url_template=("https://lukoil.ru/PressCenter/Pressreleases?skip={page}&take=100"),
+            page_values=tuple(range(0, 1000, 100)),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="bounded offset pages",
+            historical_range=f"{date_from.isoformat()}..{date_to.isoformat()}",
+            live_supported=True,
+            parser_profile="LUKOIL",
+        ),
+        ArchiveSourceConfig(
+            source_code="NORNICKEL_NEWS_ARCHIVE_DATE_ONLY",
+            source_name="Nornickel Press Releases and News",
+            official_owner="PJSC MMC Norilsk Nickel",
+            ticker="GMKN",
+            issuer_name=by_ticker["GMKN"].issuer_name,
+            instrument_uid=by_ticker["GMKN"].instrument_uid,
+            figi=by_ticker["GMKN"].figi,
+            url_template=("https://nornickel.ru/news-and-media/press-releases-and-news/"),
+            page_values=(1,),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="bounded current archive page",
+            historical_range="current official archive page",
+            live_supported=True,
+            parser_profile="NORNICKEL_APP",
+        ),
+        ArchiveSourceConfig(
+            source_code="TATNEFT_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            source_name="Tatneft Press Releases",
+            official_owner="PJSC Tatneft",
+            ticker="TATN",
+            issuer_name=by_ticker["TATN"].issuer_name,
+            instrument_uid=by_ticker["TATN"].instrument_uid,
+            figi=by_ticker["TATN"].figi,
+            url_template="https://old.tatneft.ru/press-tsentr/press-relizi?lang=ru",
+            page_values=(1,),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="bounded legacy archive page",
+            historical_range="official legacy archive",
+            live_supported=False,
+            parser_profile="TATNEFT",
+        ),
+        ArchiveSourceConfig(
+            source_code="ALROSA_NEWS_ARCHIVE_DATE_ONLY",
+            source_name="ALROSA News",
+            official_owner="PJSC ALROSA",
+            ticker="ALRS",
+            issuer_name=by_ticker["ALRS"].issuer_name,
+            instrument_uid=by_ticker["ALRS"].instrument_uid,
+            figi=by_ticker["ALRS"].figi,
+            url_template="https://www.alrosa.ru/press-center/news/{page}/",
+            page_values=tuple(range(date_to.year, date_from.year - 1, -1)),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="explicit bounded year pages",
+            historical_range=f"{date_from.year}-{date_to.year}",
+            live_supported=True,
+            parser_profile="ALROSA",
+        ),
+        ArchiveSourceConfig(
+            source_code="PHOSAGRO_COMPANY_NEWS_DATE_ONLY",
+            source_name="PhosAgro Company News",
+            official_owner="PJSC PhosAgro",
+            ticker="PHOR",
+            issuer_name=by_ticker["PHOR"].issuer_name,
+            instrument_uid=by_ticker["PHOR"].instrument_uid,
+            figi=by_ticker["PHOR"].figi,
+            url_template="https://www.phosagro.ru/press/company/",
+            page_values=(1,),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="bounded current archive page",
+            historical_range="multi-year official archive page",
+            live_supported=True,
+            parser_profile="PHOSAGRO",
+        ),
+        ArchiveSourceConfig(
+            source_code="POLYUS_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            source_name="Polyus Press Releases",
+            official_owner="PJSC Polyus",
+            ticker="PLZL",
+            issuer_name=by_ticker["PLZL"].issuer_name,
+            instrument_uid=by_ticker["PLZL"].instrument_uid,
+            figi=by_ticker["PLZL"].figi,
+            url_template="https://polyus.com/ru/media/press-releases/",
+            page_values=(1,),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="bounded current archive page",
+            historical_range="official year-filtered archive",
+            live_supported=True,
+            parser_profile="POLYUS",
+        ),
+        ArchiveSourceConfig(
+            source_code="INTERRAO_COMPANY_NEWS_DATE_ONLY",
+            source_name="Inter RAO Company News",
+            official_owner="PJSC Inter RAO",
+            ticker="IRAO",
+            issuer_name=by_ticker["IRAO"].issuer_name,
+            instrument_uid=by_ticker["IRAO"].instrument_uid,
+            figi=by_ticker["IRAO"].figi,
+            url_template="https://www.interrao.ru/press-center/news/",
+            page_values=(1,),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="bounded current archive page",
+            historical_range="multi-year official archive",
+            live_supported=True,
+            parser_profile="INTERRAO",
+        ),
+        ArchiveSourceConfig(
+            source_code="MAGNIT_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            source_name="Magnit Press Releases",
+            official_owner="PJSC Magnit",
+            ticker="MGNT",
+            issuer_name=by_ticker["MGNT"].issuer_name,
+            instrument_uid=by_ticker["MGNT"].instrument_uid,
+            figi=by_ticker["MGNT"].figi,
+            url_template="https://www.magnit.com/ru/media/press-releases/",
+            page_values=(1,),
+            source_type="ISSUER_ARCHIVE",
+            collection_method="bounded current archive page",
+            historical_range="official paginated archive",
+            live_supported=True,
+            parser_profile="MAGNIT_APP",
         ),
     )
+    configs = tuple(config for config in configs if config.ticker not in {"YDEX", "NVTK"})
     acquired: list[AcquiredEvent] = []
     errors: list[dict[str, object]] = []
     for config in configs:
@@ -235,6 +550,8 @@ def build_dataset(
     existing_texts: dict[str, str],
     old_corpus_path: Path,
     old_manifest_path: Path,
+    previous_dataset_manifest_path: Path,
+    previous_dataset_dir: Path,
     market_feature_path: Path,
     market_manifest_path: Path,
     raw_series_dir: Path,
@@ -252,21 +569,37 @@ def build_dataset(
     if market_manifest.get("feature_schema_sha") != EXPECTED_FEATURE_SCHEMA_SHA:
         raise ValueError("MARKET_FEATURE_SCHEMA_MISMATCH")
     old_manifest = _read_json(old_manifest_path)
-    market = _load_market_features(market_feature_path)
-    identities = _load_instrument_identities(instrument_mapping_path)
-    analyzer = EventAnalyzerV3()
-    old_features, old_targets = _load_old_exact(
-        old_corpus_path,
-        market=market,
-        identities=identities,
-        existing_texts=existing_texts,
-        analyzer=analyzer,
+    previous_manifest = _read_json(previous_dataset_manifest_path)
+    frozen_v1 = {
+        "event_market_dataset_sha": FROZEN_V1_DATASET_SHA,
+        "source_registry_sha": FROZEN_V1_SOURCE_REGISTRY_SHA,
+        "provenance_manifest_sha": FROZEN_V1_PROVENANCE_SHA,
+        "feature_schema_sha": FROZEN_V1_FEATURE_SCHEMA_SHA,
+    }
+    if any(previous_manifest.get(key) != value for key, value in frozen_v1.items()):
+        raise ValueError("FROZEN_EVENT_MARKET_DATASET_V1_MISMATCH")
+    previous_features = _read_jsonl(previous_dataset_dir / "features.jsonl")
+    previous_targets = _read_jsonl(previous_dataset_dir / "targets.jsonl")
+    actual_v1_sha = sha256_payload(
+        {
+            "dataset_version": "event-market-predictive-dataset-v1",
+            "features": previous_features,
+            "targets": previous_targets,
+        }
     )
+    if actual_v1_sha != FROZEN_V1_DATASET_SHA:
+        raise ValueError("FROZEN_EVENT_MARKET_DATASET_V1_CONTENT_MISMATCH")
+    market = _load_market_features(market_feature_path)
+    analyzer = EventAnalyzerV3()
+    _ = (old_corpus_path, existing_texts, old_manifest)
     new_events, dedupe_drops = deduplicate_events(
         acquired_events,
         existing_events=existing_events,
     )
-    series = _load_series(raw_series_dir, {"YDEX", "NVTK", "IMOEX"})
+    series = _load_series(
+        raw_series_dir,
+        {"IMOEX", *(event.ticker for event in new_events)},
+    )
     benchmark = series["IMOEX"]
     built_rows: list[EventMarketRow] = []
     targets: list[dict[str, object]] = []
@@ -317,8 +650,8 @@ def build_dataset(
         )
         targets.append(target)
 
-    feature_payloads = [*old_features, *(item.feature_payload() for item in built_rows)]
-    target_payloads = [*old_targets, *targets]
+    feature_payloads = [*previous_features, *(item.feature_payload() for item in built_rows)]
+    target_payloads = [*previous_targets, *targets]
     _reconcile_features_targets(feature_payloads, target_payloads)
     if not all(leakage_pass(item) for item in feature_payloads):
         raise ValueError("EVENT_MARKET_LEAKAGE_CHECK_FAILED")
@@ -334,29 +667,25 @@ def build_dataset(
             "targets": target_payloads,
         }
     )
-    old_total = int(old_manifest["REAL_discovered"])
-    old_matched = int(old_manifest["matched"])
-    old_exact_ready = int(old_manifest["reaction_ready"])
-    old_feature_ready = int(old_manifest["feature_ready"])
-    total_real = old_total + len(new_events)
-    matched_total = old_matched + len(new_events)
-    exact_total = int(old_manifest["REAL_EXACT"])
-    date_only_total = len(new_events)
-    date_safe_ready = len(built_rows)
+    previous_total = int(previous_manifest["new_total_real_events"])
+    previous_feature_ready = int(previous_manifest["event_market_feature_ready"])
+    total_real = previous_total + len(new_events)
+    matched_total = int(previous_manifest["ticker_matched_events"]) + len(new_events)
+    exact_total = int(previous_manifest["exact_timestamp_events"])
+    date_only_total = int(previous_manifest["date_only_events"]) + len(new_events)
+    date_safe_ready = int(previous_manifest["reaction_ready_date_safe"]) + len(built_rows)
     feature_ready = len(feature_payloads)
-    ticker_counts = Counter(cast("dict[str, int]", old_manifest["ticker_distribution"]))
+    ticker_counts = Counter(cast("dict[str, int]", previous_manifest["events_per_ticker"]))
     ticker_counts.update(event.ticker for event in new_events)
-    source_counts = Counter(cast("dict[str, int]", old_manifest["source_distribution"]))
+    source_counts = Counter(cast("dict[str, int]", previous_manifest["events_per_source"]))
     source_counts.update(event.source_code for event in new_events)
-    year_counts = Counter(
-        month[:4]
-        for month, count in cast("dict[str, int]", old_manifest["month_distribution"]).items()
-        for _ in range(count)
-    )
+    year_counts = Counter(cast("dict[str, int]", previous_manifest["events_per_year"]))
     year_counts.update(str(event.publication_date.year) for event in new_events)
-    all_dates = [event.publication_date for event in existing_events]
+    all_dates = [date.fromisoformat(str(previous_manifest["event_date_from"]))]
+    all_dates.append(date.fromisoformat(str(previous_manifest["event_date_to"])))
     all_dates.extend(event.publication_date for event in new_events)
     ready = readiness(feature_ready, len(ticker_counts))
+    concentration = _ticker_concentration(ticker_counts)
     provenance = {
         "dataset_version": DATASET_VERSION,
         "git_sha": git_sha,
@@ -365,6 +694,8 @@ def build_dataset(
         "market_feature_sha": market_manifest["feature_sha"],
         "market_feature_schema_sha": market_manifest["feature_schema_sha"],
         "old_corpus_sha": sha256_payload(old_manifest),
+        "frozen_v1_dataset_sha": FROZEN_V1_DATASET_SHA,
+        "frozen_v1_manifest_sha": sha256_payload(previous_manifest),
         "source_errors": source_errors,
         "external_paid_data_cost_rub": 0,
         "raw_full_text_redistributed": False,
@@ -387,26 +718,41 @@ def build_dataset(
             "ROSNEFT_PRESS_RELEASES_RSS",
             "YANDEX_IR_PRESS_RELEASES_RSS_AND_ARCHIVE",
             "NOVATEK_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            "LUKOIL_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            "NORNICKEL_NEWS_ARCHIVE_DATE_ONLY",
+            "TATNEFT_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            "ALROSA_NEWS_ARCHIVE_DATE_ONLY",
+            "PHOSAGRO_COMPANY_NEWS_DATE_ONLY",
+            "POLYUS_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
+            "INTERRAO_COMPANY_NEWS_DATE_ONLY",
+            "MAGNIT_PRESS_RELEASE_ARCHIVE_DATE_ONLY",
         ],
+        "reusable_multi_issuer_source_families": 0,
+        "shared_transport_family": "BOUNDED_OFFICIAL_ARCHIVE_V2",
         "source_policy_blocked_count": sum(
             item.status == SourceRegistryStatus.BLOCKED_BY_SOURCE_POLICY for item in source_registry
         ),
-        "old_total_real_events": old_total,
-        "old_reaction_ready": old_exact_ready,
-        "old_feature_ready": old_feature_ready,
-        "old_unique_tickers": len(cast("dict[str, int]", old_manifest["ticker_distribution"])),
+        "source_access_blocked_count": sum(
+            item.status == SourceRegistryStatus.BLOCKED_BY_ACCESS for item in source_registry
+        ),
+        "old_total_real_events": previous_total,
+        "old_reaction_ready": int(previous_manifest["reaction_ready_exact"])
+        + int(previous_manifest["reaction_ready_date_safe"]),
+        "old_feature_ready": previous_feature_ready,
+        "old_unique_tickers": int(previous_manifest["unique_tickers"]),
         "new_total_real_events": total_real,
-        "event_corpus_growth_absolute": total_real - old_total,
-        "event_corpus_growth_percent": (total_real - old_total) / old_total * 100.0,
+        "event_corpus_growth_absolute": total_real - previous_total,
+        "event_corpus_growth_percent": (total_real - previous_total) / previous_total * 100.0,
         "exact_timestamp_events": exact_total,
         "date_only_events": date_only_total,
         "unverified_events": 0,
         "ticker_matched_events": matched_total,
         "ticker_ambiguous_unresolved": int(old_manifest["ambiguous"])
         + int(old_manifest["unmatched"]),
-        "reaction_ready_exact": old_exact_ready,
+        "reaction_ready_exact": int(previous_manifest["reaction_ready_exact"]),
         "reaction_ready_date_safe": date_safe_ready,
         "event_market_feature_ready": feature_ready,
+        "feature_ready_growth_absolute": feature_ready - previous_feature_ready,
         "unique_tickers": len(ticker_counts),
         "unique_issuers": len(ticker_counts),
         "event_date_from": min(all_dates).isoformat() if all_dates else None,
@@ -414,6 +760,7 @@ def build_dataset(
         "events_per_ticker": dict(sorted(ticker_counts.items())),
         "events_per_year": dict(sorted(year_counts.items())),
         "events_per_source": dict(sorted(source_counts.items())),
+        **concentration,
         "event_market_dataset_sha": dataset_sha,
         "source_registry_sha": source_registry_sha,
         "provenance_manifest_sha": provenance_sha,
@@ -441,6 +788,8 @@ def build_dataset(
         "buy_sell_generated": False,
         "real_trading_allowed": False,
         "paid_services_used": False,
+        "source_selection_used_future_returns": False,
+        "events_downsampled_by_reaction": False,
         "exclusion_count": len(exclusions),
         "exclusions_by_reason": dict(
             sorted(Counter(str(item["reason"]) for item in exclusions).items())
@@ -685,6 +1034,44 @@ def _clusters(rows: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def _ticker_concentration(counts: Counter[str]) -> dict[str, object]:
+    values = sorted(counts.values())
+    total = sum(values)
+    if not values or total == 0:
+        return {
+            "top_ticker_event_share": 0.0,
+            "top_3_tickers_event_share": 0.0,
+            "issuer_hhi": 0.0,
+            "median_events_per_ticker": 0.0,
+            "p10_events_per_ticker": 0,
+            "p90_events_per_ticker": 0,
+            "concentration_warnings": [],
+        }
+    descending = sorted(values, reverse=True)
+    shares = [value / total for value in values]
+    top_share = descending[0] / total
+    top_3_share = sum(descending[:3]) / total
+    warnings: list[str] = []
+    if top_share > 0.70:
+        warnings.append("HIGH_TOP_TICKER_CONCENTRATION")
+    if top_3_share > 0.70:
+        warnings.append("HIGH_TOP_3_TICKER_CONCENTRATION")
+    return {
+        "top_ticker_event_share": top_share,
+        "top_3_tickers_event_share": top_3_share,
+        "issuer_hhi": sum(value * value for value in shares),
+        "median_events_per_ticker": median(values),
+        "p10_events_per_ticker": _nearest_rank(values, 0.10),
+        "p90_events_per_ticker": _nearest_rank(values, 0.90),
+        "concentration_warnings": warnings,
+    }
+
+
+def _nearest_rank(values: list[int], quantile: float) -> int:
+    index = max(0, min(len(values) - 1, int((len(values) - 1) * quantile)))
+    return values[index]
+
+
 def _feature_schema(rows: list[dict[str, object]]) -> dict[str, object]:
     return {
         "event_features": list(event_feature_names()),
@@ -745,6 +1132,14 @@ def _uuid(value: str):
 
 def _read_json(path: Path) -> dict[str, Any]:
     return cast("dict[str, Any]", json.loads(path.read_text(encoding="utf-8")))
+
+
+def _read_jsonl(path: Path) -> list[dict[str, object]]:
+    return [
+        cast("dict[str, object]", json.loads(line))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
 
 
 def _write_json(path: Path, payload: object) -> None:

@@ -12,8 +12,8 @@ from uuid import UUID, uuid5
 from src.events.domain.enums import EventType
 from src.news.domain.enums import PublicationTimestampQuality
 
-DATASET_VERSION = "event-market-predictive-dataset-v1"
-SOURCE_REGISTRY_VERSION = "event-source-registry-v1"
+DATASET_VERSION = "event-market-predictive-dataset-v2"
+SOURCE_REGISTRY_VERSION = "event-source-registry-v2"
 MARKET_CONTEXT_VERSION = "event-market-context-v1"
 PREDICTIVE_UNIT = "EVENT"
 EVENT_RULES_VERSION = "event-rules-v3"
@@ -28,10 +28,17 @@ _EVENT_NAMESPACE = UUID("7a8e1054-6309-4bbf-9c30-ad316f9ae150")
 
 class SourceRegistryStatus(StrEnum):
     SOURCE_READY = "SOURCE_READY"
-    DISCOVERED_NOT_IMPLEMENTED = "DISCOVERED_NOT_IMPLEMENTED"
-    NO_OFFICIAL_SOURCE_FOUND = "NO_OFFICIAL_SOURCE_FOUND"
+    SOURCE_DISCOVERED = "SOURCE_DISCOVERED"
+    SOURCE_IMPLEMENTATION_REQUIRED = "SOURCE_IMPLEMENTATION_REQUIRED"
+    NO_OFFICIAL_NEWS_ARCHIVE = "NO_OFFICIAL_NEWS_ARCHIVE"
+    BLOCKED_BY_ACCESS = "BLOCKED_BY_ACCESS"
     BLOCKED_BY_SOURCE_POLICY = "BLOCKED_BY_SOURCE_POLICY"
-    BLOCKED_BY_TECHNICAL_ACCESS = "BLOCKED_BY_TECHNICAL_ACCESS"
+    UNSUPPORTED_STRUCTURE = "UNSUPPORTED_STRUCTURE"
+    NO_HISTORICAL_ARCHIVE = "NO_HISTORICAL_ARCHIVE"
+
+    DISCOVERED_NOT_IMPLEMENTED = "SOURCE_IMPLEMENTATION_REQUIRED"
+    NO_OFFICIAL_SOURCE_FOUND = "NO_OFFICIAL_NEWS_ARCHIVE"
+    BLOCKED_BY_TECHNICAL_ACCESS = "BLOCKED_BY_ACCESS"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +65,16 @@ class EventSourceRegistryEntry:
     internal_research_use_status: str
     first_seen: str
     last_checked: str
+    exact_timestamp_available: bool = False
+    date_only_available: bool = False
+    rss_available: bool = False
+    api_available: bool = False
+    incremental_collection_supported: bool = False
+    timestamp_semantics: str = "UNVERIFIED"
+    stable_item_identity: str = "UNVERIFIED"
+    collector_family: str | None = None
+    parser_version: str | None = None
+    rights_status: str = "UNKNOWN_FAIL_CLOSED"
 
     def payload(self) -> dict[str, object]:
         if not self.ticker or not self.instrument_uid or not self.issuer_name:
@@ -70,11 +87,18 @@ class EventSourceRegistryEntry:
             if self.status == SourceRegistryStatus.SOURCE_READY:
                 raise ValueError("paid or authenticated source cannot be ready")
         return {
+            "source_registry_version": SOURCE_REGISTRY_VERSION,
             "ticker": self.ticker,
             "issuer_name": self.issuer_name,
             "instrument_uid": self.instrument_uid,
             "figi": self.figi,
             "official_source_url": self.official_source_url,
+            "official_domain": (
+                urlsplit(self.official_source_url).netloc.lower()
+                if self.official_source_url is not None
+                else None
+            ),
+            "source_url": self.official_source_url,
             "source_name": self.source_name,
             "source_type": self.source_type,
             "official_owner": self.official_owner,
@@ -83,6 +107,7 @@ class EventSourceRegistryEntry:
             "historical_range": self.historical_range,
             "live_supported": self.live_supported,
             "status": self.status.value,
+            "collector_status": self.status.value,
             "reason": self.reason,
             "public_access": self.public_access,
             "payment_required": self.payment_required,
@@ -92,6 +117,16 @@ class EventSourceRegistryEntry:
             "internal_research_use_status": self.internal_research_use_status,
             "first_seen": self.first_seen,
             "last_checked": self.last_checked,
+            "exact_timestamp_available": self.exact_timestamp_available,
+            "date_only_available": self.date_only_available,
+            "rss_available": self.rss_available,
+            "api_available": self.api_available,
+            "incremental_collection_supported": self.incremental_collection_supported,
+            "timestamp_semantics": self.timestamp_semantics,
+            "stable_item_identity": self.stable_item_identity,
+            "collector_family": self.collector_family,
+            "parser_version": self.parser_version,
+            "rights_status": self.rights_status,
         }
 
 
@@ -298,11 +333,27 @@ def readiness(feature_ready: int, unique_tickers: int) -> dict[str, str]:
         status = "EVENT_BASELINE_EXPERIMENT_READY"
     else:
         status = "EVENT_BASELINE_TRAINING_READY"
+    if unique_tickers < 5:
+        diversity = "VERY_LOW_EVENT_DIVERSITY"
+    elif unique_tickers < 10:
+        diversity = "LOW_EVENT_DIVERSITY"
+    elif unique_tickers < 25:
+        diversity = "EVENT_DIVERSITY_PILOT_READY"
+    elif unique_tickers < 50:
+        diversity = "EVENT_DIVERSITY_EXPERIMENT_READY"
+    else:
+        diversity = "EVENT_DIVERSITY_BROAD"
+    model_status = (
+        "READY_FOR_BASELINE_EXPERIMENT"
+        if feature_ready >= 500 and unique_tickers >= 10
+        else "NOT_READY"
+    )
     return {
         "event_data_readiness": status,
-        "ticker_diversity_status": (
-            "LOW_EVENT_TICKER_DIVERSITY" if unique_tickers < 10 else "TICKER_DIVERSITY_OK"
-        ),
+        "event_volume_status": status,
+        "ticker_diversity_status": diversity,
+        "event_diversity_status": diversity,
+        "event_model_data_status": model_status,
         "trading_readiness": "NOT_TRADING_READY",
     }
 
