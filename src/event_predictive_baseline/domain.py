@@ -3,35 +3,44 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-MODEL_VERSION = "event-predictive-baseline-v1"
-DATASET_VERSION = "event-market-predictive-dataset-v2"
-EXPECTED_DATASET_SHA = "dea6f55aef3b8bcbf42299891bb48926b403286ea451175f23c2ac295f4f60f4"
-EXPECTED_SOURCE_REGISTRY_SHA = "9c43f2676f99287cee7d4d443ca96cb33ed4d0140305262ab59c865878a99271"
-EXPECTED_PROVENANCE_SHA = "9d532efd72ddcc84cca09dcf0b5ced7f990a94c1e09b5a3b96681408c0fd8d35"
-EXPECTED_FEATURE_SCHEMA_SHA = "4be00e812ba4e23a5245c0d132057bbb5d2e4fc1c6b50ea40a85ae476cfe34cc"
-REACTION_FAMILY = "DATE_SAFE_DAILY"
-EXACT_REACTION_FAMILY = "EXACT_INTRADAY"
+MODEL_VERSION = "exact-event-predictive-baseline-v1"
+DATASET_VERSION = "exact-event-market-dataset-v2"
+EXPECTED_DATASET_SHA = "20ab67ff4d94c59d6cf714f8b2f7c048031bda120bbd92ceb6e6185a838e14c3"
+EXPECTED_SOURCE_REGISTRY_SHA = "be67e1e33e7a0c07b16a34aae974796d1ae18c54d4fbc1fb53242cb0a731ced0"
+EXPECTED_PROVENANCE_SHA = "bee365fdfa751c78b616172fddb50bc8e104bfc25e3e39d90137f0469bb14fc5"
+EXPECTED_TIMESTAMP_SHA = "86149fa99993790c6fdaa451965f433f681849a04b1e436b9d81dbe9d9f76267"
+EXPECTED_REACTION_SHA = "8594caa2a773fd6142f6f13b7ddeaa6ae51c926d69d6a72a85cca59a3ceced22"
+EXPECTED_CLUSTER_SHA = "d5dcf6d81810e08534528d1e4f6faf5a51013ffa296a06e7d93903be7cc75a2a"
+REACTION_FAMILY = "EXACT_INTRADAY"
 PREDICTIVE_UNIT = "EVENT"
+FUTURE_EVENT_HOLDOUT_START = date(2026, 8, 11)
+PRIMARY_EXACT_HORIZON = "15m"
+SECONDARY_EXACT_HORIZONS = ("1m", "5m", "30m", "60m")
+EXACT_HORIZONS = ("1m", "5m", "15m", "30m", "60m")
 FLAT_RETURN_THRESHOLD = 0.002
 DIRECTIONS = ("DOWN", "FLAT", "UP")
 FEATURE_FAMILIES = ("A_MARKET_ONLY", "B_EVENT_ONLY", "C_EVENT_PLUS_MARKET")
-TRAIN_END = date(2024, 12, 31)
-VALIDATION_END = date(2025, 12, 31)
-TEST_STATUS = "OBSERVED_AFTER_EVENT_BASELINE_V1"
+TEST_STATUS = "OBSERVED_AFTER_EXACT_BASELINE_V1"
 PRICE_ADJUSTMENT_STATUS = "UNVERIFIED_TINVEST_DAILY_CANDLE_PRICES"
+MIN_GROUP_METRIC_ROWS = 10
+
+
+class FutureHoldoutOutcomeReadError(RuntimeError):
+    """Raised when research code tries to read future holdout outcomes."""
 
 
 @dataclass(frozen=True, slots=True)
 class EventFeatureRow:
     event_id: str
+    event_cluster_id: str
     ticker: str
     issuer_name: str
     publication_date: date
+    publication_timestamp_utc: datetime
     source_family: str
-    title_hash: str | None
     event_features: dict[str, object]
     market_features: dict[str, float]
 
@@ -51,19 +60,28 @@ class EventFeatureRow:
 @dataclass(frozen=True, slots=True)
 class EventTargetRow:
     event_id: str
+    horizon: str
     direction: str
     abnormal_return: float
     security_return: float
+    benchmark_return: float
+    window_begin_at: str
+    window_end_at: str
+    security_observed_at: str
+    benchmark_observed_at: str
 
 
 @dataclass(frozen=True, slots=True)
-class ComparisonCohort:
+class HorizonCohort:
+    horizon: str
     rows: tuple[EventFeatureRow, ...]
+    targets: dict[str, EventTargetRow]
     event_feature_names: tuple[str, ...]
     market_feature_names: tuple[str, ...]
     cohort_sha: str
     event_schema_sha: str
     market_schema_sha: str
+    target_schema_sha: str
 
     def rows_for(self, assignments: dict[str, str], split: str) -> tuple[EventFeatureRow, ...]:
         return tuple(row for row in self.rows if assignments[row.event_id] == split)
@@ -74,8 +92,9 @@ class FrozenModelConfig:
     model_version: str = MODEL_VERSION
     dataset_sha: str = EXPECTED_DATASET_SHA
     reaction_family: str = REACTION_FAMILY
-    primary_regression_target: str = "next_post_event_abnormal_return"
-    secondary_regression_target: str = "raw_security_post_event_return"
+    primary_horizon: str = PRIMARY_EXACT_HORIZON
+    secondary_horizons: tuple[str, ...] = SECONDARY_EXACT_HORIZONS
+    primary_regression_target: str = "exact_intraday_abnormal_return"
     classification_target: str = "UP_FLAT_DOWN"
     flat_return_threshold: float = FLAT_RETURN_THRESHOLD
     classifier: str = "sklearn.linear_model.LogisticRegression"
@@ -87,9 +106,11 @@ class FrozenModelConfig:
     )
     regressor: str = "sklearn.linear_model.Ridge"
     regressor_parameters: tuple[tuple[str, object], ...] = (("alpha", 1.0),)
-    preprocessing: str = "DictVectorizer + StandardScaler fit only on authorized fit rows"
+    preprocessing: str = (
+        "DictVectorizer + StandardScaler inside sklearn Pipeline; fit only on TRAIN "
+        "for validation and TRAIN+VALIDATION once for TEST"
+    )
     hyperparameter_selection: str = "FIXED_A_PRIORI_NO_SEARCH"
-    final_fit_partition: str = "TRAIN_PLUS_VALIDATION"
     test_config_locked: bool = True
     random_seed: int = 0
 
@@ -100,6 +121,19 @@ class FrozenModelConfig:
         payload["feature_families"] = list(FEATURE_FAMILIES)
         payload["config_sha"] = sha256_payload(payload)
         return payload
+
+
+def classify_abnormal_return(value: float) -> str:
+    if value > FLAT_RETURN_THRESHOLD:
+        return "UP"
+    if value < -FLAT_RETURN_THRESHOLD:
+        return "DOWN"
+    return "FLAT"
+
+
+def guard_future_holdout_outcome_read(publication_date: date, *, context: str) -> None:
+    if publication_date >= FUTURE_EVENT_HOLDOUT_START:
+        raise FutureHoldoutOutcomeReadError(f"FUTURE_EVENT_HOLDOUT_READ_ATTEMPT:{context}")
 
 
 def research_safety_flags() -> dict[str, bool]:

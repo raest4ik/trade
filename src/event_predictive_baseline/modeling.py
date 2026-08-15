@@ -47,8 +47,8 @@ class FamilyModels:
         x = [row.values_for(self.family) for row in rows]
         aligned = [targets[row.event_id] for row in rows]
         classes = {target.direction for target in aligned}
-        if classes != set(DIRECTIONS):
-            raise ValueError("classification fit requires all three direction classes")
+        if len(classes) < 2:
+            raise ValueError("classification fit requires at least two direction classes")
         self.classifier.fit(x, [target.direction for target in aligned])
         self.abnormal_regressor.fit(x, [target.abnormal_return for target in aligned])
         self.security_regressor.fit(x, [target.security_return for target in aligned])
@@ -59,7 +59,10 @@ class FamilyModels:
         estimator = self.classifier.named_steps["model"]
         observed_classes = [str(item) for item in estimator.classes_]
         probabilities = [
-            [float(values[observed_classes.index(label)]) for label in DIRECTIONS]
+            [
+                float(values[observed_classes.index(label)]) if label in observed_classes else 0.0
+                for label in DIRECTIONS
+            ]
             for values in self.classifier.predict_proba(x)
         ]
         return {
@@ -154,6 +157,7 @@ def evaluate_all_families(
                 "issuer_name": row.issuer_name,
                 "publication_date": row.publication_date.isoformat(),
                 "source_family": row.source_family,
+                "primary_event_type": str(row.event_features.get("primary_event_type", "UNKNOWN")),
                 "actual_direction": target.direction,
                 "actual_abnormal_return": target.abnormal_return,
                 "actual_security_return": target.security_return,

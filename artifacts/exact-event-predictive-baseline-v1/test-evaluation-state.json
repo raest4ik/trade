@@ -1,0 +1,13 @@
+{
+  "TEST_CONFIG_LOCKED": "YES",
+  "TEST_EVALUATION_COUNT_PRIMARY": 1,
+  "TEST_EVALUATION_COUNT_SECONDARY": {
+    "1m": 1,
+    "30m": 1,
+    "5m": 1,
+    "60m": 1
+  },
+  "TEST_STATUS": "OBSERVED_AFTER_EXACT_BASELINE_V1",
+  "artifact_sha": "a77bfce2d6dbea76cf46cdf1ad4e0bd03df572489cbbc5559ee2067fdacc68ef",
+  "locked_config_sha": "8f3c74ba224ff642d06013cc68ae6701914131b2abce4a8c9b96a48318d9c8ed"
+}
