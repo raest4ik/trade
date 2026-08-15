@@ -1,0 +1,54 @@
+{
+  "class_threshold_methodology": "frozen project-wide +/-0.002 abnormal return",
+  "classification_target": "UP_FLAT_DOWN",
+  "classifier": "sklearn.linear_model.LogisticRegression",
+  "classifier_parameters": {
+    "C": 1.0,
+    "max_iter": 2000,
+    "random_state": 0,
+    "solver": "lbfgs"
+  },
+  "cohort_shas": {
+    "15m": "47eaa4f88c99ca0f04fc987514e03f80671922018157007f8b81ba3b87205d6b",
+    "1m": "a4bab082124937a98e841d136bc156dd311f6c076fa5b30037d29db044a92127",
+    "30m": "8a8f68b84800830591fd53a0bfdaa11ad885017d1c44ebc1ca7550ce27562dd3",
+    "5m": "70029124e16c09690ca672cd21bd8c2a0a070a543b778d176d073c1c56cca9f1",
+    "60m": "d99dcc5ab6b8115163bcbee9fcd11be409457d16473820dc45777617e5dcd9de"
+  },
+  "config_sha": "342e16225ff69fa938a7f56df646d9629142acf618358000466eca7f60bb2f16",
+  "dataset_sha": "20ab67ff4d94c59d6cf714f8b2f7c048031bda120bbd92ceb6e6185a838e14c3",
+  "feature_families": [
+    "A_MARKET_ONLY",
+    "B_EVENT_ONLY",
+    "C_EVENT_PLUS_MARKET"
+  ],
+  "flat_return_threshold": 0.002,
+  "hyperparameter_selection": "FIXED_A_PRIORI_NO_SEARCH",
+  "locked_config_sha": "8f3c74ba224ff642d06013cc68ae6701914131b2abce4a8c9b96a48318d9c8ed",
+  "model_version": "exact-event-predictive-baseline-v1",
+  "preprocessing": "DictVectorizer + StandardScaler inside sklearn Pipeline; fit only on TRAIN for validation and TRAIN+VALIDATION once for TEST",
+  "primary_horizon": "15m",
+  "primary_regression_target": "exact_intraday_abnormal_return",
+  "random_seed": 0,
+  "reaction_family": "EXACT_INTRADAY",
+  "regressor": "sklearn.linear_model.Ridge",
+  "regressor_parameters": {
+    "alpha": 1.0
+  },
+  "secondary_horizons": [
+    "1m",
+    "5m",
+    "30m",
+    "60m"
+  ],
+  "split_shas": {
+    "15m": "574d080a572cf7a4f6904f04e7594243afe95fb7bd2eb484ac0fd6328fab38d2",
+    "1m": "c8da9211e09c1def73402c856ef663bf2ea94c32625cb9daadeb3fdcf7d4262f",
+    "30m": "ad3e8f1b2bce3fb1d82ea3b0c4cef8e0fd3701f488545b9f64d9dc1778952c5f",
+    "5m": "d4446c3faa09032840b13e1c0a703898e8552d645eacb4f7f5c59c1f741221e5",
+    "60m": "1a8ee086337a442f606ec645331dcca79db85a4e25fb5e56c100428b296d1992"
+  },
+  "target_definition": "EXACT_INTRADAY abnormal_return per predeclared horizon",
+  "test_config_locked": true,
+  "test_lock_time": "before any TEST target evaluation in runner order"
+}

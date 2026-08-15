@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import math
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
 from typing import Any
 
-from src.event_predictive_baseline.domain import FEATURE_FAMILIES
+from src.event_predictive_baseline.domain import FEATURE_FAMILIES, MIN_GROUP_METRIC_ROWS
 from src.event_predictive_baseline.modeling import metrics_from_records
 
 
@@ -14,12 +14,16 @@ def grouped_diagnostics(records: list[dict[str, Any]]) -> dict[str, Any]:
     per_ticker = _group(records, lambda row: str(row["ticker"]))
     per_year = _group(records, lambda row: str(row["publication_date"])[:4])
     per_source = _group(records, lambda row: str(row["source_family"]))
+    per_event_type = _group(records, lambda row: str(row["primary_event_type"]))
     return {
         "ROW_WEIGHTED": metrics_from_records(records),
         "ISSUER_MACRO": issuer_macro(per_ticker),
         "per_ticker": per_ticker,
+        "per_ticker_metric_policy": "metrics are diagnostic; correlations require N>=10",
         "per_year": per_year,
         "per_source_family": per_source,
+        "per_event_type": per_event_type,
+        "concentration": concentration_diagnostics(records),
     }
 
 
@@ -97,21 +101,47 @@ def incremental_value_status(test_metrics: dict[str, Any], test_diagnostics: dic
         and macro["C_EVENT_PLUS_MARKET"]["regression"]["abnormal_return"]["rmse"]
         < macro["A_MARKET_ONLY"]["regression"]["abnormal_return"]["rmse"]
     )
-    non_yandex = [
+    non_mgnt = [
         item
         for ticker, item in test_diagnostics["per_ticker"].items()
-        if ticker != "YDEX" and item["rows"] >= 3
+        if ticker != "MGNT" and item["rows"] >= MIN_GROUP_METRIC_ROWS
     ]
-    non_yandex_support = bool(non_yandex) and sum(
+    non_mgnt_support = bool(non_mgnt) and sum(
         item["regression"]["abnormal_return"]["C_EVENT_PLUS_MARKET"]["rmse"]
         < item["regression"]["abnormal_return"]["A_MARKET_ONLY"]["rmse"]
-        for item in non_yandex
-    ) >= math.ceil(len(non_yandex) / 2)
+        for item in non_mgnt
+    ) >= math.ceil(len(non_mgnt) / 2)
     return (
-        "EVENT_INCREMENTAL_SIGNAL_CANDIDATE"
-        if class_wins >= 2 and reg_wins >= 3 and macro_support and non_yandex_support
-        else "NO_EVENT_INCREMENTAL_SIGNAL"
+        "EXACT_EVENT_INCREMENTAL_SIGNAL_CANDIDATE"
+        if class_wins >= 2 and reg_wins >= 3 and macro_support and non_mgnt_support
+        else "NO_EXACT_EVENT_INCREMENTAL_SIGNAL"
     )
+
+
+def timestamp_hypothesis_status(incremental_status: str) -> str:
+    return (
+        "TIMESTAMP_HYPOTHESIS_SUPPORTED_AS_CANDIDATE"
+        if incremental_status == "EXACT_EVENT_INCREMENTAL_SIGNAL_CANDIDATE"
+        else "TIMESTAMP_HYPOTHESIS_NOT_SUPPORTED"
+    )
+
+
+def concentration_diagnostics(records: list[dict[str, Any]]) -> dict[str, Any]:
+    counts = Counter(str(row["ticker"]) for row in records)
+    total = sum(counts.values())
+    ordered = sorted(counts.values(), reverse=True)
+    hhi = sum((count / total) ** 2 for count in counts.values()) if total else 0.0
+    return {
+        "rows": total,
+        "counts": dict(sorted(counts.items())),
+        "shares": {ticker: count / total for ticker, count in sorted(counts.items())}
+        if total
+        else {},
+        "top1_share": ordered[0] / total if total else 0.0,
+        "top3_share": sum(ordered[:3]) / total if total else 0.0,
+        "hhi": hhi,
+        "effective_issuer_count": 1 / hhi if hhi > 0 else 0.0,
+    }
 
 
 def _group(

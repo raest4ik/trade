@@ -1,0 +1,43 @@
+{
+  "cohort_sha": "47eaa4f88c99ca0f04fc987514e03f80671922018157007f8b81ba3b87205d6b",
+  "cohort_version": "EXACT_EVENT_COHORT_V1",
+  "dataset_sha": "20ab67ff4d94c59d6cf714f8b2f7c048031bda120bbd92ceb6e6185a838e14c3",
+  "date_range": {
+    "from": "2025-06-09",
+    "to": "2026-08-10"
+  },
+  "event_feature_names": [
+    "event_count",
+    "fact_count",
+    "primary_event_type"
+  ],
+  "event_schema_sha": "5571f8a4158290727127dab86a556e9967f22010b980875307711b5ad32396a9",
+  "future_holdout_used": false,
+  "horizon": "15m",
+  "market_feature_names": [
+    "imoex_pre_return_15m",
+    "imoex_pre_return_30m",
+    "imoex_pre_return_5m",
+    "imoex_pre_return_60m",
+    "pre_return_15m",
+    "pre_return_30m",
+    "pre_return_5m",
+    "pre_return_60m"
+  ],
+  "market_schema_sha": "151956d1d017f892a08fe55d622c27b584cb3f204ba98ca09539e7dfae1443e0",
+  "rows": 408,
+  "same_event_ids_for_A_B_C": true,
+  "target_schema_sha": "5201a9a380a8e6cd505a1fda2a4e4489b64a5e15387e5643b4cb5c4c6aa90dd1",
+  "tickers": [
+    "GMKN",
+    "MGNT",
+    "MOEX",
+    "ROSN",
+    "SMLT",
+    "T",
+    "VKCO",
+    "VTBR",
+    "X5",
+    "YDEX"
+  ]
+}

@@ -17,9 +17,12 @@ def run(args: argparse.Namespace) -> int:
     print(
         json.dumps(
             {
-                "EVENT_INCREMENTAL_VALUE_STATUS": manifest["EVENT_INCREMENTAL_VALUE_STATUS"],
+                "EXACT_EVENT_INCREMENTAL_VALUE_STATUS": manifest[
+                    "EXACT_EVENT_INCREMENTAL_VALUE_STATUS"
+                ],
+                "TIMESTAMP_HYPOTHESIS_STATUS": manifest["TIMESTAMP_HYPOTHESIS_STATUS"],
                 "TEST_CONFIG_LOCKED": manifest["TEST_CONFIG_LOCKED"],
-                "TEST_EVALUATION_COUNT": manifest["TEST_EVALUATION_COUNT"],
+                "TEST_EVALUATION_COUNT_PRIMARY": manifest["TEST_EVALUATION_COUNT_PRIMARY"],
                 "TEST_STATUS": manifest["TEST_STATUS"],
                 "artifact_sha": manifest["artifact_sha"],
                 "output_dir": args.output_dir,
@@ -35,10 +38,10 @@ def run(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the one-time frozen event-level A/B/C predictive baseline."
+        description="Run the one-time frozen exact event-level A/B/C predictive baseline."
     )
-    parser.add_argument("--dataset-dir", default="artifacts/event-market-predictive-dataset-v2")
-    parser.add_argument("--output-dir", default="artifacts/event-predictive-baseline-v1")
+    parser.add_argument("--dataset-dir", default="artifacts/exact-event-market-dataset-v2")
+    parser.add_argument("--output-dir", default="artifacts/exact-event-predictive-baseline-v1")
     return parser
 
 
