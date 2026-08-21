@@ -34,6 +34,7 @@ def run_warmup_recovery(
     baseline_root: Path | None = None,
     v1_dataset_root: Path | None = None,
     created_at: datetime | None = None,
+    expected_accounting: dict[str, int] | None = None,
 ) -> dict[str, Any]:
     if output_root.exists() and any(output_root.iterdir()):
         raise FileExistsError("immutable warmup recovery artifact output already exists")
@@ -46,7 +47,16 @@ def run_warmup_recovery(
     config = RecoveryConfig(base_main_sha=base_main_sha)
     cache_roots = _cache_roots(dataset_root, v1_dataset_root)
     affected = _warmup_events(events_before)
-    if len(events_before) != 706 or len(features_before) != 408 or len(affected) != 157:
+    accounting = expected_accounting or {
+        "events_before": 706,
+        "features_before": 408,
+        "affected": 157,
+    }
+    if (
+        len(events_before) != accounting["events_before"]
+        or len(features_before) != accounting["features_before"]
+        or len(affected) != accounting["affected"]
+    ):
         raise ValueError("BASELINE_WARMUP_ACCOUNTING_MISMATCH")
 
     root_causes = [
