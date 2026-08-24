@@ -54,6 +54,8 @@ def build_live_source_snapshot_artifact(
     output_root: Path,
     base_main_sha: str,
     git_sha: str,
+    official_domain_registry_path: Path | None = None,
+    ticker_filter: set[str] | None = None,
     client: HttpClient | None = None,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
@@ -67,6 +69,11 @@ def build_live_source_snapshot_artifact(
     events = _read_jsonl(input_root / "events.jsonl")
     features = _read_jsonl(input_root / "features.jsonl")
     registry = _read_jsonl(source_registry_path)
+    domain_registry = (
+        _read_domain_registry(official_domain_registry_path)
+        if official_domain_registry_path is not None
+        else {}
+    )
     universe = _read_universe(universe_path)
     before = current_metrics(events, features)
     priority_rows = _v5_priority_rows(
@@ -74,6 +81,8 @@ def build_live_source_snapshot_artifact(
         before["feature_ready_by_ticker"],
         registry,
         universe,
+        domain_registry,
+        ticker_filter,
     )[:MAX_TICKERS]
     priority_payload = [
         {
@@ -374,10 +383,14 @@ def _v5_priority_rows(
     feature_counts: dict[str, int],
     registry_rows: list[dict[str, Any]],
     universe: dict[str, dict[str, Any]],
+    domain_registry: dict[str, dict[str, Any]] | None = None,
+    ticker_filter: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     registry_by_ticker = {str(row["ticker"]): row for row in registry_rows}
     rows: list[dict[str, Any]] = []
     for ticker in sorted(set(exact_counts) | set(universe)):
+        if ticker_filter is not None and ticker not in ticker_filter:
+            continue
         exact_count = int(exact_counts.get(ticker, 0))
         feature_count = int(feature_counts.get(ticker, 0))
         registry = registry_by_ticker.get(ticker, {})
@@ -396,6 +409,7 @@ def _v5_priority_rows(
                 "feature_ready_count": feature_count,
                 "priority_tier": tier,
                 "registry": registry,
+                "domain_registry": (domain_registry or {}).get(ticker, {}),
                 "instrument": instrument,
                 "existing_source_unknown": int(
                     not bool(registry.get("source_url"))
@@ -851,6 +865,7 @@ def _report(
 
 def _official_domain(row: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
     registry = cast("dict[str, Any]", row.get("registry") or {})
+    domain_registry = cast("dict[str, Any]", row.get("domain_registry") or {})
     source_url = _optional_string(registry.get("source_url"))
     official_domain = _optional_string(registry.get("official_domain")) or _optional_string(
         registry.get("source_domain")
@@ -862,6 +877,9 @@ def _official_domain(row: dict[str, Any]) -> tuple[str | None, str | None, str |
     if official_domain:
         domain = official_domain.lower()
         return domain, f"https://{domain}/", "existing source registry official domain"
+    if domain_registry.get("confirmation_status") == "DOMAIN_CONFIRMED":
+        domain = str(domain_registry["confirmed_host"]).lower()
+        return domain, f"https://{domain}/", "official domain registry enrichment v1"
     return None, None, None
 
 
@@ -1021,6 +1039,17 @@ def _read_universe(path: Path) -> dict[str, dict[str, Any]]:
         ):
             universe[str(item["ticker"])] = item
     return universe
+
+
+def _read_domain_registry(path: Path | None) -> dict[str, dict[str, Any]]:
+    if path is None or not path.exists():
+        return {}
+    rows = _read_jsonl(path)
+    confirmed: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row.get("confirmation_status") == "DOMAIN_CONFIRMED":
+            confirmed[str(row["ticker"])] = row
+    return confirmed
 
 
 def _live_discovery_blocker(acquisition: _Acquisition) -> str | None:

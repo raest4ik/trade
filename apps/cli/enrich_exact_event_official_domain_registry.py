@@ -6,25 +6,25 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from src.exact_event_live_source_snapshot.application import (
-    build_live_source_snapshot_artifact,
+from src.exact_event_official_domain_registry.application import (
+    build_official_domain_registry_artifact,
 )
 
 
 def run(args: argparse.Namespace) -> int:
-    manifest = build_live_source_snapshot_artifact(
+    manifest = build_official_domain_registry_artifact(
         input_root=Path(args.input_dir),
         source_registry_path=Path(args.source_registry),
         universe_path=Path(args.universe),
         output_root=Path(args.output_dir),
         base_main_sha=args.base_main_sha,
         git_sha=_git_sha(),
-        official_domain_registry_path=(
-            Path(args.official_domain_registry)
-            if args.official_domain_registry is not None
-            else None
+        live_source_report_path=(
+            Path(args.live_source_report) if args.live_source_report is not None else None
         ),
-        ticker_filter=set(args.ticker) if args.ticker else None,
+        candidate_domains_path=(
+            Path(args.candidate_domains) if args.candidate_domains is not None else None
+        ),
         created_at=(
             datetime.fromisoformat(args.created_at) if args.created_at is not None else None
         ),
@@ -34,18 +34,17 @@ def run(args: argparse.Namespace) -> int:
             {
                 "ARTIFACT_SHA": manifest["ARTIFACT_SHA"],
                 "INPUT_DATASET_SHA": manifest["INPUT_DATASET_SHA"],
-                "OUTPUT_DATASET_SHA": manifest["OUTPUT_DATASET_SHA"],
-                "LIVE_DISCOVERY_EXECUTED": manifest["LIVE_DISCOVERY_EXECUTED"],
-                "LIVE_DISCOVERY_BLOCKER": manifest["LIVE_DISCOVERY_BLOCKER"],
-                "LIVE_REQUESTS_TOTAL": manifest["LIVE_REQUESTS_TOTAL"],
-                "LIVE_CANDIDATES_WRITTEN": manifest["LIVE_CANDIDATES_WRITTEN"],
-                "V5_DOWNSTREAM_ARTIFACT_SHA": manifest["V5_DOWNSTREAM_ARTIFACT_SHA"],
-                "V5_NEW_EXACT_CAPABLE_SOURCES": manifest["V5_NEW_EXACT_CAPABLE_SOURCES"],
-                "V5_NEW_EXACT_EVENTS": manifest["V5_NEW_EXACT_EVENTS"],
+                "LIVE_DOMAIN_ENRICHMENT_EXECUTED": manifest["LIVE_DOMAIN_ENRICHMENT_EXECUTED"],
+                "LIVE_DOMAIN_ENRICHMENT_BLOCKER": manifest["LIVE_DOMAIN_ENRICHMENT_BLOCKER"],
+                "DOMAIN_TICKERS_TARGETED": manifest["DOMAIN_TICKERS_TARGETED"],
+                "DOMAIN_CONFIRMED_COUNT": manifest["DOMAIN_CONFIRMED_COUNT"],
+                "NEWLY_DOMAIN_ENABLED_TICKERS": manifest["NEWLY_DOMAIN_ENABLED_TICKERS"],
+                "SECOND_LIVE_RUN_EXECUTED": manifest["SECOND_LIVE_RUN_EXECUTED"],
+                "DOWNSTREAM_NEW_EXACT_CAPABLE_SOURCES": manifest[
+                    "DOWNSTREAM_NEW_EXACT_CAPABLE_SOURCES"
+                ],
+                "DOWNSTREAM_NEW_EXACT_EVENTS": manifest["DOWNSTREAM_NEW_EXACT_EVENTS"],
                 "LIVE_SOURCE_DISCOVERY_CONCLUSION": manifest["LIVE_SOURCE_DISCOVERY_CONCLUSION"],
-                "MODEL_TRAINING_PERFORMED": manifest["MODEL_TRAINING_PERFORMED"],
-                "TEST_OUTCOME_USED": manifest["TEST_OUTCOME_USED"],
-                "FUTURE_EVENT_HOLDOUT_USED": manifest["FUTURE_EVENT_HOLDOUT_USED"],
                 "output_dir": args.output_dir,
             },
             ensure_ascii=False,
@@ -56,7 +55,7 @@ def run(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Acquire live official source snapshot v1.")
+    parser = argparse.ArgumentParser(description="Enrich exact-event official domain registry v1.")
     parser.add_argument("--base-main-sha", required=True)
     parser.add_argument(
         "--input-dir",
@@ -71,17 +70,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="artifacts/tinvest-market-universe-raw-v1/instrument-mapping.json",
     )
     parser.add_argument(
+        "--live-source-report",
+        default="artifacts/exact-event-live-official-source-snapshot-v1/source-report.jsonl",
+    )
+    parser.add_argument("--candidate-domains", default=None)
+    parser.add_argument(
         "--output-dir",
-        default="artifacts/exact-event-live-official-source-snapshot-v1",
+        default="artifacts/exact-event-official-domain-registry-enrichment-v1",
     )
     parser.add_argument("--created-at", default=None)
-    parser.add_argument("--official-domain-registry", default=None)
-    parser.add_argument(
-        "--ticker",
-        action="append",
-        default=[],
-        help="Restrict live source snapshot to one ticker; repeat for multiple tickers.",
-    )
     return parser
 
 
