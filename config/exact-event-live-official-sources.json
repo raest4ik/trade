@@ -1,0 +1,24 @@
+{
+  "source_registry_version": "exact-event-live-official-source-registry-v1",
+  "sources": [
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "b1f4f4fc-dac5-4e29-ae56-95fe441416ee",
+      "issuer": "ЧТПЗ",
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "chtpz.tmk-group.ru",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "f287a9b3e5859b97c03ccc40732252b0ff43636beba06a79369ef6bac9ebe16d",
+      "provenance_evidence_url": "artifacts/exact-event-official-source-mechanism-audit-v1/source-mechanism-registry.jsonl#CHEP",
+      "source_family": "CHEP_OFFICIAL_RSS_EXACT_LIVE_V1",
+      "source_id": "CHEP_CHTPZ_TMK_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://chtpz.tmk-group.ru/rss",
+      "ticker": "CHEP",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300."
+    }
+  ]
+}
