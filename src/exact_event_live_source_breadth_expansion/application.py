@@ -672,8 +672,6 @@ def _item_haystack(item: ET.Element) -> str:
         value
         for value in (
             _text(item, "title"),
-            _text(item, "link"),
-            _text(item, "guid"),
             _text(item, "description"),
             _text(item, "encoded"),
         )

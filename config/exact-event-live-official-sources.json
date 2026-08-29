@@ -130,6 +130,116 @@
       "ticker": "AFKS",
       "timestamp_field": "RSS item pubDate",
       "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "b83ab195-dcd2-4d44-b9bf-27fa294f19a0",
+      "issuer": "ИНАРКТИКА",
+      "item_match_any": [
+        "AQUA"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "666d67c71842cd01ef138573076c874262d0c82e534ea102b52216faaa159971",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v2/selected-source-cohort.jsonl#AQUA",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "AQUA_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "AQUA",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "974077c4-d893-4058-9314-8f1b64a444b8",
+      "issuer": "Novabev Group",
+      "item_match_any": [
+        "BELU"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "89005522ae3b3fb7009b05bb54457661046cee5573460458328ec276393eb54f",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v2/selected-source-cohort.jsonl#BELU",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "BELU_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "BELU",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "1e19953d-01c6-4ecd-a5f4-53ae3ed44029",
+      "issuer": "Банк Санкт-Петербург",
+      "item_match_any": [
+        "BSPB"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "22d130cb92e814f72920889ed937990debdb654bfd7546cde0025700f8bee87b",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v2/selected-source-cohort.jsonl#BSPB",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "BSPB_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "BSPB",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "ebfda284-4291-4337-9dfb-f55610d0a907",
+      "issuer": "МКБ",
+      "item_match_any": [
+        "CBOM"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "8994172b2233b9959f3b0dffc824bcc4be79b2777278bcc21671cca41273603c",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v2/selected-source-cohort.jsonl#CBOM",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "CBOM_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "CBOM",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "0b9afb23-280f-4fda-a7ad-816994959c6b",
+      "issuer": "Группа Аренадата",
+      "item_match_any": [
+        "DATA"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "74f76bcb880c5b391af2a46294893345f6e25f8c69d246814255ff5fda352871",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v2/selected-source-cohort.jsonl#DATA",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "DATA_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "DATA",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
     }
   ]
 }

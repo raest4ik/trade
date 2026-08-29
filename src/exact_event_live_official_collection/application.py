@@ -476,8 +476,6 @@ def _item_matches(item: ET.Element, tokens: tuple[str, ...]) -> bool:
         value
         for value in (
             _text(item, "title"),
-            _text(item, "link"),
-            _text(item, "guid"),
             _text(item, "description"),
             _text(item, "encoded"),
         )
