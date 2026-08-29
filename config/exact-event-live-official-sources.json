@@ -6,6 +6,7 @@
       "enabled": true,
       "instrument_uid": "b1f4f4fc-dac5-4e29-ae56-95fe441416ee",
       "issuer": "ЧТПЗ",
+      "item_match_any": [],
       "live_capability": true,
       "mechanism_type": "RSS",
       "official_domain": "chtpz.tmk-group.ru",
@@ -19,6 +20,116 @@
       "ticker": "CHEP",
       "timestamp_field": "RSS item pubDate",
       "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "75e003c2-ca14-4980-8d7b-e82ec6b6ffe1",
+      "issuer": "Озон",
+      "item_match_any": [
+        "OZON"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "ab576e63c8665a16634c333d1b80f03fe0d733e85ff3dc8ff8ed9eee40c1289a",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v1/source-candidates.jsonl#OZON",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "OZON_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "OZON",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "aae786d8-e8f4-4428-91bb-cffa39ad01e4",
+      "issuer": "Группа Астра",
+      "item_match_any": [
+        "ASTR"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "04edd8ebd98cf5ff03b2398baf99952db3ce6e788ba52688f9d5f570bce76bbe",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v1/source-candidates.jsonl#ASTR",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "ASTR_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "ASTR",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "b276ae5b-969d-4570-ba8c-fa8f0f62cd59",
+      "issuer": "Элемент",
+      "item_match_any": [
+        "ELMT"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "7e50939d1617f115b30e777063fc9b0c5ba24ed162a0cbb37071cf4c6dbfd8b5",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v1/source-candidates.jsonl#ELMT",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "ELMT_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "ELMT",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "f866872b-8f68-4b6e-930f-749fe9aa79c0",
+      "issuer": "РУСАЛ",
+      "item_match_any": [
+        "RUAL"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "7dd0917f6002e246a4bac092906ac57adf2e3eae21b8ab9ef07d22e27b6d5a24",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v1/source-candidates.jsonl#RUAL",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "RUAL_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "RUAL",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
+    },
+    {
+      "archive_capability": false,
+      "enabled": true,
+      "instrument_uid": "53b67587-96eb-4b41-8e0c-d2e3c0bdd234",
+      "issuer": "АФК Система",
+      "item_match_any": [
+        "AFKS"
+      ],
+      "live_capability": true,
+      "mechanism_type": "RSS",
+      "official_domain": "www.moex.com",
+      "parser_version": "rss-item-pubdate-exact-v1",
+      "provenance_evidence_sha": "84e04fba729a37fbbfe2cdb447f40af1f1c453a78f0ca1e13a069fb0b7c566e8",
+      "provenance_evidence_url": "artifacts/exact-event-live-source-breadth-expansion-v1/source-candidates.jsonl#AFKS",
+      "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_id": "AFKS_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+      "source_registry_version": "exact-event-live-official-source-registry-v1",
+      "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "ticker": "AFKS",
+      "timestamp_field": "RSS item pubDate",
+      "timestamp_policy": "Require item-level RSS pubDate with publication date, clock time, and explicit numeric timezone such as +0300; item text must contain ticker token."
     }
   ]
 }

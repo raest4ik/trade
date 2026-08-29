@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import dataclass
@@ -271,6 +272,8 @@ def _parse_rss_items(source: LiveExactSource, body: bytes) -> list[ParsedItem]:
         link = _text(item, "link")
         guid = _text(item, "guid")
         pubdate = _text(item, "pubDate")
+        if source.item_match_any and not _item_matches(item, source.item_match_any):
+            continue
         if not pubdate:
             raise ValueError(SourceStatus.MISSING_EXACT_TIMESTAMP.value)
         try:
@@ -285,6 +288,8 @@ def _parse_rss_items(source: LiveExactSource, body: bytes) -> list[ParsedItem]:
         source_item_id = guid or link
         if not source_item_id:
             raise ValueError("RSS_ITEM_ID_MISSING")
+        if source.item_match_any:
+            source_item_id = f"{source.ticker}:{source_item_id}"
         canonical_url = link or urljoin(source.source_url, f"#{source_item_id}")
         items.append(
             ParsedItem(
@@ -464,6 +469,28 @@ def _text(item: ET.Element, tag: str) -> str:
         None,
     )
     return " ".join(value.split()) if value else ""
+
+
+def _item_matches(item: ET.Element, tokens: tuple[str, ...]) -> bool:
+    haystack = " ".join(
+        value
+        for value in (
+            _text(item, "title"),
+            _text(item, "link"),
+            _text(item, "guid"),
+            _text(item, "description"),
+            _text(item, "encoded"),
+        )
+        if value
+    )
+    return any(_contains_atomic_token(haystack, token) for token in tokens)
+
+
+def _contains_atomic_token(haystack: str, token: str) -> bool:
+    escaped = re.escape(token.strip())
+    if not escaped:
+        return False
+    return re.search(rf"(?<![A-Z0-9]){escaped}(?![A-Z0-9])", haystack, re.IGNORECASE) is not None
 
 
 def _local(tag: str) -> str:

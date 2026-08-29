@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urljoin
 
-from src.exact_event_live_official_collection.domain import SourceStatus
+from src.exact_event_live_official_collection.domain import MAX_RESPONSE_BYTES, SourceStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +33,7 @@ class BoundedHttpClient:
         *,
         timeout_seconds: float = 10.0,
         redirect_limit: int = 3,
-        max_response_bytes: int = 1_000_000,
+        max_response_bytes: int = MAX_RESPONSE_BYTES,
         user_agent: str = "trade-ai-live-official-exact-collector/1.0",
     ) -> None:
         self._timeout_seconds = timeout_seconds
