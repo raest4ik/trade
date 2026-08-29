@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, cast
 
 from src.exact_event_corpus.domain import FUTURE_EVENT_HOLDOUT_START
 
@@ -20,6 +20,7 @@ MAX_ITEMS_PER_SOURCE = 50
 REQUEST_TIMEOUT_SECONDS = 10.0
 RETRY_COUNT = 1
 REDIRECT_LIMIT = 3
+MAX_RESPONSE_BYTES = 2_000_000
 
 NETWORK_LIMITS: dict[str, Any] = {
     "max_sources": MAX_SOURCES,
@@ -27,6 +28,7 @@ NETWORK_LIMITS: dict[str, Any] = {
     "request_timeout_seconds": REQUEST_TIMEOUT_SECONDS,
     "retry_count": RETRY_COUNT,
     "redirect_limit": REDIRECT_LIMIT,
+    "max_response_bytes": MAX_RESPONSE_BYTES,
     "data_cost_rub": 0,
 }
 
@@ -63,6 +65,7 @@ class LiveExactSource:
     provenance_evidence_url: str
     provenance_evidence_sha: str
     enabled: bool
+    item_match_any: tuple[str, ...] = ()
     source_registry_version: str = SOURCE_REGISTRY_VERSION
     parser_version: str = PARSER_VERSION
 
@@ -86,6 +89,11 @@ class LiveExactSource:
             provenance_evidence_url=str(payload["provenance_evidence_url"]),
             provenance_evidence_sha=str(payload["provenance_evidence_sha"]),
             enabled=bool(payload["enabled"]),
+            item_match_any=tuple(
+                str(item)
+                for item in cast("list[object]", payload.get("item_match_any") or [])
+                if str(item).strip()
+            ),
         )
         source.validate()
         return source
@@ -101,6 +109,8 @@ class LiveExactSource:
             raise ValueError("TIMESTAMP_POLICY_MUST_REQUIRE_EXPLICIT_TIMEZONE")
         if not self.live_capability:
             raise ValueError("LIVE_EXACT_SOURCE_REQUIRES_LIVE_CAPABILITY")
+        if any(" " in token.strip() for token in self.item_match_any):
+            raise ValueError("ITEM_MATCH_TOKENS_MUST_BE_ATOMIC")
 
     def payload(self) -> dict[str, Any]:
         return {
@@ -121,6 +131,7 @@ class LiveExactSource:
             "provenance_evidence_sha": self.provenance_evidence_sha,
             "enabled": self.enabled,
             "parser_version": self.parser_version,
+            "item_match_any": list(self.item_match_any),
         }
 
 

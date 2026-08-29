@@ -191,6 +191,70 @@ def test_multiple_items_sorted_and_source_disabled_behavior(tmp_path: Path) -> N
     assert [row["metadata"]["source_item_id"] for row in events] == ["1", "2"]
 
 
+def test_item_match_filter_keeps_shared_rss_feed_ticker_safe(tmp_path: Path) -> None:
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    registry = tmp_path / "sources.json"
+    source = _source(enabled=True)
+    source.update(
+        {
+            "official_domain": "www.moex.com",
+            "source_url": "https://www.moex.com/export/news.aspx?cat=122",
+            "source_family": "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+            "source_id": "AAA_MOEX_RISK_PARAMETERS_RSS_EXACT_LIVE_V1",
+            "ticker": "AAA",
+            "issuer": "AAA Issuer",
+            "instrument_uid": "uid-aaa",
+            "item_match_any": ["AAA"],
+        }
+    )
+    registry.write_text(
+        json.dumps(
+            {
+                "source_registry_version": "exact-event-live-official-source-registry-v1",
+                "sources": [source],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    events = tmp_path / "events.jsonl"
+    events.write_text("", encoding="utf-8")
+
+    manifest = build_live_official_collection_artifact(
+        output_root=tmp_path / "out",
+        base_main_sha="5" * 40,
+        git_sha="6" * 40,
+        input_events_path=events,
+        source_registry_path=registry,
+        client=_FakeClient(
+            _rss(
+                """
+                <item>
+                  <title>Risk parameters changed for AAA</title>
+                  <link>https://www.moex.com/n1</link>
+                  <guid>https://www.moex.com/n1</guid>
+                  <pubDate>Tue, 25 Aug 2026 11:44:16 +0300</pubDate>
+                </item>
+                <item>
+                  <title>Risk parameters changed for BBB</title>
+                  <link>https://www.moex.com/n2</link>
+                  <guid>https://www.moex.com/n2</guid>
+                  <pubDate>Tue, 25 Aug 2026 12:44:16 +0300</pubDate>
+                </item>
+                """
+            )
+        ),
+        created_at=datetime(2026, 8, 28, tzinfo=UTC),
+    )
+
+    rows = _read_jsonl(tmp_path / "out" / "collected-event-metadata.jsonl")
+    assert manifest["ITEMS_FETCHED"] == 1
+    assert manifest["ITEMS_NEW"] == 1
+    assert rows[0]["metadata"]["ticker"] == "AAA"
+    assert rows[0]["metadata"]["source_item_id"] == "AAA:https://www.moex.com/n1"
+
+
 def _build(
     tmp_path: Path,
     manifest_body: bytes,
