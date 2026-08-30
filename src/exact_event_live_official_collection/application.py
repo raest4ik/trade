@@ -18,13 +18,18 @@ from src.exact_event_live_official_collection.domain import (
     MAX_ITEMS_PER_SOURCE,
     NETWORK_LIMITS,
     PARSER_VERSION,
+    RAW_PUBLICATION_SNAPSHOT_VERSION,
+    SEMANTIC_MATERIAL_PROVENANCE_VERSION,
     SOURCE_REGISTRY_VERSION,
     LiveExactSource,
     SourceStatus,
     collection_safety_flags,
     parse_rss_pubdate_exact,
+    publication_material,
+    publication_material_sha,
     sha256_bytes,
     sha256_payload,
+    sha256_text,
 )
 from src.exact_event_live_official_collection.http_client import (
     BoundedHttpClient,
@@ -43,6 +48,12 @@ class ParsedItem:
     source_item_id: str
     canonical_url: str
     title: str
+    description: str
+    content: str
+    link: str
+    guid: str
+    raw_payload: dict[str, str | None]
+    raw_item_xml: str
     publication_timestamp_raw: str
     publication_timestamp_utc: datetime
 
@@ -79,12 +90,15 @@ def build_live_official_collection_artifact(
     network_records: list[dict[str, Any]] = []
     source_reports: list[dict[str, Any]] = []
     raw_snapshots: list[dict[str, Any]] = []
+    raw_publication_snapshots: list[dict[str, Any]] = []
+    semantic_material_provenance: list[dict[str, Any]] = []
     event_rows: list[dict[str, Any]] = []
     invalid_items: list[dict[str, Any]] = []
     blockers: Counter[str] = Counter()
 
     attempted = success = failed = 0
     items_fetched = timestamp_valid = timestamp_invalid = 0
+    items_with_publication_material = items_without_publication_material = 0
     duplicates = new_items = 0
     historical_new = future_new = 0
 
@@ -126,6 +140,18 @@ def build_live_official_collection_artifact(
         source_new = source_duplicates = 0
         for item in parsed_items[:MAX_ITEMS_PER_SOURCE]:
             items_fetched += 1
+            material = publication_material(_snapshot_material_view(item))
+            if material is None:
+                items_without_publication_material += 1
+                invalid_items.append(
+                    {
+                        "source_id": source.source_id,
+                        "source_item_id": item.source_item_id,
+                        "blocker": SourceStatus.PUBLICATION_MATERIAL_MISSING.value,
+                    }
+                )
+                continue
+            items_with_publication_material += 1
             identity = f"{source.source_family}|{item.source_item_id}"
             if identity in seen_identities:
                 duplicates += 1
@@ -139,7 +165,7 @@ def build_live_official_collection_artifact(
                     ticker=source.ticker,
                     issuer=source.issuer,
                     instrument_uid=source.instrument_uid,
-                    title=item.title,
+                    title=item.title or item.description or item.content,
                     publication_timestamp_raw=item.publication_timestamp_raw,
                     publication_timestamp_utc=item.publication_timestamp_utc,
                     timestamp_source_field=source.timestamp_field,
@@ -163,7 +189,10 @@ def build_live_official_collection_artifact(
                 future_new += 1
             else:
                 historical_new += 1
-            event_rows.append(_event_metadata_row(source, event, result, now, future))
+            snapshot = _raw_publication_snapshot(source, item, event, result, now)
+            raw_publication_snapshots.append(snapshot)
+            semantic_material_provenance.append(_semantic_material_record(snapshot, event))
+            event_rows.append(_event_metadata_row(source, event, result, now, future, snapshot))
         status = SourceStatus.SUCCESS if source_new else SourceStatus.NO_NEW_ITEMS
         success += 1 if status in {SourceStatus.SUCCESS, SourceStatus.NO_NEW_ITEMS} else 0
         blockers[status.value] += 1
@@ -188,6 +217,14 @@ def build_live_official_collection_artifact(
         },
     }
     raw_snapshot_payload = sorted(raw_snapshots, key=lambda row: str(row["source_id"]))
+    raw_publication_snapshot_payload = sorted(
+        raw_publication_snapshots,
+        key=lambda row: (str(row["source_id"]), str(row["source_item_id"])),
+    )
+    semantic_material_payload = sorted(
+        semantic_material_provenance,
+        key=lambda row: (str(row["source_id"]), str(row["source_item_id"])),
+    )
     network_payload = sorted(network_records, key=lambda row: str(row["source_id"]))
     safety = collection_safety_flags()
     manifest: dict[str, Any] = {
@@ -202,6 +239,8 @@ def build_live_official_collection_artifact(
         "NETWORK_LIMITS_SHA": sha256_payload(NETWORK_LIMITS),
         "NETWORK_PROVENANCE_SHA": sha256_payload(network_payload),
         "RAW_SNAPSHOT_SHA": sha256_payload(raw_snapshot_payload),
+        "RAW_PUBLICATION_SNAPSHOT_SHA": sha256_payload(raw_publication_snapshot_payload),
+        "PUBLICATION_MATERIAL_PROVENANCE_SHA": sha256_payload(semantic_material_payload),
         "COLLECTED_EVENT_METADATA_SHA": sha256_payload(event_rows),
         "DEDUPE_STATE_SHA": sha256_payload(dedupe_state),
         "LIVE_EXACT_SOURCES_ENABLED": len(enabled_sources),
@@ -211,8 +250,12 @@ def build_live_official_collection_artifact(
         "ITEMS_FETCHED": items_fetched,
         "ITEMS_TIMESTAMP_VALID": timestamp_valid,
         "ITEMS_TIMESTAMP_INVALID": timestamp_invalid,
+        "ITEMS_WITH_PUBLICATION_MATERIAL": items_with_publication_material,
+        "ITEMS_WITHOUT_PUBLICATION_MATERIAL": items_without_publication_material,
         "ITEMS_NEW": new_items,
         "ITEMS_DUPLICATE": duplicates,
+        "SNAPSHOTS_WRITTEN": len(raw_publication_snapshot_payload),
+        "DUPLICATE_SNAPSHOTS": 0,
         "EXACT_EVENTS_TOTAL_BEFORE": existing_exact_total,
         "EXACT_EVENTS_TOTAL_AFTER": existing_exact_total + new_items,
         "NEW_EXACT_EVENTS": new_items,
@@ -240,6 +283,8 @@ def build_live_official_collection_artifact(
     _write_json(output_root / "manifest.json", manifest)
     _write_jsonl(output_root / "network-provenance.jsonl", network_payload)
     _write_jsonl(output_root / "raw-snapshot-manifest.jsonl", raw_snapshot_payload)
+    _write_jsonl(output_root / "raw-publication-snapshots.jsonl", raw_publication_snapshot_payload)
+    _write_jsonl(output_root / "semantic-material-provenance.jsonl", semantic_material_payload)
     _write_jsonl(output_root / "collected-event-metadata.jsonl", event_rows)
     _write_jsonl(output_root / "invalid-items.jsonl", invalid_items)
     _write_json(output_root / "dedupe-state.json", dedupe_state)
@@ -269,6 +314,8 @@ def _parse_rss_items(source: LiveExactSource, body: bytes) -> list[ParsedItem]:
     items: list[ParsedItem] = []
     for item in (element for element in root.iter() if _local(element.tag) == "item"):
         title = _text(item, "title")
+        description = _text(item, "description")
+        content = _text(item, "encoded")
         link = _text(item, "link")
         guid = _text(item, "guid")
         pubdate = _text(item, "pubDate")
@@ -295,7 +342,20 @@ def _parse_rss_items(source: LiveExactSource, body: bytes) -> list[ParsedItem]:
             ParsedItem(
                 source_item_id=source_item_id,
                 canonical_url=canonical_url,
-                title=title or "Official RSS item",
+                title=title,
+                description=description,
+                content=content,
+                link=link,
+                guid=guid,
+                raw_payload={
+                    "title": title or None,
+                    "description": description or None,
+                    "content:encoded": content or None,
+                    "pubDate": pubdate or None,
+                    "link": link or None,
+                    "guid": guid or None,
+                },
+                raw_item_xml=ET.tostring(item, encoding="unicode"),
                 publication_timestamp_raw=pubdate,
                 publication_timestamp_utc=published,
             )
@@ -309,6 +369,7 @@ def _event_metadata_row(
     result: FetchResult,
     fetched_at: datetime,
     future_metadata_only: bool,
+    snapshot: dict[str, Any],
 ) -> dict[str, Any]:
     metadata = event.metadata_payload()
     metadata["future_holdout"] = future_metadata_only
@@ -316,9 +377,14 @@ def _event_metadata_row(
     metadata["raw_source_sha256"] = sha256_bytes(result.body)
     metadata["raw_source_fetched_at"] = fetched_at.isoformat()
     metadata["source_id"] = source.source_id
+    metadata["source_family"] = source.source_family
     metadata["parser_version"] = source.parser_version
     metadata["source_registry_version"] = source.source_registry_version
     metadata["source_registry_hash"] = sha256_payload(source.payload())
+    metadata["publication_snapshot_id"] = snapshot["snapshot_id"]
+    metadata["publication_material_available"] = snapshot["publication_material_available"]
+    metadata["publication_material_sha"] = snapshot["publication_material_sha"]
+    metadata["event_origin"] = _event_origin(source)
     return {
         "metadata": metadata,
         "event_features": None,
@@ -339,6 +405,92 @@ def _event_metadata_row(
             "status": "FUTURE_METADATA_ONLY" if future_metadata_only else "METADATA_ONLY",
         },
     }
+
+
+def _snapshot_material_view(item: ParsedItem) -> dict[str, str]:
+    return {
+        "title": item.title,
+        "description": item.description,
+        "content": item.content,
+    }
+
+
+def _raw_publication_snapshot(
+    source: LiveExactSource,
+    item: ParsedItem,
+    event: ExactEvent,
+    result: FetchResult,
+    fetched_at: datetime,
+) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {
+        "snapshot_version": RAW_PUBLICATION_SNAPSHOT_VERSION,
+        "snapshot_id": _snapshot_id(source, item.source_item_id),
+        "event_id": str(event.event_id),
+        "source_id": source.source_id,
+        "source_family": source.source_family,
+        "source_url": source.source_url,
+        "source_item_id": item.source_item_id,
+        "ticker": source.ticker,
+        "issuer": source.issuer,
+        "event_origin": _event_origin(source),
+        "fetched_at_utc": fetched_at.isoformat(),
+        "publication_timestamp_utc": item.publication_timestamp_utc.isoformat(),
+        "publication_timestamp_quality": "EXACT",
+        "publication_timestamp_raw": item.publication_timestamp_raw,
+        "title": item.title or None,
+        "description": item.description or None,
+        "content": item.content or None,
+        "raw_payload": item.raw_payload,
+        "content_type": result.content_type,
+        "source_format": "RSS_ITEM",
+        "link": item.link or None,
+        "guid": item.guid or None,
+        "raw_content_hash": sha256_text(item.raw_item_xml),
+        "normalized_content_hash": sha256_payload(item.raw_payload),
+        "collection_version": ARTIFACT_VERSION,
+        "parser_version": source.parser_version,
+    }
+    snapshot["publication_material_available"] = publication_material(snapshot) is not None
+    snapshot["publication_material_sha"] = publication_material_sha(snapshot)
+    return snapshot
+
+
+def _semantic_material_record(snapshot: dict[str, Any], event: ExactEvent) -> dict[str, Any]:
+    return {
+        "provenance_version": SEMANTIC_MATERIAL_PROVENANCE_VERSION,
+        "event_id": str(event.event_id),
+        "snapshot_id": snapshot["snapshot_id"],
+        "source_id": snapshot["source_id"],
+        "source_family": snapshot["source_family"],
+        "source_item_id": snapshot["source_item_id"],
+        "publication_material_available": snapshot["publication_material_available"],
+        "publication_material_sha": snapshot["publication_material_sha"],
+        "publication_material_fields": [
+            key for key in ("title", "description", "content") if snapshot.get(key)
+        ],
+        "semantic_replay_builder": "src.events.domain.v3:EventAnalyzerV3",
+        "rules_v3_changed": False,
+        "qwen_changed": False,
+        "uses_market_data": False,
+        "uses_reaction_data": False,
+        "uses_target_data": False,
+    }
+
+
+def _snapshot_id(source: LiveExactSource, source_item_id: str) -> str:
+    return sha256_payload(
+        {
+            "snapshot_version": RAW_PUBLICATION_SNAPSHOT_VERSION,
+            "source_family": source.source_family,
+            "source_item_id": source_item_id,
+        }
+    )
+
+
+def _event_origin(source: LiveExactSource) -> str:
+    if source.source_family == "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1":
+        return "EXCHANGE_ORIGINATED"
+    return "ISSUER_ORIGINATED"
 
 
 def _network_record(
@@ -529,6 +681,8 @@ def _write_report(path: Path, manifest: dict[str, Any]) -> None:
         f"SOURCE_REGISTRY_SHA={manifest['SOURCE_REGISTRY_SHA']}",
         f"NETWORK_PROVENANCE_SHA={manifest['NETWORK_PROVENANCE_SHA']}",
         f"RAW_SNAPSHOT_SHA={manifest['RAW_SNAPSHOT_SHA']}",
+        f"RAW_PUBLICATION_SNAPSHOT_SHA={manifest['RAW_PUBLICATION_SNAPSHOT_SHA']}",
+        f"PUBLICATION_MATERIAL_PROVENANCE_SHA={manifest['PUBLICATION_MATERIAL_PROVENANCE_SHA']}",
         f"COLLECTED_EVENT_METADATA_SHA={manifest['COLLECTED_EVENT_METADATA_SHA']}",
         f"DEDUPE_STATE_SHA={manifest['DEDUPE_STATE_SHA']}",
         "",
@@ -539,8 +693,12 @@ def _write_report(path: Path, manifest: dict[str, Any]) -> None:
         f"ITEMS_FETCHED={manifest['ITEMS_FETCHED']}",
         f"ITEMS_TIMESTAMP_VALID={manifest['ITEMS_TIMESTAMP_VALID']}",
         f"ITEMS_TIMESTAMP_INVALID={manifest['ITEMS_TIMESTAMP_INVALID']}",
+        f"ITEMS_WITH_PUBLICATION_MATERIAL={manifest['ITEMS_WITH_PUBLICATION_MATERIAL']}",
+        f"ITEMS_WITHOUT_PUBLICATION_MATERIAL={manifest['ITEMS_WITHOUT_PUBLICATION_MATERIAL']}",
         f"ITEMS_NEW={manifest['ITEMS_NEW']}",
         f"ITEMS_DUPLICATE={manifest['ITEMS_DUPLICATE']}",
+        f"SNAPSHOTS_WRITTEN={manifest['SNAPSHOTS_WRITTEN']}",
+        f"DUPLICATE_SNAPSHOTS={manifest['DUPLICATE_SNAPSHOTS']}",
         "",
         f"EXACT_EVENTS_TOTAL_BEFORE={manifest['EXACT_EVENTS_TOTAL_BEFORE']}",
         f"EXACT_EVENTS_TOTAL_AFTER={manifest['EXACT_EVENTS_TOTAL_AFTER']}",

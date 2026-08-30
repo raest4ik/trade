@@ -4,11 +4,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
 from apps.cli.acquire_exact_event_live_official import build_parser
 from src.event_predictive_baseline.domain import guard_future_holdout_outcome_read
+from src.events.domain.v3 import EventAnalyzerV3, rules_v3_fingerprint
 from src.exact_event_live_official_collection.application import (
     build_live_official_collection_artifact,
 )
@@ -16,6 +18,8 @@ from src.exact_event_live_official_collection.domain import (
     ARTIFACT_VERSION,
     SourceStatus,
     parse_rss_pubdate_exact,
+    publication_material,
+    publication_material_sha,
 )
 from src.exact_event_live_official_collection.http_client import FetchResult
 
@@ -34,7 +38,11 @@ def test_valid_rss_pubdate_normalizes_to_utc_and_metadata_only(tmp_path: Path) -
         _rss(
             """
             <item>
-              <title>CHEP publishes live exact item</title>
+              <title>CHEP recommends dividends of 12 rub per share</title>
+              <description>CHEP recommends dividends of 12 rub per share</description>
+              <content:encoded><![CDATA[
+                CHEP board recommends dividends of 12 rub per share.
+              ]]></content:encoded>
               <link>https://chtpz.tmk-group.ru/news/1</link>
               <guid>chep-1</guid>
               <pubDate>Tue, 25 Aug 2026 11:44:16 +0300</pubDate>
@@ -45,16 +53,61 @@ def test_valid_rss_pubdate_normalizes_to_utc_and_metadata_only(tmp_path: Path) -
 
     assert manifest["ITEMS_FETCHED"] == 1
     assert manifest["ITEMS_TIMESTAMP_VALID"] == 1
+    assert manifest["ITEMS_WITH_PUBLICATION_MATERIAL"] == 1
+    assert manifest["ITEMS_WITHOUT_PUBLICATION_MATERIAL"] == 0
     assert manifest["ITEMS_NEW"] == 1
+    assert manifest["SNAPSHOTS_WRITTEN"] == 1
+    assert manifest["DUPLICATE_SNAPSHOTS"] == 0
+    assert manifest["RAW_PUBLICATION_PRESERVATION_ENABLED"] is True
     assert manifest["NEW_FUTURE_METADATA_ONLY_EVENTS"] == 1
     event = _read_jsonl(tmp_path / ARTIFACT_VERSION / "collected-event-metadata.jsonl")[0]
+    snapshot = _read_jsonl(tmp_path / ARTIFACT_VERSION / "raw-publication-snapshots.jsonl")[0]
+    semantic = _read_jsonl(tmp_path / ARTIFACT_VERSION / "semantic-material-provenance.jsonl")[0]
     metadata = event["metadata"]
     assert metadata["publication_timestamp_utc"] == "2026-08-25T08:44:16+00:00"
     assert metadata["publication_timestamp_raw"] == "Tue, 25 Aug 2026 11:44:16 +0300"
     assert metadata["timestamp_source_field"] == "RSS item pubDate"
     assert metadata["future_holdout"] is True
+    assert metadata["source_family"] == "CHEP_OFFICIAL_RSS_EXACT_LIVE_V1"
+    assert metadata["event_origin"] == "ISSUER_ORIGINATED"
+    assert metadata["publication_snapshot_id"] == snapshot["snapshot_id"]
+    assert metadata["publication_material_available"] is True
+    assert metadata["publication_material_sha"] == snapshot["publication_material_sha"]
     assert event["pre_event_market_features"] is None
     assert event["target_availability"]["research_outcomes_visible"] is False
+    assert snapshot["title"] == "CHEP recommends dividends of 12 rub per share"
+    assert snapshot["description"] == "CHEP recommends dividends of 12 rub per share"
+    assert snapshot["content"] == "CHEP board recommends dividends of 12 rub per share."
+    assert snapshot["publication_timestamp_raw"] == "Tue, 25 Aug 2026 11:44:16 +0300"
+    assert snapshot["publication_timestamp_utc"] == "2026-08-25T08:44:16+00:00"
+    assert snapshot["link"] == "https://chtpz.tmk-group.ru/news/1"
+    assert snapshot["guid"] == "chep-1"
+    assert snapshot["source_format"] == "RSS_ITEM"
+    assert snapshot["raw_payload"]["pubDate"] == "Tue, 25 Aug 2026 11:44:16 +0300"
+    assert snapshot["raw_payload"]["link"] == "https://chtpz.tmk-group.ru/news/1"
+    assert snapshot["raw_payload"]["guid"] == "chep-1"
+    assert snapshot["publication_material_available"] is True
+    snapshot_text = json.dumps(snapshot, ensure_ascii=False)
+    assert "Authorization" not in snapshot_text
+    assert "Bearer" not in snapshot_text
+    assert "token" not in snapshot_text.lower()
+    assert publication_material(snapshot) == (
+        "CHEP recommends dividends of 12 rub per share\n"
+        "CHEP board recommends dividends of 12 rub per share."
+    )
+    assert publication_material_sha(snapshot) == snapshot["publication_material_sha"]
+    assert semantic["publication_material_fields"] == ["title", "description", "content"]
+    assert semantic["uses_market_data"] is False
+    assert semantic["uses_reaction_data"] is False
+    assert semantic["uses_target_data"] is False
+    analysis = EventAnalyzerV3().analyze(
+        news_id=UUID(metadata["event_id"]),
+        raw_content=publication_material(snapshot) or "",
+    )
+    assert analysis.primary_event_type.value == "DIVIDEND"
+    assert rules_v3_fingerprint() == (
+        "3510511d1f7b3ce02a4efa245816b9422e6014088f1595b0339dcfd5be9e7f06"
+    )
     with pytest.raises(Exception, match="FUTURE_EVENT_HOLDOUT_READ_ATTEMPT"):
         guard_future_holdout_outcome_read(datetime(2026, 8, 25, tzinfo=UTC).date(), context="test")
 
@@ -108,6 +161,31 @@ def test_invalid_timezone_is_rejected(tmp_path: Path) -> None:
     assert manifest["BLOCKERS_BY_TYPE"] == {SourceStatus.INVALID_TIMEZONE.value: 1}
 
 
+def test_missing_publication_text_is_not_filled_with_unknown(tmp_path: Path) -> None:
+    manifest = _build(
+        tmp_path,
+        _rss(
+            """
+            <item>
+              <link>https://chtpz.tmk-group.ru/n/1</link>
+              <guid>textless</guid>
+              <pubDate>Tue, 25 Aug 2026 11:44:16 +0300</pubDate>
+            </item>
+            """
+        ),
+    )
+
+    assert manifest["ITEMS_FETCHED"] == 1
+    assert manifest["ITEMS_WITH_PUBLICATION_MATERIAL"] == 0
+    assert manifest["ITEMS_WITHOUT_PUBLICATION_MATERIAL"] == 1
+    assert manifest["ITEMS_NEW"] == 0
+    assert manifest["SNAPSHOTS_WRITTEN"] == 0
+    assert _read_jsonl(tmp_path / ARTIFACT_VERSION / "raw-publication-snapshots.jsonl") == []
+    assert _read_jsonl(tmp_path / ARTIFACT_VERSION / "collected-event-metadata.jsonl") == []
+    invalid = _read_jsonl(tmp_path / ARTIFACT_VERSION / "invalid-items.jsonl")
+    assert invalid[0]["blocker"] == SourceStatus.PUBLICATION_MATERIAL_MISSING.value
+
+
 def test_deterministic_event_identity_duplicate_replay_and_existing_state(tmp_path: Path) -> None:
     body = _rss(
         """
@@ -135,9 +213,18 @@ def test_deterministic_event_identity_duplicate_replay_and_existing_state(tmp_pa
     )[0]["metadata"]
     assert first_event["event_id"] == replay_event["event_id"]
     assert first["ITEMS_NEW"] == 1
+    assert first["SNAPSHOTS_WRITTEN"] == 1
     assert replay["ITEMS_NEW"] == 1
     assert state_replay["ITEMS_NEW"] == 0
     assert state_replay["ITEMS_DUPLICATE"] == 1
+    assert state_replay["SNAPSHOTS_WRITTEN"] == 0
+    assert state_replay["DUPLICATE_SNAPSHOTS"] == 0
+    assert (
+        _read_jsonl(
+            tmp_path / "state-replay" / ARTIFACT_VERSION / "raw-publication-snapshots.jsonl"
+        )
+        == []
+    )
 
 
 def test_multiple_items_sorted_and_source_disabled_behavior(tmp_path: Path) -> None:
@@ -249,10 +336,17 @@ def test_item_match_filter_keeps_shared_rss_feed_ticker_safe(tmp_path: Path) -> 
     )
 
     rows = _read_jsonl(tmp_path / "out" / "collected-event-metadata.jsonl")
+    snapshots = _read_jsonl(tmp_path / "out" / "raw-publication-snapshots.jsonl")
     assert manifest["ITEMS_FETCHED"] == 1
     assert manifest["ITEMS_NEW"] == 1
     assert rows[0]["metadata"]["ticker"] == "AAA"
     assert rows[0]["metadata"]["source_item_id"] == "AAA:https://www.moex.com/n1"
+    assert rows[0]["metadata"]["source_family"] == "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1"
+    assert rows[0]["metadata"]["event_origin"] == "EXCHANGE_ORIGINATED"
+    assert snapshots[0]["link"] == "https://www.moex.com/n1"
+    assert snapshots[0]["guid"] == "https://www.moex.com/n1"
+    assert snapshots[0]["source_family"] == "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1"
+    assert snapshots[0]["event_origin"] == "EXCHANGE_ORIGINATED"
 
 
 def test_item_match_filter_does_not_match_official_domain_url(tmp_path: Path) -> None:
@@ -367,7 +461,7 @@ def _source(*, enabled: bool) -> dict[str, Any]:
 
 def _rss(items: str) -> bytes:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-    <rss version="2.0" xmlns="http://backend.userland.com/rss2">
+    <rss version="2.0" xmlns="http://backend.userland.com/rss2" xmlns:content="http://purl.org/rss/1.0/modules/content/">
       <channel>
         <title>CHEP RSS</title>
         {items}

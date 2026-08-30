@@ -13,6 +13,8 @@ from src.exact_event_corpus.domain import FUTURE_EVENT_HOLDOUT_START
 ARTIFACT_VERSION = "exact-event-live-official-collection-v1"
 SOURCE_REGISTRY_VERSION = "exact-event-live-official-source-registry-v1"
 PARSER_VERSION = "rss-item-pubdate-exact-v1"
+RAW_PUBLICATION_SNAPSHOT_VERSION = "raw-publication-snapshot-v1"
+SEMANTIC_MATERIAL_PROVENANCE_VERSION = "semantic-material-provenance-v1"
 DEFAULT_SOURCE_REGISTRY_PATH = "config/exact-event-live-official-sources.json"
 
 MAX_SOURCES = 20
@@ -44,6 +46,7 @@ class SourceStatus(StrEnum):
     MISSING_EXACT_TIMESTAMP = "MISSING_EXACT_TIMESTAMP"
     INVALID_TIMEZONE = "INVALID_TIMEZONE"
     POLICY_BLOCKED = "POLICY_BLOCKED"
+    PUBLICATION_MATERIAL_MISSING = "PUBLICATION_MATERIAL_MISSING"
     TECHNICAL_FAILURE = "TECHNICAL_FAILURE"
     SOURCE_DISABLED = "SOURCE_DISABLED"
 
@@ -159,11 +162,15 @@ def collection_safety_flags() -> dict[str, bool | int]:
         "RESEARCH_ONLY": True,
         "DATA_ACQUISITION_ONLY": True,
         "DATA_COST_RUB": 0,
+        "RAW_PUBLICATION_PRESERVATION_ENABLED": True,
         "MODEL_TRAINING_PERFORMED": False,
         "TEST_OUTCOME_USED": False,
         "TEST_EVALUATION_PERFORMED": False,
         "FUTURE_EVENT_HOLDOUT_USED": False,
         "FUTURE_EVENT_HOLDOUT_OBSERVED": False,
+        "FUTURE_PRICE_LOOKUPS": 0,
+        "FUTURE_REACTIONS_COMPUTED": 0,
+        "FUTURE_TARGETS_COMPUTED": 0,
         "RULES_V3_CHANGED": False,
         "QWEN_CHANGED": False,
         "NLP_TUNING_PERFORMED": False,
@@ -192,8 +199,27 @@ def sha256_payload(payload: object) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def sha256_text(payload: str) -> str:
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def publication_material(snapshot: dict[str, Any]) -> str | None:
+    fragments: list[str] = []
+    for key in ("title", "description", "content"):
+        value = snapshot.get(key)
+        if isinstance(value, str) and value.strip():
+            fragments.append(_normalize_material_text(value))
+    deduped = list(dict.fromkeys(fragment for fragment in fragments if fragment))
+    return "\n".join(deduped) if deduped else None
+
+
+def publication_material_sha(snapshot: dict[str, Any]) -> str | None:
+    material = publication_material(snapshot)
+    return sha256_text(material) if material is not None else None
 
 
 def _looks_date_only(value: str) -> bool:
@@ -207,3 +233,7 @@ def _has_explicit_timezone(value: str) -> bool:
         or (len(tail) == 5 and tail[0] in {"+", "-"} and tail[1:].isdigit())
         or (len(tail) == 6 and tail[0] in {"+", "-"} and tail[3] == ":")
     )
+
+
+def _normalize_material_text(value: str) -> str:
+    return " ".join(value.split())
