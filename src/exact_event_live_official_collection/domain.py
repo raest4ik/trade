@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from email.utils import parsedate_to_datetime
@@ -12,7 +13,7 @@ from src.exact_event_corpus.domain import FUTURE_EVENT_HOLDOUT_START
 
 ARTIFACT_VERSION = "exact-event-live-official-collection-v1"
 SOURCE_REGISTRY_VERSION = "exact-event-live-official-source-registry-v1"
-PARSER_VERSION = "rss-item-pubdate-exact-v1"
+PARSER_VERSION = "live-publication-exact-parser-v2"
 RAW_PUBLICATION_SNAPSHOT_VERSION = "raw-publication-snapshot-v1"
 SEMANTIC_MATERIAL_PROVENANCE_VERSION = "semantic-material-provenance-v1"
 DEFAULT_SOURCE_REGISTRY_PATH = "config/exact-event-live-official-sources.json"
@@ -23,6 +24,30 @@ REQUEST_TIMEOUT_SECONDS = 10.0
 RETRY_COUNT = 1
 REDIRECT_LIMIT = 3
 MAX_RESPONSE_BYTES = 2_000_000
+SUPPORTED_MECHANISMS = frozenset({"RSS", "ATOM", "JSON", "HTML"})
+PUBLICATION_TIMESTAMP_FIELDS = frozenset(
+    {
+        "RSS item pubDate",
+        "Atom entry published",
+        "JSON published_at",
+        "JSON publication_date",
+        "HTML datePublished",
+        "HTML article:published_time",
+        "HTML pubdate",
+    }
+)
+MODIFICATION_TIMESTAMP_FIELDS = frozenset(
+    {
+        "dateModified",
+        "article:modified_time",
+        "updated",
+        "dateUpdated",
+        "Atom entry updated",
+        "JSON updated_at",
+    }
+)
+ISO_TZ_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})\b")
+ISO_NAIVE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?\b")
 
 NETWORK_LIMITS: dict[str, Any] = {
     "max_sources": MAX_SOURCES,
@@ -68,6 +93,8 @@ class LiveExactSource:
     provenance_evidence_url: str
     provenance_evidence_sha: str
     enabled: bool
+    event_origin: str = "ISSUER_ORIGINATED"
+    ticker_attribution_method: str = "ISSUER_OWNED_SINGLE_ISSUER_SOURCE"
     item_match_any: tuple[str, ...] = ()
     source_registry_version: str = SOURCE_REGISTRY_VERSION
     parser_version: str = PARSER_VERSION
@@ -92,6 +119,18 @@ class LiveExactSource:
             provenance_evidence_url=str(payload["provenance_evidence_url"]),
             provenance_evidence_sha=str(payload["provenance_evidence_sha"]),
             enabled=bool(payload["enabled"]),
+            event_origin=str(
+                payload.get("event_origin")
+                or (
+                    "EXCHANGE_ORIGINATED"
+                    if str(payload.get("source_family"))
+                    == "MOEX_OFFICIAL_RISK_PARAMETERS_RSS_EXACT_LIVE_V1"
+                    else "ISSUER_ORIGINATED"
+                )
+            ),
+            ticker_attribution_method=str(
+                payload.get("ticker_attribution_method") or "ISSUER_OWNED_SINGLE_ISSUER_SOURCE"
+            ),
             item_match_any=tuple(
                 str(item)
                 for item in cast("list[object]", payload.get("item_match_any") or [])
@@ -104,14 +143,31 @@ class LiveExactSource:
     def validate(self) -> None:
         if not self.source_url.startswith(f"https://{self.official_domain}/"):
             raise ValueError("SOURCE_URL_MUST_MATCH_OFFICIAL_DOMAIN")
-        if self.mechanism_type != "RSS":
+        if self.mechanism_type not in SUPPORTED_MECHANISMS:
             raise ValueError("UNSUPPORTED_LIVE_EXACT_MECHANISM")
-        if self.timestamp_field != "RSS item pubDate":
+        if self.timestamp_field in MODIFICATION_TIMESTAMP_FIELDS:
+            raise ValueError("MODIFICATION_TIMESTAMP_DOES_NOT_QUALIFY")
+        if self.timestamp_field not in PUBLICATION_TIMESTAMP_FIELDS:
             raise ValueError("UNSUPPORTED_TIMESTAMP_FIELD")
         if "+0300" not in self.timestamp_policy and "explicit" not in self.timestamp_policy:
             raise ValueError("TIMESTAMP_POLICY_MUST_REQUIRE_EXPLICIT_TIMEZONE")
         if not self.live_capability:
             raise ValueError("LIVE_EXACT_SOURCE_REQUIRES_LIVE_CAPABILITY")
+        if self.event_origin not in {
+            "ISSUER_ORIGINATED",
+            "EXCHANGE_ORIGINATED",
+            "REGULATOR_ORIGINATED",
+            "OTHER_OFFICIAL",
+        }:
+            raise ValueError("UNSUPPORTED_EVENT_ORIGIN")
+        if self.event_origin != "ISSUER_ORIGINATED" and not self.item_match_any:
+            raise ValueError("SHARED_NON_ISSUER_SOURCE_REQUIRES_ITEM_ATTRIBUTION")
+        if (
+            self.event_origin == "ISSUER_ORIGINATED"
+            and self.ticker_attribution_method != "ISSUER_OWNED_SINGLE_ISSUER_SOURCE"
+            and not self.item_match_any
+        ):
+            raise ValueError("SHARED_ISSUER_SOURCE_REQUIRES_ITEM_ATTRIBUTION")
         if any(" " in token.strip() for token in self.item_match_any):
             raise ValueError("ITEM_MATCH_TOKENS_MUST_BE_ATOMIC")
 
@@ -133,17 +189,30 @@ class LiveExactSource:
             "provenance_evidence_url": self.provenance_evidence_url,
             "provenance_evidence_sha": self.provenance_evidence_sha,
             "enabled": self.enabled,
+            "event_origin": self.event_origin,
+            "ticker_attribution_method": self.ticker_attribution_method,
             "parser_version": self.parser_version,
             "item_match_any": list(self.item_match_any),
         }
 
 
 def parse_rss_pubdate_exact(value: str) -> datetime:
+    return parse_publication_timestamp_exact(value, field_name="RSS item pubDate")
+
+
+def parse_publication_timestamp_exact(value: str, *, field_name: str) -> datetime:
+    if field_name in MODIFICATION_TIMESTAMP_FIELDS:
+        raise ValueError("MODIFICATION_TIMESTAMP_DOES_NOT_QUALIFY")
     raw = value.strip()
     if not raw or _looks_date_only(raw):
         raise ValueError("TIMESTAMP_NOT_EXACT")
     if not _has_explicit_timezone(raw):
         raise ValueError("INVALID_TIMEZONE")
+    if ISO_TZ_PATTERN.fullmatch(raw):
+        try:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(UTC)
+        except ValueError as exc:
+            raise ValueError("TIMESTAMP_NOT_EXACT") from exc
     try:
         parsed = parsedate_to_datetime(raw)
     except (TypeError, ValueError) as exc:
@@ -227,6 +296,10 @@ def _looks_date_only(value: str) -> bool:
 
 
 def _has_explicit_timezone(value: str) -> bool:
+    if ISO_TZ_PATTERN.fullmatch(value.strip()):
+        return True
+    if ISO_NAIVE_PATTERN.fullmatch(value.strip()):
+        return False
     tail = value.rsplit(" ", 1)[-1].strip()
     return tail in {"GMT", "UTC"} or bool(
         tail.endswith("Z")

@@ -24,6 +24,7 @@ def run(args: argparse.Namespace) -> int:
         created_at=(
             datetime.fromisoformat(args.created_at) if args.created_at is not None else None
         ),
+        event_origin_filter=tuple(args.event_origin) if args.event_origin else None,
     )
     print(
         json.dumps(
@@ -92,6 +93,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="artifacts/exact-event-live-official-collection-v1",
     )
     parser.add_argument("--created-at", default=None)
+    parser.add_argument(
+        "--event-origin",
+        action="append",
+        default=None,
+        help="Optionally restrict collection to one event origin such as ISSUER_ORIGINATED.",
+    )
     return parser
 
 
