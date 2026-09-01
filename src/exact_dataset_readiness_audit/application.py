@@ -187,6 +187,7 @@ def _audit_event_row(row: dict[str, Any], feature_ids: set[str]) -> dict[str, An
     return {
         "event_id": event_id,
         "ticker": str(metadata.get("ticker") or "UNKNOWN"),
+        "issuer": str(metadata.get("issuer") or metadata.get("issuer_name") or "UNKNOWN"),
         "source_id": str(metadata.get("source_id") or metadata.get("source_code") or source_family),
         "source_family": source_family,
         "source_item_id": str(metadata.get("source_item_id") or ""),
@@ -643,6 +644,25 @@ def _event_origin(metadata: dict[str, Any], source_family: str) -> EventOrigin:
         return EventOrigin.EXCHANGE
     if "CBR" in haystack or "BANK_OF_RUSSIA" in haystack or "REGULATOR" in haystack:
         return EventOrigin.REGULATOR
+    issuer_owned_markers = (
+        "MAGNIT",
+        "NORNICKEL",
+        "ROSNEFT",
+        "TBANK",
+        "VK",
+        "X5",
+        "YANDEX",
+        "CHEP",
+        "NOVATEK",
+        "LUKOIL",
+        "TATNEFT",
+        "ALROSA",
+        "PHOSAGRO",
+        "POLYUS",
+        "INTERRAO",
+    )
+    if any(marker in haystack for marker in issuer_owned_markers):
+        return EventOrigin.ISSUER
     if "OFFICIAL" in haystack or "ISSUER" in haystack:
         return EventOrigin.ISSUER
     if haystack:
