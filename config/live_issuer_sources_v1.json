@@ -1,0 +1,326 @@
+{
+  "historical_frozen_issuer_tickers": [
+    "GMKN",
+    "MGNT",
+    "ROSN",
+    "T",
+    "VKCO",
+    "X5",
+    "YDEX"
+  ],
+  "milestone": {
+    "minimum_new_issuer_tickers": 3,
+    "minimum_total_issuer_tickers": 10,
+    "name": "LIVE_DIVERSITY_MILESTONE_V1"
+  },
+  "source_registry_version": "live-issuer-sources-v1",
+  "sources": [
+    {
+      "canonical_domain": "www.rosneft.com",
+      "content_path": [
+        "rss.channel.item.title",
+        "rss.channel.item.description",
+        "rss.channel.item.content:encoded"
+      ],
+      "discovery_type": "official_issuer_rss",
+      "discovery_url": "https://www.rosneft.com/press/releases/rss/",
+      "enabled": true,
+      "expected_publication_frequency": "several per month",
+      "identity_path": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Rosneft Oil Company",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "interval_minutes": 60,
+        "max_items_per_poll": 5
+      },
+      "source_id": "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_STRICT_EXACT_READY",
+      "source_version": 1,
+      "stable_identity": "rss_guid_or_canonical_link",
+      "ticker": "ROSN",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "ticker belongs to historical frozen issuer cohort"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+        "evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+        "policy": "accept only item-level pubDate with explicit numeric offset"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    },
+    {
+      "canonical_domain": "ir.yandex.ru",
+      "content_path": [
+        "rss.channel.item.title",
+        "rss.channel.item.description",
+        "rss.channel.item.content:encoded"
+      ],
+      "discovery_type": "official_issuer_rss",
+      "discovery_url": "https://ir.yandex.ru/press-releases/news.rss",
+      "enabled": true,
+      "expected_publication_frequency": "several per month",
+      "identity_path": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Yandex",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "interval_minutes": 60,
+        "max_items_per_poll": 5
+      },
+      "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_STRICT_EXACT_READY",
+      "source_version": 1,
+      "stable_identity": "rss_guid_or_canonical_link",
+      "ticker": "YDEX",
+      "ticker_binding": {
+        "binding": "single_issuer_ir_source",
+        "publication_date_validity": "ticker belongs to historical frozen issuer cohort"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+        "evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+        "policy": "accept only item-level pubDate with explicit numeric offset"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    },
+    {
+      "canonical_domain": "www.lukoil.com",
+      "content_path": [
+        "html.title",
+        "html.body"
+      ],
+      "discovery_type": "official_issuer_page_or_subscription",
+      "discovery_url": "https://www.lukoil.com/PressCenter/Pressreleases",
+      "enabled": false,
+      "expected_publication_frequency": "several per month",
+      "identity_path": "canonical publication URL",
+      "issuer": "PJSC LUKOIL",
+      "parser": "not_implemented_until_timezone_contract",
+      "polling_policy": {
+        "interval_minutes": 180,
+        "max_items_per_poll": 3
+      },
+      "source_id": "LKOH_LUKOIL_PRESS_RELEASES_LIVE_CANDIDATE_V1",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_TIMESTAMP_UNVERIFIED",
+      "source_version": 1,
+      "stable_identity": "canonical_url_candidate",
+      "ticker": "LKOH",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "must be checked before enabling"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=UNVERIFIED",
+        "evidence_value": "public page/subscription observed, but no accepted explicit offset contract frozen",
+        "policy": "disabled until first-party exact timestamp/timezone evidence is proven"
+      },
+      "timestamp_path": "not_accepted"
+    },
+    {
+      "canonical_domain": "www.phosagro.com",
+      "content_path": [
+        "html.title",
+        "html.body"
+      ],
+      "discovery_type": "official_issuer_press_page",
+      "discovery_url": "https://www.phosagro.com/press/company/",
+      "enabled": false,
+      "expected_publication_frequency": "several per month",
+      "identity_path": "canonical publication URL",
+      "issuer": "PJSC PhosAgro",
+      "parser": "not_implemented_date_only",
+      "polling_policy": {
+        "interval_minutes": 240,
+        "max_items_per_poll": 3
+      },
+      "source_id": "PHOR_PHOSAGRO_PRESS_DATE_ONLY_REJECTED_V1",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_DATE_ONLY",
+      "source_version": 1,
+      "stable_identity": "canonical_url_candidate",
+      "ticker": "PHOR",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "must be checked before enabling"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=DATE_ONLY",
+        "evidence_value": "official page exposes calendar date without accepted exact offset contract",
+        "policy": "do not coerce dates or crawl time into publication time"
+      },
+      "timestamp_path": "not_accepted"
+    },
+    {
+      "canonical_domain": "www.gazprom.com",
+      "content_path": [
+        "html.title",
+        "html.body"
+      ],
+      "discovery_type": "official_issuer_press_page",
+      "discovery_url": "https://www.gazprom.com/press/",
+      "enabled": false,
+      "expected_publication_frequency": "several per week",
+      "identity_path": "canonical publication URL",
+      "issuer": "Gazprom",
+      "parser": "not_implemented_until_timezone_contract",
+      "polling_policy": {
+        "interval_minutes": 240,
+        "max_items_per_poll": 3
+      },
+      "source_id": "GAZP_GAZPROM_PRESS_CLOCK_WITHOUT_TZ_REJECTED_V1",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_CLOCK_WITHOUT_TIMEZONE",
+      "source_version": 1,
+      "stable_identity": "canonical_url_candidate",
+      "ticker": "GAZP",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "must be checked before enabling"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=CLOCK_WITHOUT_TIMEZONE",
+        "evidence_value": "clock time observed without accepted explicit offset or first-party timezone contract",
+        "policy": "do not assume Moscow timezone"
+      },
+      "timestamp_path": "not_accepted"
+    },
+    {
+      "canonical_domain": "www.x5.ru",
+      "content_path": [
+        "wordpress.title.rendered",
+        "wordpress.content.rendered",
+        "wordpress.excerpt.rendered"
+      ],
+      "discovery_type": "official_issuer_wordpress_rest",
+      "discovery_url": "https://www.x5.ru/wp-json/wp/v2/posts",
+      "enabled": false,
+      "expected_publication_frequency": "several per month",
+      "identity_path": "wordpress.id || canonical link",
+      "issuer": "PJSC X5 Corporate Center",
+      "parser": "wordpress-rest-date-gmt-v1",
+      "polling_policy": {
+        "interval_minutes": 120,
+        "max_items_per_poll": 5
+      },
+      "source_id": "X5_WORDPRESS_REST_ALREADY_HISTORICAL_V1",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_READY_FOR_IMPLEMENTATION",
+      "source_version": 1,
+      "stable_identity": "wordpress_post_id",
+      "ticker": "X5",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "already in historical frozen cohort"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=UTC_FIELD",
+        "evidence_value": "prior frozen historical source uses WordPress REST date_gmt as UTC",
+        "policy": "not enabled in this PR because it does not add a new issuer ticker"
+      },
+      "timestamp_path": "date_gmt"
+    },
+    {
+      "canonical_domain": "www.moex.com",
+      "content_path": [
+        "rss.channel.item.title",
+        "rss.channel.item.description"
+      ],
+      "discovery_type": "exchange_rss",
+      "discovery_url": "https://www.moex.com/export/news.aspx?cat=122",
+      "enabled": false,
+      "expected_publication_frequency": "many per day",
+      "identity_path": "rss.channel.item.guid || link",
+      "issuer": "Moscow Exchange Risk Parameters Feed",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "interval_minutes": 60,
+        "max_items_per_poll": 5
+      },
+      "source_id": "MOEX_RISK_PARAMETERS_NOT_ISSUER_ORIGINATED_V1",
+      "source_origin": "EXCHANGE_ORIGINATED",
+      "source_status": "LIVE_NOT_ISSUER_ORIGINATED",
+      "source_version": 1,
+      "stable_identity": "rss_guid_or_link",
+      "ticker": "MULTI",
+      "ticker_binding": {
+        "binding": "item_text_filter_candidate",
+        "publication_date_validity": "not accepted as issuer-originated source"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+        "evidence_value": "RSS item pubDate has offset, but source is not issuer-controlled",
+        "policy": "never enable as primary issuer event source"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    },
+    {
+      "canonical_domain": "www.e-disclosure.ru",
+      "content_path": [
+        "paid_provider_payload"
+      ],
+      "discovery_type": "paid_disclosure_api_or_ftp",
+      "discovery_url": "https://www.e-disclosure.ru/poluchenie-informacii/",
+      "enabled": false,
+      "expected_publication_frequency": "many per day",
+      "identity_path": "provider uid",
+      "issuer": "Interfax CRKI e-disclosure",
+      "parser": "out_of_scope_paid_source",
+      "polling_policy": {
+        "interval_minutes": 0,
+        "max_items_per_poll": 0
+      },
+      "source_id": "INTERFAX_CRKI_PAID_DISCLOSURE_OUT_OF_SCOPE_V1",
+      "source_origin": "DISCLOSURE_PROVIDER",
+      "source_status": "OUT_OF_SCOPE_PAID_SOURCE",
+      "source_version": 1,
+      "stable_identity": "provider_uid_candidate",
+      "ticker": "MULTI",
+      "ticker_binding": {
+        "binding": "provider_metadata_candidate",
+        "publication_date_validity": "not investigated because paid access is forbidden"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=PAID_CONTRACT_REQUIRED",
+        "evidence_value": "requires paid/authenticated access",
+        "policy": "do not investigate further in free-only project"
+      },
+      "timestamp_path": "out_of_scope"
+    },
+    {
+      "canonical_domain": "www.moex.com",
+      "content_path": [
+        "paid_provider_payload"
+      ],
+      "discovery_type": "paid_corporate_information_api",
+      "discovery_url": "https://www.moex.com/tsentr-korporativnoj-informatsii",
+      "enabled": false,
+      "expected_publication_frequency": "many per day",
+      "identity_path": "provider record id",
+      "issuer": "MOEX Corporate Information Center",
+      "parser": "out_of_scope_paid_source",
+      "polling_policy": {
+        "interval_minutes": 0,
+        "max_items_per_poll": 0
+      },
+      "source_id": "MOEX_CKI_PAID_OUT_OF_SCOPE_V1",
+      "source_origin": "COMMERCIAL_PROVIDER",
+      "source_status": "OUT_OF_SCOPE_PAID_SOURCE",
+      "source_version": 1,
+      "stable_identity": "provider_record_candidate",
+      "ticker": "MULTI",
+      "ticker_binding": {
+        "binding": "provider_metadata_candidate",
+        "publication_date_validity": "not investigated because paid access is forbidden"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=PAID_CONTRACT_REQUIRED",
+        "evidence_value": "requires paid/test-commercial access",
+        "policy": "do not investigate further in free-only project"
+      },
+      "timestamp_path": "out_of_scope"
+    }
+  ]
+}
