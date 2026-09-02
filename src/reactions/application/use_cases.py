@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, localcontext
 from uuid import UUID
 
+from src.free_live_issuer_accumulation.domain import guard_sealed_live_epoch_outcome_read
 from src.instruments.application.ports import InstrumentRepository
 from src.market_data.application.ports import MarketDataRepository
 from src.market_data.domain.entities import (
@@ -65,6 +66,12 @@ class CalculateNewsMarketReactions:
         news_item = await self._news_repository.get_by_id(news_id)
         if news_item is None:
             raise ReactionNewsNotFoundError("news item not found")
+        if news_item.source_id == "live-issuer-shadow-corpus-v1":
+            guard_sealed_live_epoch_outcome_read(
+                epoch="LIVE_SHADOW_CORPUS",
+                target_status="SEALED",
+                context="reaction_calculation",
+            )
         if news_item.publication_timestamp_quality != PublicationTimestampQuality.EXACT:
             raise ReactionTimestampIneligibleError(
                 "market reactions require publication_timestamp_quality=EXACT"
