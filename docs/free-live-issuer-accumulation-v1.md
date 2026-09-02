@@ -60,12 +60,29 @@ is accepted only when the item timestamp has an explicit UTC offset/Z, or a
 first-party source contract unambiguously defines the timezone.
 
 The registry is `config/live_issuer_sources_v1.json`. Each source stores:
-source ID, ticker, issuer, canonical domain, discovery URL/type, parser,
+source ID, ticker, issuer, canonical/official domain, discovery URL/type, parser/parser type,
 timezone contract, timestamp path, identity path, content path, enabled flag,
 polling policy, source version, and contract fingerprint.
 
 Paid or commercial sources are recorded only as `OUT_OF_SCOPE_PAID_SOURCE` and
 are not investigated further.
+
+Allowed source qualification statuses are:
+
+- `LIVE_STRICT_EXACT_READY`
+- `LIVE_READY_FOR_IMPLEMENTATION`
+- `LIVE_TIMESTAMP_UNVERIFIED`
+- `LIVE_CLOCK_WITHOUT_TIMEZONE`
+- `LIVE_DATE_ONLY`
+- `LIVE_NO_STABLE_ID`
+- `LIVE_TECHNICAL_BLOCKER`
+- `LIVE_NOT_ISSUER_ORIGINATED`
+- `OUT_OF_SCOPE_PAID_SOURCE`
+
+`dateModified`, crawl time, HTTP `Date`, file modification time, browser time,
+server time, and local runtime time are never publication timestamps. A naive
+item datetime is accepted only when a first-party source contract documents the
+timezone; otherwise it is rejected.
 
 ## Collector Shape
 
@@ -73,6 +90,10 @@ are not investigated further.
 
 - no daemon requirement
 - bounded source count and item count
+- optional single-source polling with `--source`
+- explicit `--once` CLI contract for one bounded polling pass
+- bounded retries with short backoff
+- content-type validation before parsing
 - rate-limit friendly HTTP client reuse
 - deterministic dedupe by source item ID first, canonical URL second
 - content hash only as revision/update signal
@@ -81,11 +102,33 @@ are not investigated further.
 - separate `published_at`, `first_observed_at`, and `fetched_at`
 - semantic replay through frozen `EventAnalyzerV3`
 - shadow corpus rows with `TARGET_STATUS=SEALED`
+- safety flag `BROKER_MUTATION_ALLOWED=false`
 
 Smoke mode may use deterministic fixture RSS for CI/local validation. Real
 network smoke records unavailable endpoints as `ENVIRONMENT_UNAVAILABLE` and
 does not synthesize success. Items older than `2026-08-11` are rejected from the
 live shadow corpus because the historical corpus is frozen.
+
+The immutable artifact directory writes:
+
+- `manifest.json`
+- `source-registry.json`
+- `source-audit.jsonl`
+- `network-provenance.jsonl`
+- `ticker-coverage.json`
+- `shadow-corpus-stats.json`
+- `timestamp-contracts.json`
+- `rejections.jsonl`
+- `safety.json`
+- `report.md`
+
+`LIVE_DIVERSITY_ACCUMULATION_STATUS` is one of `NOT_STARTED`, `PARTIAL`,
+`LIVE_DIVERSITY_ACCUMULATION_WORKING`, or `INSUFFICIENT_FREE_SOURCE_COVERAGE`.
+`SOURCE_READY` means at least three new strict-EXACT issuer tickers are
+technically accepted relative to the frozen historical seven. `NEW_ITEM_OBSERVED`
+means at least one publication was actually observed in the bounded polling
+window; lack of a new publication during smoke does not invalidate a technically
+ready source.
 
 ## Promotion Protocol
 

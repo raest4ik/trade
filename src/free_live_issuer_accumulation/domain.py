@@ -53,6 +53,10 @@ class PointInTimeFeatureBoundError(ValueError):
     """Raised when a pre-event feature attempts to use future observations."""
 
 
+class LiveModelPredictionError(RuntimeError):
+    """Raised when sealed live shadow data is used for model predictions."""
+
+
 @dataclass(frozen=True, slots=True)
 class LiveIssuerSource:
     source_id: str
@@ -82,14 +86,16 @@ class LiveIssuerSource:
         if not isinstance(content_path, list):
             raise ValueError("CONTENT_PATH_MISSING")
         content_path_rows = cast("list[object]", content_path)
+        canonical_domain = str(payload.get("canonical_domain") or payload["official_domain"])
+        parser = str(payload.get("parser") or payload["parser_type"])
         source = cls(
             source_id=str(payload["source_id"]),
             ticker=str(payload["ticker"]),
             issuer=str(payload["issuer"]),
-            canonical_domain=str(payload["canonical_domain"]),
+            canonical_domain=canonical_domain,
             discovery_url=str(payload["discovery_url"]),
             discovery_type=str(payload["discovery_type"]),
-            parser=str(payload["parser"]),
+            parser=parser,
             timestamp_contract=cast("dict[str, Any]", payload["timestamp_contract"]),
             timestamp_path=str(payload["timestamp_path"]),
             identity_path=str(payload["identity_path"]),
@@ -114,6 +120,8 @@ class LiveIssuerSource:
             raise ValueError("SOURCE_URL_DOMAIN_MISMATCH")
         if self.enabled and self.source_status != SourceQualificationStatus.LIVE_STRICT_EXACT_READY:
             raise ValueError("ENABLED_SOURCE_MUST_BE_LIVE_STRICT_EXACT_READY")
+        if self.enabled and "dateModified" in self.timestamp_path:
+            raise ValueError("DATE_MODIFIED_CANNOT_BE_PUBLICATION_TIMESTAMP")
         if self.enabled and self.source_origin != "ISSUER_ORIGINATED":
             raise ValueError("ENABLED_SOURCE_MUST_BE_ISSUER_ORIGINATED")
         if self.enabled and self.ticker == "MULTI":
@@ -122,6 +130,7 @@ class LiveIssuerSource:
         evidence_value = str(self.timestamp_contract.get("evidence_value") or "")
         if self.enabled and not (
             "EXPLICIT_OFFSET" in evidence_type
+            or "DOCUMENTED_TIMEZONE" in evidence_type
             or re.search(r"(?:[+-]\d{2}:?\d{2}|\bZ\b|UTC)", evidence_value)
         ):
             raise ValueError("ENABLED_SOURCE_REQUIRES_EXPLICIT_TIMEZONE_CONTRACT")
@@ -134,6 +143,7 @@ class LiveIssuerSource:
     def payload(self) -> dict[str, Any]:
         return {
             "canonical_domain": self.canonical_domain,
+            "contract_sha": self.contract_sha(),
             "content_path": list(self.content_path),
             "discovery_type": self.discovery_type,
             "discovery_url": self.discovery_url,
@@ -141,7 +151,9 @@ class LiveIssuerSource:
             "expected_publication_frequency": self.expected_publication_frequency,
             "identity_path": self.identity_path,
             "issuer": self.issuer,
+            "official_domain": self.canonical_domain,
             "parser": self.parser,
+            "parser_type": self.parser,
             "polling_policy": self.polling_policy,
             "source_id": self.source_id,
             "source_origin": self.source_origin,
@@ -187,7 +199,9 @@ class ParsedPublication:
         return "\n".join(unique) if unique else None
 
 
-def parse_publication_timestamp(value: str) -> datetime:
+def parse_publication_timestamp(
+    value: str, timestamp_contract: dict[str, Any] | None = None
+) -> datetime:
     raw = value.strip()
     if not raw:
         raise ValueError("MISSING_EXACT_TIMESTAMP")
@@ -197,8 +211,12 @@ def parse_publication_timestamp(value: str) -> datetime:
         parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     else:
         if not re.search(r"(?:[+-]\d{4}|GMT|UTC|UT)\s*$", raw, re.IGNORECASE):
-            raise ValueError("INVALID_TIMEZONE")
-        parsed = parsedate_to_datetime(raw)
+            if _contract_documents_utc(timestamp_contract):
+                parsed = datetime.fromisoformat(raw).replace(tzinfo=UTC)
+            else:
+                raise ValueError("INVALID_TIMEZONE")
+        else:
+            parsed = parsedate_to_datetime(raw)
     if parsed.tzinfo is None:
         raise ValueError("INVALID_TIMEZONE")
     return parsed.astimezone(UTC)
@@ -237,6 +255,16 @@ def guard_sealed_live_epoch_post_event_price_read(
         raise SealedLiveEpochOutcomeReadError(f"SEALED_LIVE_EPOCH_OUTCOME_READ_ATTEMPT:{context}")
 
 
+def guard_sealed_live_epoch_model_prediction(
+    *,
+    epoch: str,
+    target_status: str,
+    context: str,
+) -> None:
+    if epoch == "LIVE_SHADOW_CORPUS" and target_status == "SEALED":
+        raise LiveModelPredictionError(f"SEALED_LIVE_EPOCH_OUTCOME_READ_ATTEMPT:{context}")
+
+
 def live_accumulation_safety_flags() -> dict[str, Any]:
     return {
         "FREE_SOURCES_ONLY": True,
@@ -253,6 +281,7 @@ def live_accumulation_safety_flags() -> dict[str, Any]:
         "LIVE_POST_EVENT_PRICE_READS": 0,
         "OLD_FUTURE_HOLDOUT_OPENED": False,
         "REAL_TRADING_ALLOWED": False,
+        "BROKER_MUTATION_ALLOWED": False,
     }
 
 
@@ -267,3 +296,11 @@ def sha256_text(value: str) -> str:
 
 def _has_iso_offset(value: str) -> bool:
     return bool(re.search(r"(?:[+-]\d{2}:\d{2}|Z)$", value))
+
+
+def _contract_documents_utc(timestamp_contract: dict[str, Any] | None) -> bool:
+    if timestamp_contract is None:
+        return False
+    evidence_type = str(timestamp_contract.get("evidence_type") or "")
+    evidence_value = str(timestamp_contract.get("evidence_value") or "")
+    return "DOCUMENTED_TIMEZONE_UTC" in evidence_type or "UTC" in evidence_value.upper()

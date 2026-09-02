@@ -1,0 +1,27 @@
+{
+  "content_sha_by_identity": {
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://www.rosneft.com/press/releases/item/224607/": "a63ba398c3e73a9bd8ad4b0f2246776bea19626285c898be11913939d2691d06",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01": "f9ece161284dc3dff933916ad5ab4f9190e42ccd40a460a38a8d47dff6e47b40",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02": "8d86e7208a0f30b313544e14dd0b76d80eb709f8aee64f57f077ba4c38403a49",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01": "e291701122297b8a14454428b514cc7ec7b9b54d81cc99e694de2e46aa478442",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01": "d9516d60e52b3e84426b787cb954155115a6bb45afb2e940f5d87a38078064ab",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=digest-0826": "3bbf1c221b1e27601a15b953800e199dc204eb8c33f2d634d8055862ef7641bc"
+  },
+  "dedupe_state_version": "live-issuer-shadow-dedupe-state-v1",
+  "seen_canonical_urls": [
+    "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01",
+    "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02",
+    "https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01",
+    "https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01",
+    "https://ir.yandex.ru/press-releases?year=2026&id=digest-0826",
+    "https://www.rosneft.com/press/releases/item/224607/"
+  ],
+  "seen_source_item_ids": [
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://www.rosneft.com/press/releases/item/224607/",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://ir.yandex.ru/press-releases?year=2026&id=digest-0826"
+  ]
+}

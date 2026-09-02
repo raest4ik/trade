@@ -1,0 +1,32 @@
+{
+  "canonical_url": "https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01",
+  "content": null,
+  "content_type": "text/xml",
+  "description": "<p>1&nbsp;сентября 2026 года в&nbsp;России запустится бесплатная программа повышения квалификации &laquo;Искусственный интеллект в&nbsp;работе учителя&raquo;. Её&nbsp;содержание разработал Яндекс, а&nbsp;обучение организуют Минпросвещения РФ, Минцифры РФ&nbsp;и&nbsp;Государственный университет просвещения. До&nbsp;конца 2026 года программу смогут пройти 250 тысяч школьных учителей&nbsp;&mdash; четверть от&nbsp;общего количества педагогов в&nbsp;России.</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01\">https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01</a></p>",
+  "event_id": "abf58dec-470f-5e63-9cc3-bf7da9e34f09",
+  "fetched_at": "2026-09-02T19:10:34.708251+00:00",
+  "first_observed_at": "2026-09-02T19:10:34.708251+00:00",
+  "issuer": "Yandex",
+  "parser_version": "rss-item-pubdate-explicit-offset-v1",
+  "publication_timestamp_raw": "Wed, 26 Aug 2026 11:00:00 +0300",
+  "published_at": "2026-08-26T08:00:00+00:00",
+  "raw_item_sha": "e291701122297b8a14454428b514cc7ec7b9b54d81cc99e694de2e46aa478442",
+  "raw_payload": {
+    "content:encoded": null,
+    "description": "<p>1&nbsp;сентября 2026 года в&nbsp;России запустится бесплатная программа повышения квалификации &laquo;Искусственный интеллект в&nbsp;работе учителя&raquo;. Её&nbsp;содержание разработал Яндекс, а&nbsp;обучение организуют Минпросвещения РФ, Минцифры РФ&nbsp;и&nbsp;Государственный университет просвещения. До&nbsp;конца 2026 года программу смогут пройти 250 тысяч школьных учителей&nbsp;&mdash; четверть от&nbsp;общего количества педагогов в&nbsp;России.</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01\">https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01</a></p>",
+    "guid": "https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01",
+    "link": "https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01",
+    "pubDate": "Wed, 26 Aug 2026 11:00:00 +0300",
+    "title": "Учителей со всей России обучат работе с ИИ по программе Яндекса"
+  },
+  "raw_snapshot_sha": "e4da9247e7fcf24c0bdc3a1c649a8b4811a7d6815ea815e5fc685442a33cbb9f",
+  "response_sha": "84f6751668e1b870a287f83cbce79a40961ab54f40d402686f804a95c34070b2",
+  "snapshot_version": "live-issuer-raw-publication-snapshot-v1",
+  "source_contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+  "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+  "source_item_id": "https://ir.yandex.ru/press-releases?year=2026&id=26-08-2026-01",
+  "ticker": "YDEX",
+  "timezone_evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+  "timezone_evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+  "title": "Учителей со всей России обучат работе с ИИ по программе Яндекса"
+}
