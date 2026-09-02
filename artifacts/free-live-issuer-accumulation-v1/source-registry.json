@@ -17,24 +17,26 @@
   "sources": [
     {
       "canonical_domain": "www.rosneft.com",
-      "official_domain": "www.rosneft.com",
       "content_path": [
         "rss.channel.item.title",
         "rss.channel.item.description",
         "rss.channel.item.content:encoded"
       ],
+      "contract_sha": "2e43a301594fcadbc53172ca25ef2be0ec310bf67983714fa573eddcf4d23966",
       "discovery_type": "official_issuer_rss",
       "discovery_url": "https://www.rosneft.com/press/releases/rss/",
       "enabled": true,
       "expected_publication_frequency": "several per month",
       "identity_path": "rss.channel.item.guid || rss.channel.item.link",
       "issuer": "Rosneft Oil Company",
+      "official_domain": "www.rosneft.com",
       "parser": "rss-item-pubdate-explicit-offset-v1",
       "parser_type": "rss-item-pubdate-explicit-offset-v1",
       "polling_policy": {
         "interval_minutes": 60,
         "max_items_per_poll": 5
       },
+      "source_contract_sha": "2e43a301594fcadbc53172ca25ef2be0ec310bf67983714fa573eddcf4d23966",
       "source_id": "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
       "source_origin": "ISSUER_ORIGINATED",
       "source_status": "LIVE_STRICT_EXACT_READY",
@@ -54,24 +56,26 @@
     },
     {
       "canonical_domain": "ir.yandex.ru",
-      "official_domain": "ir.yandex.ru",
       "content_path": [
         "rss.channel.item.title",
         "rss.channel.item.description",
         "rss.channel.item.content:encoded"
       ],
+      "contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
       "discovery_type": "official_issuer_rss",
       "discovery_url": "https://ir.yandex.ru/press-releases/news.rss",
       "enabled": true,
       "expected_publication_frequency": "several per month",
       "identity_path": "rss.channel.item.guid || rss.channel.item.link",
       "issuer": "Yandex",
+      "official_domain": "ir.yandex.ru",
       "parser": "rss-item-pubdate-explicit-offset-v1",
       "parser_type": "rss-item-pubdate-explicit-offset-v1",
       "polling_policy": {
         "interval_minutes": 60,
         "max_items_per_poll": 5
       },
+      "source_contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
       "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
       "source_origin": "ISSUER_ORIGINATED",
       "source_status": "LIVE_STRICT_EXACT_READY",
@@ -91,23 +95,25 @@
     },
     {
       "canonical_domain": "www.lukoil.com",
-      "official_domain": "www.lukoil.com",
       "content_path": [
         "html.title",
         "html.body"
       ],
+      "contract_sha": "38d59aac4b743c8a3c609be58b6eb687acf2f10fcf3821b3de67f94404675386",
       "discovery_type": "official_issuer_page_or_subscription",
       "discovery_url": "https://www.lukoil.com/PressCenter/Pressreleases",
       "enabled": false,
       "expected_publication_frequency": "several per month",
       "identity_path": "canonical publication URL",
       "issuer": "PJSC LUKOIL",
+      "official_domain": "www.lukoil.com",
       "parser": "not_implemented_until_timezone_contract",
       "parser_type": "not_implemented_until_timezone_contract",
       "polling_policy": {
         "interval_minutes": 180,
         "max_items_per_poll": 3
       },
+      "source_contract_sha": "38d59aac4b743c8a3c609be58b6eb687acf2f10fcf3821b3de67f94404675386",
       "source_id": "LKOH_LUKOIL_PRESS_RELEASES_LIVE_CANDIDATE_V1",
       "source_origin": "ISSUER_ORIGINATED",
       "source_status": "LIVE_TIMESTAMP_UNVERIFIED",
@@ -127,23 +133,25 @@
     },
     {
       "canonical_domain": "www.phosagro.com",
-      "official_domain": "www.phosagro.com",
       "content_path": [
         "html.title",
         "html.body"
       ],
+      "contract_sha": "3a0bec25b1e47ac57adc6371c44766c60bea6db928782a409274fca9c2dcc8e9",
       "discovery_type": "official_issuer_press_page",
       "discovery_url": "https://www.phosagro.com/press/company/",
       "enabled": false,
       "expected_publication_frequency": "several per month",
       "identity_path": "canonical publication URL",
       "issuer": "PJSC PhosAgro",
+      "official_domain": "www.phosagro.com",
       "parser": "not_implemented_date_only",
       "parser_type": "not_implemented_date_only",
       "polling_policy": {
         "interval_minutes": 240,
         "max_items_per_poll": 3
       },
+      "source_contract_sha": "3a0bec25b1e47ac57adc6371c44766c60bea6db928782a409274fca9c2dcc8e9",
       "source_id": "PHOR_PHOSAGRO_PRESS_DATE_ONLY_REJECTED_V1",
       "source_origin": "ISSUER_ORIGINATED",
       "source_status": "LIVE_DATE_ONLY",
@@ -163,23 +171,25 @@
     },
     {
       "canonical_domain": "www.gazprom.com",
-      "official_domain": "www.gazprom.com",
       "content_path": [
         "html.title",
         "html.body"
       ],
+      "contract_sha": "510ff76c8d0ada1271b342e4c44a458569118dd399ce1bafe37578dc9e7e35e0",
       "discovery_type": "official_issuer_press_page",
       "discovery_url": "https://www.gazprom.com/press/",
       "enabled": false,
       "expected_publication_frequency": "several per week",
       "identity_path": "canonical publication URL",
       "issuer": "Gazprom",
+      "official_domain": "www.gazprom.com",
       "parser": "not_implemented_until_timezone_contract",
       "parser_type": "not_implemented_until_timezone_contract",
       "polling_policy": {
         "interval_minutes": 240,
         "max_items_per_poll": 3
       },
+      "source_contract_sha": "510ff76c8d0ada1271b342e4c44a458569118dd399ce1bafe37578dc9e7e35e0",
       "source_id": "GAZP_GAZPROM_PRESS_CLOCK_WITHOUT_TZ_REJECTED_V1",
       "source_origin": "ISSUER_ORIGINATED",
       "source_status": "LIVE_CLOCK_WITHOUT_TIMEZONE",
@@ -199,24 +209,26 @@
     },
     {
       "canonical_domain": "www.x5.ru",
-      "official_domain": "www.x5.ru",
       "content_path": [
         "wordpress.title.rendered",
         "wordpress.content.rendered",
         "wordpress.excerpt.rendered"
       ],
+      "contract_sha": "d8b193d20db31d8a11185071410368c69d605fa77c3b75241658851b3a75a618",
       "discovery_type": "official_issuer_wordpress_rest",
       "discovery_url": "https://www.x5.ru/wp-json/wp/v2/posts",
       "enabled": false,
       "expected_publication_frequency": "several per month",
       "identity_path": "wordpress.id || canonical link",
       "issuer": "PJSC X5 Corporate Center",
+      "official_domain": "www.x5.ru",
       "parser": "wordpress-rest-date-gmt-v1",
       "parser_type": "wordpress-rest-date-gmt-v1",
       "polling_policy": {
         "interval_minutes": 120,
         "max_items_per_poll": 5
       },
+      "source_contract_sha": "d8b193d20db31d8a11185071410368c69d605fa77c3b75241658851b3a75a618",
       "source_id": "X5_WORDPRESS_REST_ALREADY_HISTORICAL_V1",
       "source_origin": "ISSUER_ORIGINATED",
       "source_status": "LIVE_READY_FOR_IMPLEMENTATION",
@@ -236,23 +248,25 @@
     },
     {
       "canonical_domain": "www.moex.com",
-      "official_domain": "www.moex.com",
       "content_path": [
         "rss.channel.item.title",
         "rss.channel.item.description"
       ],
+      "contract_sha": "f547fa214ada90280e0f784ab61b685b6c3640a2d0b7c90f6e4a5519ecd22e65",
       "discovery_type": "exchange_rss",
       "discovery_url": "https://www.moex.com/export/news.aspx?cat=122",
       "enabled": false,
       "expected_publication_frequency": "many per day",
       "identity_path": "rss.channel.item.guid || link",
       "issuer": "Moscow Exchange Risk Parameters Feed",
+      "official_domain": "www.moex.com",
       "parser": "rss-item-pubdate-explicit-offset-v1",
       "parser_type": "rss-item-pubdate-explicit-offset-v1",
       "polling_policy": {
         "interval_minutes": 60,
         "max_items_per_poll": 5
       },
+      "source_contract_sha": "f547fa214ada90280e0f784ab61b685b6c3640a2d0b7c90f6e4a5519ecd22e65",
       "source_id": "MOEX_RISK_PARAMETERS_NOT_ISSUER_ORIGINATED_V1",
       "source_origin": "EXCHANGE_ORIGINATED",
       "source_status": "LIVE_NOT_ISSUER_ORIGINATED",
@@ -272,22 +286,24 @@
     },
     {
       "canonical_domain": "www.e-disclosure.ru",
-      "official_domain": "www.e-disclosure.ru",
       "content_path": [
         "paid_provider_payload"
       ],
+      "contract_sha": "9c27aedfc8e74543bce3ebe3fdb7d7d0246daadf615e9d2fb6064ea5bc866c0e",
       "discovery_type": "paid_disclosure_api_or_ftp",
       "discovery_url": "https://www.e-disclosure.ru/poluchenie-informacii/",
       "enabled": false,
       "expected_publication_frequency": "many per day",
       "identity_path": "provider uid",
       "issuer": "Interfax CRKI e-disclosure",
+      "official_domain": "www.e-disclosure.ru",
       "parser": "out_of_scope_paid_source",
       "parser_type": "out_of_scope_paid_source",
       "polling_policy": {
         "interval_minutes": 0,
         "max_items_per_poll": 0
       },
+      "source_contract_sha": "9c27aedfc8e74543bce3ebe3fdb7d7d0246daadf615e9d2fb6064ea5bc866c0e",
       "source_id": "INTERFAX_CRKI_PAID_DISCLOSURE_OUT_OF_SCOPE_V1",
       "source_origin": "DISCLOSURE_PROVIDER",
       "source_status": "OUT_OF_SCOPE_PAID_SOURCE",
@@ -307,22 +323,24 @@
     },
     {
       "canonical_domain": "www.moex.com",
-      "official_domain": "www.moex.com",
       "content_path": [
         "paid_provider_payload"
       ],
+      "contract_sha": "8c716aa76ad1f53f0501cffaf86e83e3fdb699f2531e602edad8fa7ef1aa5791",
       "discovery_type": "paid_corporate_information_api",
       "discovery_url": "https://www.moex.com/tsentr-korporativnoj-informatsii",
       "enabled": false,
       "expected_publication_frequency": "many per day",
       "identity_path": "provider record id",
       "issuer": "MOEX Corporate Information Center",
+      "official_domain": "www.moex.com",
       "parser": "out_of_scope_paid_source",
       "parser_type": "out_of_scope_paid_source",
       "polling_policy": {
         "interval_minutes": 0,
         "max_items_per_poll": 0
       },
+      "source_contract_sha": "8c716aa76ad1f53f0501cffaf86e83e3fdb699f2531e602edad8fa7ef1aa5791",
       "source_id": "MOEX_CKI_PAID_OUT_OF_SCOPE_V1",
       "source_origin": "COMMERCIAL_PROVIDER",
       "source_status": "OUT_OF_SCOPE_PAID_SOURCE",

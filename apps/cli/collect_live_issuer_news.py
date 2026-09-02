@@ -7,7 +7,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from src.exact_event_live_official_collection.http_client import FetchResult
-from src.free_live_issuer_accumulation.application import collect_live_issuer_news, read_registry
+from src.free_live_issuer_accumulation.application import (
+    DEFAULT_HISTORICAL_TICKER_SUMMARY_PATH,
+    collect_live_issuer_news,
+    read_registry,
+)
 from src.free_live_issuer_accumulation.domain import DEFAULT_SOURCE_REGISTRY_PATH
 
 
@@ -18,10 +22,12 @@ def run(args: argparse.Namespace) -> int:
         base_main_sha=args.base_main_sha,
         git_sha=_git_sha(),
         registry_path=Path(args.source_registry),
+        historical_ticker_summary_path=Path(args.historical_ticker_summary),
         state_path=Path(args.state_file) if args.state_file else None,
         client=client,
         created_at=datetime.fromisoformat(args.created_at) if args.created_at else None,
         max_sources=args.max_sources,
+        source_id=args.source,
     )
     print(json.dumps(_summary(manifest), ensure_ascii=False, sort_keys=True))
     return 0
@@ -31,10 +37,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Collect bounded free live issuer shadow corpus.")
     parser.add_argument("--base-main-sha", required=True)
     parser.add_argument("--source-registry", default=DEFAULT_SOURCE_REGISTRY_PATH)
+    parser.add_argument(
+        "--historical-ticker-summary", default=DEFAULT_HISTORICAL_TICKER_SUMMARY_PATH
+    )
     parser.add_argument("--state-file", default=None)
     parser.add_argument("--output-dir", default="artifacts/free-live-issuer-accumulation-v1")
     parser.add_argument("--created-at", default=None)
     parser.add_argument("--max-sources", type=int, default=5)
+    parser.add_argument("--source", default=None)
+    parser.add_argument("--once", action="store_true", help="Run one bounded polling pass.")
     parser.add_argument(
         "--fixture-smoke",
         action="store_true",
@@ -58,6 +69,11 @@ def _summary(manifest: dict[str, object]) -> dict[str, object]:
         "LIVE_TARGETS_COMPUTED",
         "LIVE_OUTCOMES_READ",
         "LIVE_DIVERSITY_STATUS",
+        "LIVE_DIVERSITY_ACCUMULATION_STATUS",
+        "SOURCE_READY",
+        "NEW_ITEM_OBSERVED",
+        "READY_ISSUER_TICKERS",
+        "NEW_TICKERS_RELATIVE_TO_HISTORICAL_7",
         "FREE_BLOCKER",
     )
     return {key: manifest[key] for key in keys}

@@ -1,0 +1,45 @@
+{
+  "accepted_live_sources": 2,
+  "accepted_source_ids": [
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"
+  ],
+  "events_collected": 6,
+  "events_per_day": {
+    "2026-08-24": 2,
+    "2026-08-26": 1,
+    "2026-08-28": 2,
+    "2026-09-01": 1
+  },
+  "events_per_ticker": {
+    "ROSN": 1,
+    "YDEX": 5
+  },
+  "events_per_week": {
+    "2026-W35": 5,
+    "2026-W36": 1
+  },
+  "live_diversity_accumulation_status": "PARTIAL",
+  "live_diversity_status": "PARTIAL",
+  "new_item_observed": true,
+  "new_item_observed_tickers": [],
+  "new_source_ready_tickers": [],
+  "pre_event_feature_ready_count": 0,
+  "raw_snapshot_pass": 6,
+  "semantic_ready_count": 6,
+  "semantic_unknown_count": 3,
+  "semantic_unknown_rate": "0.500000",
+  "source_family_hhi": "0.722222",
+  "source_ready": false,
+  "source_ready_tickers": [
+    "ROSN",
+    "YDEX"
+  ],
+  "strict_timestamp_pass": 6,
+  "target_metrics_included": false,
+  "ticker_hhi": "0.722222",
+  "ticker_mapping_pass": 6,
+  "top_1_ticker_share": "0.833333",
+  "top_3_ticker_share": "1.000000",
+  "unique_live_issuer_tickers": 2
+}

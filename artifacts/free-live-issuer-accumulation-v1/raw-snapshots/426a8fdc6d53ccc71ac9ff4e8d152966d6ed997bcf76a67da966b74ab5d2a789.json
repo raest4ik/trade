@@ -1,0 +1,32 @@
+{
+  "canonical_url": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01",
+  "content": null,
+  "content_type": "text/xml",
+  "description": "<p>Яндекс открыл доступ к&nbsp;бета-версии своего медицинского ИИ-ассистента всем медработникам. Теперь сверяться с&nbsp;ним при принятии решений может любой медик, а&nbsp;не&nbsp;только сотрудники клиник&nbsp;&mdash; партнёров Яндекса. &nbsp;Ассистент всегда под рукой&nbsp;&mdash; он&nbsp;работает даже на&nbsp;личных устройствах, а&nbsp;обращаться к&nbsp;нему можно в&nbsp;любой момент: например, на&nbsp;обходе или во&nbsp;время клинического разбора.</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01\">https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01</a></p>",
+  "event_id": "8dadb20b-888b-512c-a616-f90012ef15e9",
+  "fetched_at": "2026-09-02T19:10:34.708251+00:00",
+  "first_observed_at": "2026-09-02T19:10:34.708251+00:00",
+  "issuer": "Yandex",
+  "parser_version": "rss-item-pubdate-explicit-offset-v1",
+  "publication_timestamp_raw": "Mon, 24 Aug 2026 10:16:32 +0300",
+  "published_at": "2026-08-24T07:16:32+00:00",
+  "raw_item_sha": "f9ece161284dc3dff933916ad5ab4f9190e42ccd40a460a38a8d47dff6e47b40",
+  "raw_payload": {
+    "content:encoded": null,
+    "description": "<p>Яндекс открыл доступ к&nbsp;бета-версии своего медицинского ИИ-ассистента всем медработникам. Теперь сверяться с&nbsp;ним при принятии решений может любой медик, а&nbsp;не&nbsp;только сотрудники клиник&nbsp;&mdash; партнёров Яндекса. &nbsp;Ассистент всегда под рукой&nbsp;&mdash; он&nbsp;работает даже на&nbsp;личных устройствах, а&nbsp;обращаться к&nbsp;нему можно в&nbsp;любой момент: например, на&nbsp;обходе или во&nbsp;время клинического разбора.</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01\">https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01</a></p>",
+    "guid": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01",
+    "link": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01",
+    "pubDate": "Mon, 24 Aug 2026 10:16:32 +0300",
+    "title": "Медицинский ИИ-ассистент Яндекса стал доступен всем врачам"
+  },
+  "raw_snapshot_sha": "426a8fdc6d53ccc71ac9ff4e8d152966d6ed997bcf76a67da966b74ab5d2a789",
+  "response_sha": "84f6751668e1b870a287f83cbce79a40961ab54f40d402686f804a95c34070b2",
+  "snapshot_version": "live-issuer-raw-publication-snapshot-v1",
+  "source_contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+  "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+  "source_item_id": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-01",
+  "ticker": "YDEX",
+  "timezone_evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+  "timezone_evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+  "title": "Медицинский ИИ-ассистент Яндекса стал доступен всем врачам"
+}

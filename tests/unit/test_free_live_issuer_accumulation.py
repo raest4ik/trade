@@ -17,9 +17,11 @@ from src.free_live_issuer_accumulation.application import (
 )
 from src.free_live_issuer_accumulation.domain import (
     EXPECTED_RULES_V3_FINGERPRINT,
+    LiveModelPredictionError,
     PointInTimeFeatureBoundError,
     SealedLiveEpochOutcomeReadError,
     assert_pre_event_feature_upper_bound,
+    guard_sealed_live_epoch_model_prediction,
     guard_sealed_live_epoch_outcome_read,
     guard_sealed_live_epoch_post_event_price_read,
     parse_publication_timestamp,
@@ -43,6 +45,13 @@ def test_explicit_offset_timestamp_accepted_and_naive_rejected() -> None:
     assert parse_publication_timestamp("2026-09-02T11:31:00Z") == datetime(
         2026, 9, 2, 11, 31, tzinfo=UTC
     )
+    assert parse_publication_timestamp(
+        "2026-09-02T11:31:00",
+        {
+            "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=DOCUMENTED_TIMEZONE_UTC",
+            "evidence_value": "First-party source contract says publication timestamps are UTC",
+        },
+    ) == datetime(2026, 9, 2, 11, 31, tzinfo=UTC)
     with pytest.raises(ValueError, match="INVALID_TIMEZONE"):
         parse_publication_timestamp("Tue, 25 Aug 2026 11:44:16")
     with pytest.raises(ValueError, match="MISSING_EXACT_TIMESTAMP"):
@@ -68,6 +77,22 @@ def test_crawl_time_cannot_substitute_publication_time(tmp_path: Path) -> None:
     assert manifest["EVENTS_COLLECTED"] == 0
     assert manifest["RAW_SNAPSHOTS_FROZEN"] == 0
     assert manifest["LIVE_POST_EVENT_PRICE_READS"] == 0
+
+
+def test_date_modified_cannot_substitute_publication_time(tmp_path: Path) -> None:
+    source = _source("https://issuer.test/rss", "issuer.test", "AAA", "AAA_SOURCE_V1")
+    source["timestamp_path"] = "dateModified"
+    registry = _registry(tmp_path / "registry.json", sources=[source])
+
+    with pytest.raises(ValueError, match="DATE_MODIFIED_CANNOT_BE_PUBLICATION_TIMESTAMP"):
+        collect_live_issuer_news(
+            output_root=tmp_path / "out",
+            base_main_sha="5" * 40,
+            git_sha="6" * 40,
+            registry_path=registry,
+            client=_FakeClient({"https://issuer.test/rss": _rss("<title>Result</title>")}),
+            created_at=_NOW,
+        )
 
 
 def test_duplicate_poll_idempotent_and_updated_publication_creates_revision(tmp_path: Path) -> None:
@@ -106,6 +131,9 @@ def test_duplicate_poll_idempotent_and_updated_publication_creates_revision(tmp_
     assert replay["EVENTS_COLLECTED"] == 0
     assert replay["DUPLICATES_ENCOUNTERED"] == 1
     assert updated["REVISIONS_CREATED"] == 1
+    first_snapshots = sorted((tmp_path / "first" / "raw-snapshots").glob("*.json"))
+    assert len(first_snapshots) == 1
+    assert json.loads(first_snapshots[0].read_text(encoding="utf-8"))["title"] == "Stable headline"
 
 
 def test_canonical_url_dedup_when_guid_changes(tmp_path: Path) -> None:
@@ -133,6 +161,40 @@ def test_canonical_url_dedup_when_guid_changes(tmp_path: Path) -> None:
 
     assert manifest["EVENTS_COLLECTED"] == 1
     assert manifest["DUPLICATES_ENCOUNTERED"] == 1
+
+
+def test_bounded_poll_uses_latest_publications_after_cutoff(tmp_path: Path) -> None:
+    old_items = "\n".join(
+        f"""
+        <item>
+          <title>Old {index}</title>
+          <link>https://issuer.test/news/old-{index}</link>
+          <guid>old-{index}</guid>
+          <pubDate>Tue, 01 Jul 2025 10:0{index}:00 +0000</pubDate>
+        </item>
+        """
+        for index in range(5)
+    )
+    manifest = _collect(
+        tmp_path,
+        {
+            "https://issuer.test/rss": _rss_items(
+                old_items
+                + """
+                <item>
+                  <title>New after cutoff</title>
+                  <link>https://issuer.test/news/new</link>
+                  <guid>new</guid>
+                  <pubDate>Tue, 25 Aug 2026 11:44:16 +0300</pubDate>
+                </item>
+                """
+            )
+        },
+    )
+    rows = _read_jsonl(tmp_path / "live-shadow-corpus.jsonl")
+
+    assert manifest["EVENTS_COLLECTED"] == 1
+    assert rows[0]["source_item_id"] == "new"
 
 
 def test_ticker_binding_and_ambiguous_ticker_rejected(tmp_path: Path) -> None:
@@ -170,6 +232,12 @@ def test_sealed_epoch_target_and_post_event_price_reads_rejected() -> None:
             published_at=published,
             query_end_at=published + timedelta(minutes=15),
             context="price",
+        )
+    with pytest.raises(LiveModelPredictionError, match="SEALED_LIVE_EPOCH_OUTCOME_READ_ATTEMPT"):
+        guard_sealed_live_epoch_model_prediction(
+            epoch="LIVE_SHADOW_CORPUS",
+            target_status="SEALED",
+            context="model",
         )
 
 
@@ -229,6 +297,18 @@ def test_frozen_rules_fingerprint_paid_source_audit_and_zero_future_counters(
     assert audit["PAID_OUT_OF_SCOPE_SOURCES"] == 1
     assert audit["PAID_SOURCES_USED"] is False
     assert audit["STRICT_ANSWER"] == "NO"
+    for artifact_name in (
+        "manifest.json",
+        "source-registry.json",
+        "source-audit.jsonl",
+        "ticker-coverage.json",
+        "shadow-corpus-stats.json",
+        "timestamp-contracts.json",
+        "rejections.jsonl",
+        "safety.json",
+        "report.md",
+    ):
+        assert (tmp_path / "audit" / artifact_name).exists()
     assert manifest["LIVE_OUTCOMES_READ"] == 0
     assert manifest["LIVE_TARGETS_COMPUTED"] == 0
     assert manifest["LIVE_POST_EVENT_PRICE_READS"] == 0
@@ -262,6 +342,27 @@ def test_one_source_failure_does_not_stop_other_sources(tmp_path: Path) -> None:
 
     assert manifest["EVENTS_COLLECTED"] == 1
     assert manifest["metrics"]["source_failures"] == 1
+
+
+def test_poll_one_source_only(tmp_path: Path) -> None:
+    manifest = collect_live_issuer_news(
+        output_root=tmp_path / "out",
+        base_main_sha="5" * 40,
+        git_sha="6" * 40,
+        registry_path=_registry(tmp_path / "registry.json", include_second=True),
+        client=_FakeClient(
+            {
+                "https://issuer.test/rss": _rss("<title>First source</title>"),
+                "https://issuer2.test/rss": _rss("<title>Second source</title>"),
+            }
+        ),
+        created_at=_NOW,
+        source_id="BBB_SOURCE_V1",
+    )
+    rows = _read_jsonl(tmp_path / "out" / "live-shadow-corpus.jsonl")
+
+    assert manifest["EVENTS_COLLECTED"] == 1
+    assert rows[0]["ticker"] == "BBB"
 
 
 def test_registry_and_raw_snapshot_sha_are_deterministic(tmp_path: Path) -> None:
@@ -314,12 +415,19 @@ def _registry(
     *,
     ticker: str = "AAA",
     include_second: bool = False,
+    sources: list[dict[str, Any]] | None = None,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    sources = [_source("https://issuer.test/rss", "issuer.test", ticker, "AAA_SOURCE_V1")]
+    registry_sources = (
+        sources
+        if sources is not None
+        else [_source("https://issuer.test/rss", "issuer.test", ticker, "AAA_SOURCE_V1")]
+    )
     if include_second:
-        sources.append(_source("https://issuer2.test/rss", "issuer2.test", "BBB", "BBB_SOURCE_V1"))
-    sources.append(
+        registry_sources.append(
+            _source("https://issuer2.test/rss", "issuer2.test", "BBB", "BBB_SOURCE_V1")
+        )
+    registry_sources.append(
         {
             **_source("https://paid.test/api", "paid.test", "MULTI", "PAID_SOURCE_V1"),
             "enabled": False,
@@ -347,7 +455,7 @@ def _registry(
                     "name": "LIVE_DIVERSITY_MILESTONE_V1",
                 },
                 "source_registry_version": "live-issuer-sources-v1",
-                "sources": sources,
+                "sources": registry_sources,
             },
             ensure_ascii=False,
             sort_keys=True,

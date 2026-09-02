@@ -1,0 +1,110 @@
+{
+  "GAZP_GAZPROM_PRESS_CLOCK_WITHOUT_TZ_REJECTED_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "510ff76c8d0ada1271b342e4c44a458569118dd399ce1bafe37578dc9e7e35e0",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=CLOCK_WITHOUT_TIMEZONE",
+    "TIMESTAMP_EVIDENCE_VALUE": "clock time observed without accepted explicit offset or first-party timezone contract",
+    "ticker": "GAZP",
+    "timestamp_field": "not_accepted",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=CLOCK_WITHOUT_TIMEZONE",
+      "evidence_value": "clock time observed without accepted explicit offset or first-party timezone contract",
+      "policy": "do not assume Moscow timezone"
+    }
+  },
+  "INTERFAX_CRKI_PAID_DISCLOSURE_OUT_OF_SCOPE_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "9c27aedfc8e74543bce3ebe3fdb7d7d0246daadf615e9d2fb6064ea5bc866c0e",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=PAID_CONTRACT_REQUIRED",
+    "TIMESTAMP_EVIDENCE_VALUE": "requires paid/authenticated access",
+    "ticker": "MULTI",
+    "timestamp_field": "out_of_scope",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=PAID_CONTRACT_REQUIRED",
+      "evidence_value": "requires paid/authenticated access",
+      "policy": "do not investigate further in free-only project"
+    }
+  },
+  "LKOH_LUKOIL_PRESS_RELEASES_LIVE_CANDIDATE_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "38d59aac4b743c8a3c609be58b6eb687acf2f10fcf3821b3de67f94404675386",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=UNVERIFIED",
+    "TIMESTAMP_EVIDENCE_VALUE": "public page/subscription observed, but no accepted explicit offset contract frozen",
+    "ticker": "LKOH",
+    "timestamp_field": "not_accepted",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=UNVERIFIED",
+      "evidence_value": "public page/subscription observed, but no accepted explicit offset contract frozen",
+      "policy": "disabled until first-party exact timestamp/timezone evidence is proven"
+    }
+  },
+  "MOEX_CKI_PAID_OUT_OF_SCOPE_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "8c716aa76ad1f53f0501cffaf86e83e3fdb699f2531e602edad8fa7ef1aa5791",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=PAID_CONTRACT_REQUIRED",
+    "TIMESTAMP_EVIDENCE_VALUE": "requires paid/test-commercial access",
+    "ticker": "MULTI",
+    "timestamp_field": "out_of_scope",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=PAID_CONTRACT_REQUIRED",
+      "evidence_value": "requires paid/test-commercial access",
+      "policy": "do not investigate further in free-only project"
+    }
+  },
+  "MOEX_RISK_PARAMETERS_NOT_ISSUER_ORIGINATED_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "f547fa214ada90280e0f784ab61b685b6c3640a2d0b7c90f6e4a5519ecd22e65",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+    "TIMESTAMP_EVIDENCE_VALUE": "RSS item pubDate has offset, but source is not issuer-controlled",
+    "ticker": "MULTI",
+    "timestamp_field": "rss.channel.item.pubDate",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+      "evidence_value": "RSS item pubDate has offset, but source is not issuer-controlled",
+      "policy": "never enable as primary issuer event source"
+    }
+  },
+  "PHOR_PHOSAGRO_PRESS_DATE_ONLY_REJECTED_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "3a0bec25b1e47ac57adc6371c44766c60bea6db928782a409274fca9c2dcc8e9",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=DATE_ONLY",
+    "TIMESTAMP_EVIDENCE_VALUE": "official page exposes calendar date without accepted exact offset contract",
+    "ticker": "PHOR",
+    "timestamp_field": "not_accepted",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=DATE_ONLY",
+      "evidence_value": "official page exposes calendar date without accepted exact offset contract",
+      "policy": "do not coerce dates or crawl time into publication time"
+    }
+  },
+  "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "2e43a301594fcadbc53172ca25ef2be0ec310bf67983714fa573eddcf4d23966",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+    "TIMESTAMP_EVIDENCE_VALUE": "RSS item pubDate contains numeric UTC offset such as +0300",
+    "ticker": "ROSN",
+    "timestamp_field": "rss.channel.item.pubDate",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+      "evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+      "policy": "accept only item-level pubDate with explicit numeric offset"
+    }
+  },
+  "X5_WORDPRESS_REST_ALREADY_HISTORICAL_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "d8b193d20db31d8a11185071410368c69d605fa77c3b75241658851b3a75a618",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=UTC_FIELD",
+    "TIMESTAMP_EVIDENCE_VALUE": "prior frozen historical source uses WordPress REST date_gmt as UTC",
+    "ticker": "X5",
+    "timestamp_field": "date_gmt",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=UTC_FIELD",
+      "evidence_value": "prior frozen historical source uses WordPress REST date_gmt as UTC",
+      "policy": "not enabled in this PR because it does not add a new issuer ticker"
+    }
+  },
+  "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+    "TIMESTAMP_EVIDENCE_VALUE": "RSS item pubDate contains numeric UTC offset such as +0300",
+    "ticker": "YDEX",
+    "timestamp_field": "rss.channel.item.pubDate",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+      "evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+      "policy": "accept only item-level pubDate with explicit numeric offset"
+    }
+  }
+}
