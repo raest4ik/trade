@@ -1,0 +1,32 @@
+{
+  "canonical_url": "https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01",
+  "content": null,
+  "content_type": "text/xml",
+  "description": "<p>Яндекс анонсирует Яндекс Сим&nbsp;&mdash; виртуального мобильного оператора нового поколения, в&nbsp;котором возможности искусственного интеллекта встроены в&nbsp;саму связь. Он&nbsp;объединяет привычные функции оператора с&nbsp;ИИ-помощником, который помогает разбирать разговоры, защищает от&nbsp;мошенников и&nbsp;со&nbsp;временем сможет подбирать тарифы под потребности человека.</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01\">https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01</a></p>",
+  "event_id": "a3aa12db-9b97-53d9-982c-ee321ec266a0",
+  "fetched_at": "2026-09-03T17:47:22.980533+00:00",
+  "first_observed_at": "2026-09-03T17:47:22.980533+00:00",
+  "issuer": "Yandex",
+  "parser_version": "rss-item-pubdate-explicit-offset-v1",
+  "publication_timestamp_raw": "Fri, 28 Aug 2026 10:00:00 +0300",
+  "published_at": "2026-08-28T07:00:00+00:00",
+  "raw_item_sha": "d9516d60e52b3e84426b787cb954155115a6bb45afb2e940f5d87a38078064ab",
+  "raw_payload": {
+    "content:encoded": null,
+    "description": "<p>Яндекс анонсирует Яндекс Сим&nbsp;&mdash; виртуального мобильного оператора нового поколения, в&nbsp;котором возможности искусственного интеллекта встроены в&nbsp;саму связь. Он&nbsp;объединяет привычные функции оператора с&nbsp;ИИ-помощником, который помогает разбирать разговоры, защищает от&nbsp;мошенников и&nbsp;со&nbsp;временем сможет подбирать тарифы под потребности человека.</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01\">https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01</a></p>",
+    "guid": "https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01",
+    "link": "https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01",
+    "pubDate": "Fri, 28 Aug 2026 10:00:00 +0300",
+    "title": "ИИ-помощник Яндекса встроится в мобильную связь"
+  },
+  "raw_snapshot_sha": "7abbf9f5c0526a5f795401fc7888f163fd17f58e5f6eb13608116791782f13ce",
+  "response_sha": "3f8a8ef72be178fca8fdff64eef51f4c558739f4a9dba1ffa01893990e04c6f8",
+  "snapshot_version": "live-issuer-raw-publication-snapshot-v1",
+  "source_contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+  "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+  "source_item_id": "https://ir.yandex.ru/press-releases?year=2026&id=28-08-2026-01",
+  "ticker": "YDEX",
+  "timezone_evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+  "timezone_evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+  "title": "ИИ-помощник Яндекса встроится в мобильную связь"
+}

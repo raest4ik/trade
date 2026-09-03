@@ -30,6 +30,43 @@ services:
       postgres:
         condition: service_healthy
 
+  live-issuer-collector:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    profiles:
+      - research
+    environment:
+      APP_NAME: trade-ai-free-live-issuer-collector
+      ENVIRONMENT: docker
+      LOG_LEVEL: INFO
+      DATABASE_URL: postgresql+asyncpg://trade_ai:trade_ai@postgres:5432/trade_ai
+      FREE_SOURCES_ONLY: "true"
+      MODEL_TRAINING_PERFORMED: "false"
+      REAL_TRADING_ALLOWED: "false"
+    command:
+      - python
+      - -m
+      - apps.cli.live_issuer_worker
+      - --base-main-sha
+      - ${BASE_MAIN_SHA:-UNKNOWN}
+      - --artifact-root
+      - artifacts/free-live-research-operation-v1
+      - --poll-interval-minutes
+      - ${LIVE_ISSUER_POLL_INTERVAL_MINUTES:-10}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./artifacts:/app/artifacts
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -m apps.cli.live_issuer_health --artifact-root artifacts/free-live-research-operation-v1 >/dev/null
+      interval: 1m
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres-data:
-

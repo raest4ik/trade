@@ -1,0 +1,248 @@
+{
+  "ARTIFACT_SHA": "692587bdc17ee8148cac1273bf9c80f208e9cc77ced4b8be14185673a7b79e20",
+  "BACKTEST_PERFORMED": false,
+  "BASE_MAIN_SHA": "bdbedaac8e9b7b1b26b8f0563b3e02b1925313f5",
+  "BROKER_MUTATIONS": 0,
+  "BROKER_MUTATION_ALLOWED": false,
+  "FREE_SOURCES_ONLY": true,
+  "HEAD_SHA": "bdbedaac8e9b7b1b26b8f0563b3e02b1925313f5",
+  "HTTP_REQUESTS": 2,
+  "LIVE_MODEL_PREDICTIONS": 0,
+  "LIVE_OUTCOMES_READ": 0,
+  "LIVE_POST_EVENT_PRICE_READS": 0,
+  "LIVE_RESEARCH_OPERATION_STATUS": "READY",
+  "LIVE_TARGETS_COMPUTED": 0,
+  "ML_V2_DATASET_STATUS": "BLOCKED_INSUFFICIENT_ISSUER_DIVERSITY",
+  "MODEL_PREDICTIONS_PERFORMED": false,
+  "MODEL_TRAINING_PERFORMED": false,
+  "OLD_BASELINE_TEST_USED_FOR_TUNING": false,
+  "OLD_FUTURE_HOLDOUT_OPENED": false,
+  "PAID_API_CALLS": 0,
+  "PAID_SOURCES_USED": false,
+  "REAL_TRADING_ALLOWED": false,
+  "RULES_V3_CHANGED": false,
+  "UNKNOWN_count": 3,
+  "artifact_version": "free-live-research-operation-v1",
+  "candidate_source_backlog": [
+    {
+      "hypothesis_tested": "official_issuer_page_or_subscription",
+      "issuer": "PJSC LUKOIL",
+      "last_probe_date": "2026-09-03",
+      "official_domain": "www.lukoil.com",
+      "possible_next_free_mechanism": "disabled until first-party exact timestamp/timezone evidence is proven",
+      "previous_blocker": "LIVE_TIMESTAMP_UNVERIFIED",
+      "status": "PENDING_RECHECK",
+      "tickers": [
+        "LKOH"
+      ]
+    },
+    {
+      "hypothesis_tested": "official_issuer_press_page",
+      "issuer": "PJSC PhosAgro",
+      "last_probe_date": "2026-09-03",
+      "official_domain": "www.phosagro.com",
+      "possible_next_free_mechanism": "do not coerce dates or crawl time into publication time",
+      "previous_blocker": "LIVE_DATE_ONLY",
+      "status": "REJECTED",
+      "tickers": [
+        "PHOR"
+      ]
+    },
+    {
+      "hypothesis_tested": "official_issuer_press_page",
+      "issuer": "Gazprom",
+      "last_probe_date": "2026-09-03",
+      "official_domain": "www.gazprom.com",
+      "possible_next_free_mechanism": "do not assume Moscow timezone",
+      "previous_blocker": "LIVE_CLOCK_WITHOUT_TIMEZONE",
+      "status": "PENDING_RECHECK",
+      "tickers": [
+        "GAZP"
+      ]
+    },
+    {
+      "hypothesis_tested": "official_issuer_wordpress_rest",
+      "issuer": "PJSC X5 Corporate Center",
+      "last_probe_date": "2026-09-03",
+      "official_domain": "www.x5.ru",
+      "possible_next_free_mechanism": "not enabled in this PR because it does not add a new issuer ticker",
+      "previous_blocker": "LIVE_READY_FOR_IMPLEMENTATION",
+      "status": "PENDING_RECHECK",
+      "tickers": [
+        "X5"
+      ]
+    },
+    {
+      "hypothesis_tested": "exchange_rss",
+      "issuer": "Moscow Exchange Risk Parameters Feed",
+      "last_probe_date": "2026-09-03",
+      "official_domain": "www.moex.com",
+      "possible_next_free_mechanism": "never enable as primary issuer event source",
+      "previous_blocker": "LIVE_NOT_ISSUER_ORIGINATED",
+      "status": "REJECTED",
+      "tickers": [
+        "MULTI"
+      ]
+    },
+    {
+      "hypothesis_tested": "paid_disclosure_api_or_ftp",
+      "issuer": "Interfax CRKI e-disclosure",
+      "last_probe_date": "2026-09-03",
+      "official_domain": "www.e-disclosure.ru",
+      "possible_next_free_mechanism": "do not investigate further in free-only project",
+      "previous_blocker": "OUT_OF_SCOPE_PAID_SOURCE",
+      "status": "REJECTED",
+      "tickers": [
+        "MULTI"
+      ]
+    },
+    {
+      "hypothesis_tested": "paid_corporate_information_api",
+      "issuer": "MOEX Corporate Information Center",
+      "last_probe_date": "2026-09-03",
+      "official_domain": "www.moex.com",
+      "possible_next_free_mechanism": "do not investigate further in free-only project",
+      "previous_blocker": "OUT_OF_SCOPE_PAID_SOURCE",
+      "status": "REJECTED",
+      "tickers": [
+        "MULTI"
+      ]
+    }
+  ],
+  "collector_version": "free-live-research-collector-v1",
+  "degraded_sources": [],
+  "duplicates": 0,
+  "feature_attempts": 6,
+  "feature_blocked": 6,
+  "feature_ready": 0,
+  "feature_status": {
+    "feature_attempts": 6,
+    "feature_blocked": 6,
+    "feature_ready": 0,
+    "late_retry_uses_publication_upper_bound": true,
+    "permanent_feature_blockers": 6,
+    "retryable_feature_blockers": 0,
+    "upper_bound_policy": "end_at <= published_at"
+  },
+  "finished_at": "2026-09-03T17:51:46.314214+00:00",
+  "healthy_sources": [
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"
+  ],
+  "newly_discovered_publications": 6,
+  "operational_sources": [
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"
+  ],
+  "permanent_feature_blockers": 6,
+  "real_bounded_polls": 2,
+  "retryable_feature_blockers": 0,
+  "revisions": 0,
+  "run_id": "20260903T175146Z-f5189266df42",
+  "safety": {
+    "BACKTEST_PERFORMED": false,
+    "BROKER_MUTATIONS": 0,
+    "BROKER_MUTATION_ALLOWED": false,
+    "FREE_SOURCES_ONLY": true,
+    "LIVE_MODEL_PREDICTIONS": 0,
+    "LIVE_OUTCOMES_READ": 0,
+    "LIVE_POST_EVENT_PRICE_READS": 0,
+    "LIVE_TARGETS_COMPUTED": 0,
+    "MODEL_PREDICTIONS_PERFORMED": false,
+    "MODEL_TRAINING_PERFORMED": false,
+    "OLD_BASELINE_TEST_USED_FOR_TUNING": false,
+    "OLD_FUTURE_HOLDOUT_OPENED": false,
+    "PAID_API_CALLS": 0,
+    "PAID_SOURCES_USED": false,
+    "REAL_TRADING_ALLOWED": false,
+    "RULES_V3_CHANGED": false
+  },
+  "semantic_ready": 6,
+  "shadow_stats": {
+    "UNKNOWN_count": 3,
+    "UNKNOWN_rate": "0.500000",
+    "by_source": {
+      "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1": {
+        "UNKNOWN": 0,
+        "events": 1
+      },
+      "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1": {
+        "UNKNOWN": 3,
+        "events": 5
+      }
+    },
+    "semantic_ready": 6,
+    "target_metrics_included": false,
+    "total_shadow_events": 6
+  },
+  "source_failures": 0,
+  "source_health": [
+    {
+      "collector_version": "free-live-research-collector-v1",
+      "consecutive_failures": 0,
+      "enabled": true,
+      "healthy": true,
+      "last_attempt_at": "2026-09-03T17:47:22.980533+00:00",
+      "last_error_category": null,
+      "last_seen_published_at": "2026-08-28T20:49:00+00:00",
+      "last_seen_source_identity": "https://www.rosneft.com/press/releases/item/224607/",
+      "last_successful_poll_at": "2026-09-03T17:47:22.980533+00:00",
+      "parser_source_contract_sha": "2e43a301594fcadbc53172ca25ef2be0ec310bf67983714fa573eddcf4d23966",
+      "source_id": "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "status": "NO_NEW_ITEMS",
+      "ticker": "ROSN"
+    },
+    {
+      "collector_version": "free-live-research-collector-v1",
+      "consecutive_failures": 0,
+      "enabled": true,
+      "healthy": true,
+      "last_attempt_at": "2026-09-03T17:47:22.980533+00:00",
+      "last_error_category": null,
+      "last_seen_published_at": "2026-09-03T06:00:00+00:00",
+      "last_seen_source_identity": "https://ir.yandex.ru/press-releases?year=2026&id=03-09-2026-01",
+      "last_successful_poll_at": "2026-09-03T17:47:22.980533+00:00",
+      "parser_source_contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+      "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "status": "NO_NEW_ITEMS",
+      "ticker": "YDEX"
+    }
+  ],
+  "source_results": [
+    {
+      "accepted": 0,
+      "blocker": "POLL_INTERVAL_NOT_ELAPSED",
+      "discovered": 0,
+      "duplicates": 0,
+      "feature_ready": 0,
+      "http_requests": 0,
+      "issuer": "Rosneft Oil Company",
+      "rejected": 0,
+      "revisions": 0,
+      "semantic_ready": 0,
+      "source_id": "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "status": "NO_NEW_ITEMS",
+      "ticker": "ROSN",
+      "unknown": 0
+    },
+    {
+      "accepted": 0,
+      "blocker": "POLL_INTERVAL_NOT_ELAPSED",
+      "discovered": 0,
+      "duplicates": 0,
+      "feature_ready": 0,
+      "http_requests": 0,
+      "issuer": "Yandex",
+      "rejected": 0,
+      "revisions": 0,
+      "semantic_ready": 0,
+      "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "status": "NO_NEW_ITEMS",
+      "ticker": "YDEX",
+      "unknown": 0
+    }
+  ],
+  "started_at": "2026-09-03T17:51:46.312214+00:00",
+  "timestamp_rejections": 0,
+  "total_shadow_events": 6
+}

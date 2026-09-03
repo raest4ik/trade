@@ -1,0 +1,32 @@
+{
+  "canonical_url": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02",
+  "content": null,
+  "content_type": "text/xml",
+  "description": "<p>В&nbsp;приложении Яндекс Карты появились самокаты и&nbsp;велосипеды Яндекс Go, &laquo;Юрента&raquo; и&nbsp;&laquo;Велобайка&raquo;. Они отображаются прямо на&nbsp;карте&nbsp;&mdash; пользователи могут найти свободный велосипед или самокат. Новая возможность доступна более чем в&nbsp;100 городах страны.&nbsp;</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02\">https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02</a></p>",
+  "event_id": "2b243534-0643-5f61-9cc5-4b94b04b85ea",
+  "fetched_at": "2026-09-03T17:47:22.980533+00:00",
+  "first_observed_at": "2026-09-03T17:47:22.980533+00:00",
+  "issuer": "Yandex",
+  "parser_version": "rss-item-pubdate-explicit-offset-v1",
+  "publication_timestamp_raw": "Mon, 24 Aug 2026 16:00:00 +0300",
+  "published_at": "2026-08-24T13:00:00+00:00",
+  "raw_item_sha": "8d86e7208a0f30b313544e14dd0b76d80eb709f8aee64f57f077ba4c38403a49",
+  "raw_payload": {
+    "content:encoded": null,
+    "description": "<p>В&nbsp;приложении Яндекс Карты появились самокаты и&nbsp;велосипеды Яндекс Go, &laquo;Юрента&raquo; и&nbsp;&laquo;Велобайка&raquo;. Они отображаются прямо на&nbsp;карте&nbsp;&mdash; пользователи могут найти свободный велосипед или самокат. Новая возможность доступна более чем в&nbsp;100 городах страны.&nbsp;</p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02\">https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02</a></p>",
+    "guid": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02",
+    "link": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02",
+    "pubDate": "Mon, 24 Aug 2026 16:00:00 +0300",
+    "title": "Яндекс Карты начали показывать свободные самокаты и велосипеды прямо на карте"
+  },
+  "raw_snapshot_sha": "646d71f6fdcfb09cc87ead65cd3644e53f64af9129065ac38b9d1b0613886e9d",
+  "response_sha": "3f8a8ef72be178fca8fdff64eef51f4c558739f4a9dba1ffa01893990e04c6f8",
+  "snapshot_version": "live-issuer-raw-publication-snapshot-v1",
+  "source_contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+  "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+  "source_item_id": "https://ir.yandex.ru/press-releases?year=2026&id=24-08-2026-02",
+  "ticker": "YDEX",
+  "timezone_evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+  "timezone_evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+  "title": "Яндекс Карты начали показывать свободные самокаты и велосипеды прямо на карте"
+}

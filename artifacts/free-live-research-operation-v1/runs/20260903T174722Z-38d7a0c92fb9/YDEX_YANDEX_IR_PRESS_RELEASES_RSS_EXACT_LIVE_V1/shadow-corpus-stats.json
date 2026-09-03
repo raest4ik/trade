@@ -1,0 +1,43 @@
+{
+  "accepted_live_sources": 1,
+  "accepted_source_ids": [
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"
+  ],
+  "events_collected": 5,
+  "events_per_day": {
+    "2026-08-24": 1,
+    "2026-08-26": 1,
+    "2026-08-28": 1,
+    "2026-09-01": 1,
+    "2026-09-03": 1
+  },
+  "events_per_ticker": {
+    "YDEX": 5
+  },
+  "events_per_week": {
+    "2026-W35": 3,
+    "2026-W36": 2
+  },
+  "live_diversity_accumulation_status": "PARTIAL",
+  "live_diversity_status": "PARTIAL",
+  "new_item_observed": true,
+  "new_item_observed_tickers": [],
+  "new_source_ready_tickers": [],
+  "pre_event_feature_ready_count": 0,
+  "raw_snapshot_pass": 5,
+  "semantic_ready_count": 5,
+  "semantic_unknown_count": 3,
+  "semantic_unknown_rate": "0.600000",
+  "source_family_hhi": "1.000000",
+  "source_ready": false,
+  "source_ready_tickers": [
+    "YDEX"
+  ],
+  "strict_timestamp_pass": 5,
+  "target_metrics_included": false,
+  "ticker_hhi": "1.000000",
+  "ticker_mapping_pass": 5,
+  "top_1_ticker_share": "1.000000",
+  "top_3_ticker_share": "1.000000",
+  "unique_live_issuer_tickers": 1
+}

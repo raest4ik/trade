@@ -1,0 +1,12 @@
+{
+  "content_sha_by_identity": {
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://www.rosneft.com/press/releases/item/224607/": "a63ba398c3e73a9bd8ad4b0f2246776bea19626285c898be11913939d2691d06"
+  },
+  "dedupe_state_version": "live-issuer-shadow-dedupe-state-v1",
+  "seen_canonical_urls": [
+    "https://www.rosneft.com/press/releases/item/224607/"
+  ],
+  "seen_source_item_ids": [
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1|https://www.rosneft.com/press/releases/item/224607/"
+  ]
+}
