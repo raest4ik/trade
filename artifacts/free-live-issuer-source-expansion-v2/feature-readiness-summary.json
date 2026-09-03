@@ -1,0 +1,20 @@
+{
+  "blocker_distribution": {
+    "BENCHMARK_DATA_UNAVAILABLE": 1,
+    "INSUFFICIENT_PRE_EVENT_LOOKBACK": 2
+  },
+  "feature_attempts": 6,
+  "feature_ready": 3,
+  "feature_rejected": 3,
+  "maximum_market_timestamp_read": "2026-09-01T08:53:00+00:00",
+  "publication_timestamps": [
+    "2026-08-28T20:49:00+00:00",
+    "2026-08-24T07:16:32+00:00",
+    "2026-08-24T13:00:00+00:00",
+    "2026-08-26T08:00:00+00:00",
+    "2026-08-28T07:00:00+00:00",
+    "2026-09-01T08:53:00+00:00"
+  ],
+  "timestamp_violations": 0,
+  "total_shadow_events": 6
+}
