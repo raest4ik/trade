@@ -1,0 +1,45 @@
+{
+  "baseline_live_ready_tickers": [
+    "ROSN",
+    "YDEX"
+  ],
+  "candidate_count": 6,
+  "candidate_legal_issuers": [
+    "Банк ВТБ",
+    "ПАО \"Газпром\"",
+    "ПАО ЛУКОЙЛ",
+    "ПАО НОВАТЭК",
+    "ПАО Сбербанк"
+  ],
+  "candidate_tickers": [
+    "GAZP",
+    "LKOH",
+    "NVTK",
+    "SBER",
+    "SBERP",
+    "VTBR"
+  ],
+  "historical_issuer_tickers": [
+    "GMKN",
+    "MGNT",
+    "ROSN",
+    "T",
+    "VKCO",
+    "X5",
+    "YDEX"
+  ],
+  "ranking_basis": [
+    "free official first-party",
+    "timestamp quality",
+    "machine-readable feed",
+    "stable identity",
+    "source availability",
+    "publication frequency",
+    "deterministic ticker mapping",
+    "liquidity/listing relevance"
+  ],
+  "share_class_collapse": {
+    "SBER": "ПАО Сбербанк",
+    "SBERP": "ПАО Сбербанк"
+  }
+}
