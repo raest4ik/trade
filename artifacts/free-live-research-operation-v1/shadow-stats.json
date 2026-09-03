@@ -1,0 +1,17 @@
+{
+  "UNKNOWN_count": 3,
+  "UNKNOWN_rate": "0.500000",
+  "by_source": {
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1": {
+      "UNKNOWN": 0,
+      "events": 1
+    },
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1": {
+      "UNKNOWN": 3,
+      "events": 5
+    }
+  },
+  "semantic_ready": 6,
+  "target_metrics_included": false,
+  "total_shadow_events": 6
+}

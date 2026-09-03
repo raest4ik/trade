@@ -1,0 +1,9 @@
+{
+  "feature_attempts": 6,
+  "feature_blocked": 6,
+  "feature_ready": 0,
+  "late_retry_uses_publication_upper_bound": true,
+  "permanent_feature_blockers": 6,
+  "retryable_feature_blockers": 0,
+  "upper_bound_policy": "end_at <= published_at"
+}

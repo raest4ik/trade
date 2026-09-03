@@ -1,0 +1,32 @@
+{
+  "canonical_url": "https://ir.yandex.ru/press-releases?year=2026&id=digest-0826",
+  "content": null,
+  "content_type": "text/xml",
+  "description": "<p><img src=\"https://avatars.mds.yandex.net/get-yablogs/49865/file_1788252720076/orig\" alt /></p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=digest-0826\">https://ir.yandex.ru/press-releases?year=2026&id=digest-0826</a></p>",
+  "event_id": "85fbd4e6-11a3-523b-ac6c-fadf73a3fa3b",
+  "fetched_at": "2026-09-03T17:47:22.980533+00:00",
+  "first_observed_at": "2026-09-03T17:47:22.980533+00:00",
+  "issuer": "Yandex",
+  "parser_version": "rss-item-pubdate-explicit-offset-v1",
+  "publication_timestamp_raw": "Tue, 01 Sep 2026 11:53:00 +0300",
+  "published_at": "2026-09-01T08:53:00+00:00",
+  "raw_item_sha": "3bbf1c221b1e27601a15b953800e199dc204eb8c33f2d634d8055862ef7641bc",
+  "raw_payload": {
+    "content:encoded": null,
+    "description": "<p><img src=\"https://avatars.mds.yandex.net/get-yablogs/49865/file_1788252720076/orig\" alt /></p><p>Полная версия пресс-релиза доступна по ссылке: <a href=\"https://ir.yandex.ru/press-releases?year=2026&id=digest-0826\">https://ir.yandex.ru/press-releases?year=2026&id=digest-0826</a></p>",
+    "guid": "https://ir.yandex.ru/press-releases?year=2026&id=digest-0826",
+    "link": "https://ir.yandex.ru/press-releases?year=2026&id=digest-0826",
+    "pubDate": "Tue, 01 Sep 2026 11:53:00 +0300",
+    "title": "ИИ в Яндексе: главное за август"
+  },
+  "raw_snapshot_sha": "475e3561b268524f1c8fef5c28f5589310ea1c21b31832096c45348eee2fd4bd",
+  "response_sha": "3f8a8ef72be178fca8fdff64eef51f4c558739f4a9dba1ffa01893990e04c6f8",
+  "snapshot_version": "live-issuer-raw-publication-snapshot-v1",
+  "source_contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+  "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+  "source_item_id": "https://ir.yandex.ru/press-releases?year=2026&id=digest-0826",
+  "ticker": "YDEX",
+  "timezone_evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+  "timezone_evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+  "title": "ИИ в Яндексе: главное за август"
+}

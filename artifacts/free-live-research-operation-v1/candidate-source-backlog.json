@@ -1,0 +1,86 @@
+[
+  {
+    "hypothesis_tested": "official_issuer_page_or_subscription",
+    "issuer": "PJSC LUKOIL",
+    "last_probe_date": "2026-09-03",
+    "official_domain": "www.lukoil.com",
+    "possible_next_free_mechanism": "disabled until first-party exact timestamp/timezone evidence is proven",
+    "previous_blocker": "LIVE_TIMESTAMP_UNVERIFIED",
+    "status": "PENDING_RECHECK",
+    "tickers": [
+      "LKOH"
+    ]
+  },
+  {
+    "hypothesis_tested": "official_issuer_press_page",
+    "issuer": "PJSC PhosAgro",
+    "last_probe_date": "2026-09-03",
+    "official_domain": "www.phosagro.com",
+    "possible_next_free_mechanism": "do not coerce dates or crawl time into publication time",
+    "previous_blocker": "LIVE_DATE_ONLY",
+    "status": "REJECTED",
+    "tickers": [
+      "PHOR"
+    ]
+  },
+  {
+    "hypothesis_tested": "official_issuer_press_page",
+    "issuer": "Gazprom",
+    "last_probe_date": "2026-09-03",
+    "official_domain": "www.gazprom.com",
+    "possible_next_free_mechanism": "do not assume Moscow timezone",
+    "previous_blocker": "LIVE_CLOCK_WITHOUT_TIMEZONE",
+    "status": "PENDING_RECHECK",
+    "tickers": [
+      "GAZP"
+    ]
+  },
+  {
+    "hypothesis_tested": "official_issuer_wordpress_rest",
+    "issuer": "PJSC X5 Corporate Center",
+    "last_probe_date": "2026-09-03",
+    "official_domain": "www.x5.ru",
+    "possible_next_free_mechanism": "not enabled in this PR because it does not add a new issuer ticker",
+    "previous_blocker": "LIVE_READY_FOR_IMPLEMENTATION",
+    "status": "PENDING_RECHECK",
+    "tickers": [
+      "X5"
+    ]
+  },
+  {
+    "hypothesis_tested": "exchange_rss",
+    "issuer": "Moscow Exchange Risk Parameters Feed",
+    "last_probe_date": "2026-09-03",
+    "official_domain": "www.moex.com",
+    "possible_next_free_mechanism": "never enable as primary issuer event source",
+    "previous_blocker": "LIVE_NOT_ISSUER_ORIGINATED",
+    "status": "REJECTED",
+    "tickers": [
+      "MULTI"
+    ]
+  },
+  {
+    "hypothesis_tested": "paid_disclosure_api_or_ftp",
+    "issuer": "Interfax CRKI e-disclosure",
+    "last_probe_date": "2026-09-03",
+    "official_domain": "www.e-disclosure.ru",
+    "possible_next_free_mechanism": "do not investigate further in free-only project",
+    "previous_blocker": "OUT_OF_SCOPE_PAID_SOURCE",
+    "status": "REJECTED",
+    "tickers": [
+      "MULTI"
+    ]
+  },
+  {
+    "hypothesis_tested": "paid_corporate_information_api",
+    "issuer": "MOEX Corporate Information Center",
+    "last_probe_date": "2026-09-03",
+    "official_domain": "www.moex.com",
+    "possible_next_free_mechanism": "do not investigate further in free-only project",
+    "previous_blocker": "OUT_OF_SCOPE_PAID_SOURCE",
+    "status": "REJECTED",
+    "tickers": [
+      "MULTI"
+    ]
+  }
+]
