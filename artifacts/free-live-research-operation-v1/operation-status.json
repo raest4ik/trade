@@ -1,7 +1,7 @@
 {
-  "ARTIFACT_SHA": "692587bdc17ee8148cac1273bf9c80f208e9cc77ced4b8be14185673a7b79e20",
+  "ARTIFACT_SHA": "f2060dde33c41a6cf6f936d15224a4c7d23e452785d370314077e3e30ee68cf2",
   "BROKER_MUTATIONS": 0,
-  "HTTP_REQUESTS": 2,
+  "HTTP_REQUESTS": 4,
   "LIVE_OUTCOMES_READ": 0,
   "LIVE_POST_EVENT_PRICE_READS": 0,
   "LIVE_RESEARCH_OPERATION_STATUS": "READY",
@@ -11,11 +11,11 @@
   "artifact_version": "free-live-research-operation-v1",
   "collector_version": "free-live-research-collector-v1",
   "degraded_sources": [],
-  "duplicates": 0,
+  "duplicates": 6,
   "feature_attempts": 6,
   "feature_blocked": 6,
   "feature_ready": 0,
-  "finished_at": "2026-09-03T17:51:46.314214+00:00",
+  "finished_at": "2026-09-03T18:13:46.849421+00:00",
   "healthy_sources": [
     "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
     "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"
@@ -26,21 +26,22 @@
     "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"
   ],
   "permanent_feature_blockers": 6,
-  "real_bounded_polls": 2,
+  "real_bounded_polls": 4,
   "retryable_feature_blockers": 0,
   "revisions": 0,
-  "run_id": "20260903T175146Z-f5189266df42",
+  "run_id": "20260903T181345Z-969412716cd5",
   "semantic_ready": 6,
   "source_results": [
     {
       "accepted": 0,
-      "blocker": "POLL_INTERVAL_NOT_ELAPSED",
-      "discovered": 0,
-      "duplicates": 0,
+      "artifact_dir": "artifacts\\free-live-research-operation-v1\\runs\\20260903T181345Z-969412716cd5\\ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "blocker": null,
+      "discovered": 5,
+      "duplicates": 1,
       "feature_ready": 0,
-      "http_requests": 0,
+      "http_requests": 1,
       "issuer": "Rosneft Oil Company",
-      "rejected": 0,
+      "rejected": 4,
       "revisions": 0,
       "semantic_ready": 0,
       "source_id": "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
@@ -50,11 +51,12 @@
     },
     {
       "accepted": 0,
-      "blocker": "POLL_INTERVAL_NOT_ELAPSED",
-      "discovered": 0,
-      "duplicates": 0,
+      "artifact_dir": "artifacts\\free-live-research-operation-v1\\runs\\20260903T181345Z-969412716cd5\\YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "blocker": null,
+      "discovered": 5,
+      "duplicates": 5,
       "feature_ready": 0,
-      "http_requests": 0,
+      "http_requests": 1,
       "issuer": "Yandex",
       "rejected": 0,
       "revisions": 0,
@@ -65,6 +67,6 @@
       "unknown": 0
     }
   ],
-  "started_at": "2026-09-03T17:51:46.312214+00:00",
+  "started_at": "2026-09-03T18:13:45.567555+00:00",
   "total_shadow_events": 6
 }

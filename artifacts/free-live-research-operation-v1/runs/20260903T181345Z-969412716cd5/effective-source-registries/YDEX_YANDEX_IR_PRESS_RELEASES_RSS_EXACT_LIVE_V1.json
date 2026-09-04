@@ -1,0 +1,58 @@
+{
+  "historical_frozen_issuer_tickers": [
+    "GMKN",
+    "MGNT",
+    "ROSN",
+    "T",
+    "VKCO",
+    "X5",
+    "YDEX"
+  ],
+  "milestone": {
+    "minimum_new_issuer_tickers": 3,
+    "minimum_total_issuer_tickers": 10,
+    "name": "LIVE_DIVERSITY_MILESTONE_V1"
+  },
+  "source_registry_version": "live-issuer-sources-v1",
+  "sources": [
+    {
+      "canonical_domain": "ir.yandex.ru",
+      "content_path": [
+        "rss.channel.item.title",
+        "rss.channel.item.description",
+        "rss.channel.item.content:encoded"
+      ],
+      "contract_sha": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+      "discovery_type": "official_issuer_rss",
+      "discovery_url": "https://ir.yandex.ru/press-releases/news.rss",
+      "enabled": true,
+      "expected_publication_frequency": "several per month",
+      "identity_path": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Yandex",
+      "official_domain": "ir.yandex.ru",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "parser_type": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "bounded_retries": 1,
+        "interval_minutes": 60,
+        "max_items_per_poll": 5
+      },
+      "source_id": "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_STRICT_EXACT_READY",
+      "source_version": 1,
+      "stable_identity": "rss_guid_or_canonical_link",
+      "ticker": "YDEX",
+      "ticker_binding": {
+        "binding": "single_issuer_ir_source",
+        "publication_date_validity": "ticker belongs to historical frozen issuer cohort"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+        "evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+        "policy": "accept only item-level pubDate with explicit numeric offset"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    }
+  ]
+}

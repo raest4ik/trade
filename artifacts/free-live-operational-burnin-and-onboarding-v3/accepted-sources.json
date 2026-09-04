@@ -1,0 +1,96 @@
+{
+  "sources": [
+    {
+      "NEW_ITEM_OBSERVED": true,
+      "SOURCE_READY": true,
+      "contract_sha": "eff61d1d579343e06aa79481b7dbfb01f63be0411ee7d1df5154f01c74d888e8",
+      "discovery_url": "https://news.microsoft.com/feed/",
+      "domain": "news.microsoft.com",
+      "first_item": {
+        "canonical_url": "https://news.microsoft.com/source/2025/05/06/microsoft-and-ffa-help-students-use-smart-sensors-and-ai-to-learn-about-the-future-of-farming/",
+        "published_at": "2025-05-07T04:00:06+00:00",
+        "published_raw": "Wed, 07 May 2025 04:00:06 +0000",
+        "source_item_id": "https://news.microsoft.com/?p=449657",
+        "title": "Microsoft and FFA help students use smart sensors and AI to learn about the future of farming and technology"
+      },
+      "identity_mechanism": "rss.channel.item.guid || rss.channel.item.link",
+      "legal_issuer": "Microsoft Corporation",
+      "mechanism": "official_issuer_rss",
+      "parser_version": "rss-item-pubdate-explicit-offset-v1",
+      "real_item_observed": true,
+      "source_id": "MSFT_MICROSOFT_NEWS_OFFICIAL_RSS_EXACT_LIVE_V3",
+      "ticker": "MSFT",
+      "timestamp_field": "rss.channel.item.pubDate",
+      "timezone_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    },
+    {
+      "NEW_ITEM_OBSERVED": true,
+      "SOURCE_READY": true,
+      "contract_sha": "7081e67b2abc252250bbcf6570a6dd6a3fc7df2b09a422b9292aac32286e023e",
+      "discovery_url": "https://nvidianews.nvidia.com/releases.xml",
+      "domain": "nvidianews.nvidia.com",
+      "first_item": {
+        "canonical_url": "https://blogs.nvidia.com/blog/local-ai-ifa-next-gen-agents-nv-pair-rtx-spark/",
+        "published_at": "2026-09-03T16:00:59+00:00",
+        "published_raw": "Thu, 03 Sep 2026 16:00:59 GMT",
+        "source_item_id": "https://blogs.nvidia.com/blog/local-ai-ifa-next-gen-agents-nv-pair-rtx-spark/",
+        "title": "Sparks Fly: NVIDIA Accelerates Local AI at IFA 2026"
+      },
+      "identity_mechanism": "rss.channel.item.guid || rss.channel.item.link",
+      "legal_issuer": "NVIDIA Corporation",
+      "mechanism": "official_issuer_rss",
+      "parser_version": "rss-item-pubdate-explicit-offset-v1",
+      "real_item_observed": true,
+      "source_id": "NVDA_NVIDIA_NEWSROOM_RELEASES_RSS_EXACT_LIVE_V3",
+      "ticker": "NVDA",
+      "timestamp_field": "rss.channel.item.pubDate",
+      "timezone_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    },
+    {
+      "NEW_ITEM_OBSERVED": true,
+      "SOURCE_READY": true,
+      "contract_sha": "8c493be07f626f157c9e4147cc450bcb77ee2d09b1d91adfcdafc6a08c8646cb",
+      "discovery_url": "https://investor.dsv.com/rss/news-releases.xml?category=company%20announcements",
+      "domain": "investor.dsv.com",
+      "first_item": {
+        "canonical_url": "https://investor.dsv.com/news-releases/news-release-details/dsv-1172-managers-transactions-dsv-shares",
+        "published_at": "2026-07-28T13:07:06+00:00",
+        "published_raw": "Tue, 28 Jul 2026 09:07:06 -0400",
+        "source_item_id": "25271",
+        "title": "DSV, 1172 - MANAGER'S TRANSACTIONS IN DSV A/S SHARES"
+      },
+      "identity_mechanism": "rss.channel.item.guid || rss.channel.item.link",
+      "legal_issuer": "DSV A/S",
+      "mechanism": "official_issuer_rss",
+      "parser_version": "rss-item-pubdate-explicit-offset-v1",
+      "real_item_observed": true,
+      "source_id": "DSV_DSV_INVESTOR_NEWS_RSS_EXACT_LIVE_V3",
+      "ticker": "DSV",
+      "timestamp_field": "rss.channel.item.pubDate",
+      "timezone_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    },
+    {
+      "NEW_ITEM_OBSERVED": true,
+      "SOURCE_READY": true,
+      "contract_sha": "b90ec2d3cb706f219c78a78fb70e75d64e6a2873b77ca10754650af4e6263f83",
+      "discovery_url": "https://www.group.dentsu.com/en/news/release/index.xml",
+      "domain": "www.group.dentsu.com",
+      "first_item": {
+        "canonical_url": "https://www.group.dentsu.com/en/news/release/001751.html",
+        "published_at": "2026-08-31T01:00:00+00:00",
+        "published_raw": "Mon, 31 Aug 2026 10:00:00 +0900",
+        "source_item_id": "https://www.group.dentsu.com/en/news/release/001751.html",
+        "title": "Dentsu Publishes Integrated Report 2026"
+      },
+      "identity_mechanism": "rss.channel.item.guid || rss.channel.item.link",
+      "legal_issuer": "Dentsu Group Inc.",
+      "mechanism": "official_issuer_rss",
+      "parser_version": "rss-item-pubdate-explicit-offset-v1",
+      "real_item_observed": true,
+      "source_id": "DENTSU_GROUP_OFFICIAL_RELEASES_RSS_EXACT_LIVE_V3",
+      "ticker": "4324",
+      "timestamp_field": "rss.channel.item.pubDate",
+      "timezone_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    }
+  ]
+}

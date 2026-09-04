@@ -1,0 +1,184 @@
+{
+  "candidates": [
+    {
+      "current_status": "LIVE_TECHNICAL_BLOCKER",
+      "identity_evidence": "jsonld.url || canonical url || feed guid",
+      "issuer": "ПАО \"Газпром\"",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Check HTML alternates and JSON-LD instead of prior visible clock field.",
+      "next_possible_free_mechanism": "official_html_alternate_jsonld_probe",
+      "official_url": "https://www.gazprom.com/press/",
+      "previous_blocker": "GAZP_GAZPROM_PRESS_CLOCK_WITHOUT_TZ_REJECTED_V1",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "GAZP"
+      ],
+      "timestamp_evidence": "UNKNOWN"
+    },
+    {
+      "current_status": "LIVE_TIMESTAMP_UNVERIFIED",
+      "identity_evidence": "jsonld.url || canonical url || feed guid",
+      "issuer": "ПАО ЛУКОЙЛ",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Check alternate machine-readable links and structured metadata.",
+      "next_possible_free_mechanism": "official_html_alternate_jsonld_probe",
+      "official_url": "https://www.lukoil.com/PressCenter/Pressreleases",
+      "previous_blocker": "LKOH_LUKOIL_PRESS_RELEASES_LIVE_CANDIDATE_V1",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "LKOH"
+      ],
+      "timestamp_evidence": "UNKNOWN"
+    },
+    {
+      "current_status": "LIVE_TIMESTAMP_UNVERIFIED",
+      "identity_evidence": "jsonld.url || canonical url || feed guid",
+      "issuer": "ПАО НОВАТЭК",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Check English official release page for structured metadata/feed links.",
+      "next_possible_free_mechanism": "official_html_alternate_jsonld_probe",
+      "official_url": "https://www.novatek.ru/en/press/releases/",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "NVTK"
+      ],
+      "timestamp_evidence": "UNKNOWN"
+    },
+    {
+      "current_status": "LIVE_TECHNICAL_BLOCKER",
+      "identity_evidence": "jsonld.url || canonical url || feed guid",
+      "issuer": "ПАО Сбербанк",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Check first-party press release page structured metadata and feeds.",
+      "next_possible_free_mechanism": "official_html_alternate_jsonld_probe",
+      "official_url": "https://www.sberbank.com/news-and-media/press-releases",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "SBER"
+      ],
+      "timestamp_evidence": "UNKNOWN"
+    },
+    {
+      "current_status": "LIVE_TECHNICAL_BLOCKER",
+      "identity_evidence": "same as SBER candidate",
+      "issuer": "ПАО Сбербанк",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Control row proving SBER/SBERP must collapse to one legal issuer.",
+      "next_possible_free_mechanism": "same_legal_issuer_share_class_control",
+      "official_url": "https://www.sberbank.com/news-and-media/press-releases",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "SBERP"
+      ],
+      "timestamp_evidence": "UNKNOWN"
+    },
+    {
+      "current_status": "LIVE_TECHNICAL_BLOCKER",
+      "identity_evidence": "jsonld.url || canonical url || feed guid",
+      "issuer": "Банк ВТБ",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Check first-party press center for alternate feed/JSON-LD timestamp evidence.",
+      "next_possible_free_mechanism": "official_html_alternate_jsonld_probe",
+      "official_url": "https://www.vtb.com/o-banke/press-centr/novosti-i-press-relizy/",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "VTBR"
+      ],
+      "timestamp_evidence": "UNKNOWN"
+    },
+    {
+      "current_status": "LIVE_STRICT_EXACT_READY",
+      "identity_evidence": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Ros Agro PLC",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Use first-party TYPO3 RSS alternate discovered on Rusagro investor page.",
+      "next_possible_free_mechanism": "official_issuer_rss",
+      "official_url": "https://www.rusagrogroup.ru/en/?type=100&tx_ttnews%5Bcat%5D=9",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "AGRO"
+      ],
+      "timestamp_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    },
+    {
+      "current_status": "LIVE_STRICT_EXACT_READY",
+      "identity_evidence": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Microsoft Corporation",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Use first-party Microsoft News RSS item pubDate as explicit UTC offset publication timestamp.",
+      "next_possible_free_mechanism": "official_issuer_rss",
+      "official_url": "https://news.microsoft.com/feed/",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "MSFT"
+      ],
+      "timestamp_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    },
+    {
+      "current_status": "LIVE_STRICT_EXACT_READY",
+      "identity_evidence": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "NVIDIA Corporation",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Use first-party NVIDIA Newsroom releases RSS item pubDate with GMT publication timestamp.",
+      "next_possible_free_mechanism": "official_issuer_rss",
+      "official_url": "https://nvidianews.nvidia.com/releases.xml",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "NVDA"
+      ],
+      "timestamp_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    },
+    {
+      "current_status": "LIVE_TECHNICAL_BLOCKER",
+      "identity_evidence": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "The Walt Disney Company",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Use first-party Walt Disney Company RSS feed with item pubDate +0000 and canonical https news URLs.",
+      "next_possible_free_mechanism": "official_issuer_rss",
+      "official_url": "https://thewaltdisneycompany.com/feed/",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "DIS"
+      ],
+      "timestamp_evidence": "UNKNOWN"
+    },
+    {
+      "current_status": "LIVE_STRICT_EXACT_READY",
+      "identity_evidence": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "DSV A/S",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Use DSV documented first-party investor RSS company announcements feed with item pubDate explicit numeric offset.",
+      "next_possible_free_mechanism": "official_issuer_rss",
+      "official_url": "https://investor.dsv.com/rss/news-releases.xml?category=company%20announcements",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "DSV"
+      ],
+      "timestamp_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    },
+    {
+      "current_status": "LIVE_STRICT_EXACT_READY",
+      "identity_evidence": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Dentsu Group Inc.",
+      "last_checked": "2026-09-03",
+      "new_hypothesis": "Use Dentsu Group first-party releases RSS with item pubDate +0900 and canonical https release links.",
+      "next_possible_free_mechanism": "official_issuer_rss",
+      "official_url": "https://www.group.dentsu.com/en/news/release/index.xml",
+      "previous_blocker": "",
+      "slow_recheck_after_days": 7,
+      "tickers": [
+        "4324"
+      ],
+      "timestamp_evidence": "LEVEL_A_EXPLICIT_OFFSET_OR_UTC"
+    }
+  ]
+}

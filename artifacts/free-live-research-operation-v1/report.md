@@ -1,6 +1,6 @@
 # free-live-research-operation-v1
 
-ARTIFACT_SHA=692587bdc17ee8148cac1273bf9c80f208e9cc77ced4b8be14185673a7b79e20
+ARTIFACT_SHA=f2060dde33c41a6cf6f936d15224a4c7d23e452785d370314077e3e30ee68cf2
 
 ## Independent Answers
 
@@ -9,16 +9,16 @@ ML_DATASET=NO
 
 ## Metrics
 
-1. BASE_MAIN_SHA="bdbedaac8e9b7b1b26b8f0563b3e02b1925313f5"
-2. HEAD_SHA="bdbedaac8e9b7b1b26b8f0563b3e02b1925313f5"
-3. artifact SHA="692587bdc17ee8148cac1273bf9c80f208e9cc77ced4b8be14185673a7b79e20"
+1. BASE_MAIN_SHA="1e785ee82a20fdb893f213dee190238dc1558e44"
+2. HEAD_SHA="1e785ee82a20fdb893f213dee190238dc1558e44"
+3. artifact SHA="f2060dde33c41a6cf6f936d15224a4c7d23e452785d370314077e3e30ee68cf2"
 4. operational sources=["ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1", "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"]
 5. healthy sources=["ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1", "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1"]
 6. degraded sources=[]
-7. real bounded polls=2
-8. HTTP requests=2
+7. real bounded polls=4
+8. HTTP requests=4
 9. newly discovered publications=6
-10. duplicates=0
+10. duplicates=6
 11. revisions=0
 12. total shadow events=6
 13. semantic-ready=6
