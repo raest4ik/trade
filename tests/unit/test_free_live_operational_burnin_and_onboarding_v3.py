@@ -150,7 +150,31 @@ def test_burnin_gate_requires_zero_sealed_and_timestamp_violations() -> None:
         assert summary["OPERATION"] == "NO"
 
 
-def test_legal_issuer_dedup_collapses_share_classes_and_frozen_cohort() -> None:
+def test_legal_issuer_dedup_collapses_share_classes_and_frozen_cohort(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.free_live_operational_burnin_and_onboarding_v3.application."
+        "canonical_target_registry_from_seed",
+        lambda: {
+            "SBER": _target("SBER", "ПАО Сбербанк"),
+            "SBERP": _target("SBERP", "ПАО Сбербанк"),
+            "ROSN": _target("ROSN", "Rosneft Oil Company"),
+            "GAZP": _target("GAZP", "ПАО Газпром"),
+        },
+    )
+    monkeypatch.setattr(
+        "src.free_live_operational_burnin_and_onboarding_v3.application."
+        "load_instrument_mapping_rows",
+        lambda: [
+            _mapping("SBER"),
+            _mapping("SBERP"),
+            _mapping("ROSN"),
+            _mapping("GAZP"),
+            _mapping("IMOEX", exchange="imoex_index"),
+        ],
+    )
+
     issuers = distinct_new_legal_issuers(
         [
             {"ticker": "SBER", "legal_issuer": "ПАО Сбербанк"},
