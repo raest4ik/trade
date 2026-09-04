@@ -21,11 +21,12 @@ def run(args: argparse.Namespace) -> int:
         operation_root=Path(args.operation_root),
         source_registry_path=Path(args.source_registry),
         historical_ticker_summary_path=Path(args.historical_ticker_summary),
+        instrument_mapping_path=Path(args.instrument_mapping),
         network_check=not args.no_network,
         created_at=created_at,
     )
     print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
-    return 0 if manifest["OPERATION"] == "YES" else 1
+    return 1 if manifest["OPERATIONAL_BURN_IN"] == "FAIL" else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--historical-ticker-summary",
         default="artifacts/ml-v2-readiness-audit-v1/ticker-summary.jsonl",
+    )
+    parser.add_argument(
+        "--instrument-mapping",
+        default="artifacts/tinvest-market-universe-raw-v1/instrument-mapping.json",
     )
     parser.add_argument("--no-network", action="store_true")
     parser.add_argument("--created-at", default=None, help=argparse.SUPPRESS)

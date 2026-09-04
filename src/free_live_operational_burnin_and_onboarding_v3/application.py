@@ -34,17 +34,95 @@ from src.free_live_issuer_expansion_v2.application import (
     default_candidate_sources,
     probe_candidate_source,
 )
+from src.instruments.infrastructure.seed import SEED_INSTRUMENTS, SeedInstrument
 
 ARTIFACT_VERSION = "free-live-operational-burnin-and-onboarding-v3"
 BASELINE_LIVE_TICKERS = ("ROSN", "YDEX")
+DEFAULT_INSTRUMENT_MAPPING_PATH = Path(
+    "artifacts/tinvest-market-universe-raw-v1/instrument-mapping.json"
+)
+ALLOWED_TARGET_EXCHANGES = ("moex_mrng_evng_e_wknd_dlr",)
+APPROVED_BENCHMARK_TICKER = "IMOEX"
 
 
 class DiversityStatus(StrEnum):
-    NO_NEW_FREE_ISSUERS = "NO_NEW_FREE_ISSUERS"
-    ONE_NEW_FREE_ISSUER = "ONE_NEW_FREE_ISSUER"
-    TWO_NEW_FREE_ISSUERS = "TWO_NEW_FREE_ISSUERS"
-    THREE_PLUS_NEW_FREE_ISSUERS = "THREE_PLUS_NEW_FREE_ISSUERS"
+    NO_NEW_TARGET_ELIGIBLE_ISSUERS = "NO_NEW_TARGET_ELIGIBLE_ISSUERS"
+    ONE_NEW_TARGET_ELIGIBLE_ISSUER = "ONE_NEW_TARGET_ELIGIBLE_ISSUER"
+    TWO_NEW_TARGET_ELIGIBLE_ISSUERS = "TWO_NEW_TARGET_ELIGIBLE_ISSUERS"
+    THREE_PLUS_NEW_TARGET_ELIGIBLE_ISSUERS = "THREE_PLUS_NEW_TARGET_ELIGIBLE_ISSUERS"
     FREE_SOURCE_UNIVERSE_EXHAUSTED_FOR_NOW = "FREE_SOURCE_UNIVERSE_EXHAUSTED_FOR_NOW"
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalTargetInstrument:
+    ticker: str
+    legal_issuer: str
+    primary_board: str
+    instrument_type: str
+
+    @classmethod
+    def from_seed(cls, instrument: SeedInstrument) -> CanonicalTargetInstrument:
+        return cls(
+            ticker=instrument.ticker.upper(),
+            legal_issuer=instrument.issuer_name,
+            primary_board=instrument.primary_board,
+            instrument_type=instrument.instrument_type.value,
+        )
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "ticker": self.ticker,
+            "legal_issuer": self.legal_issuer,
+            "primary_board": self.primary_board,
+            "instrument_type": self.instrument_type,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class TargetEligibilityResult:
+    source_id: str
+    source_ticker: str
+    source_legal_issuer: str
+    free_official_source_ready: bool
+    canonical_instrument: CanonicalTargetInstrument | None
+    canonical_mapping_ready: bool
+    target_instrument_eligible: bool
+    feature_pipeline_compatible: bool
+    counts_toward_ml_diversity: bool
+    legal_issuer_key_value: str | None
+    blocker: str | None
+    mapping_confidence: str
+    mapping_row: dict[str, Any] | None
+    benchmark_path_ready: bool
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "source_id": self.source_id,
+            "source_ticker": self.source_ticker,
+            "source_legal_issuer": self.source_legal_issuer,
+            "FREE_OFFICIAL_SOURCE_READY": self.free_official_source_ready,
+            "SOURCE_READY": self.free_official_source_ready,
+            "TARGET_INSTRUMENT_ELIGIBLE": self.target_instrument_eligible,
+            "CANONICAL_INSTRUMENT_MAPPING_READY": self.canonical_mapping_ready,
+            "FEATURE_PIPELINE_COMPATIBLE": self.feature_pipeline_compatible,
+            "COUNTS_TOWARD_ML_DIVERSITY": self.counts_toward_ml_diversity,
+            "canonical_instrument": None
+            if self.canonical_instrument is None
+            else self.canonical_instrument.payload(),
+            "source_to_canonical_mapping": {
+                "source_ticker": self.source_ticker,
+                "canonical_ticker": None
+                if self.canonical_instrument is None
+                else self.canonical_instrument.ticker,
+                "mapping_confidence": self.mapping_confidence,
+                "exact_ticker_match_required": True,
+                "alias_or_suffix_inferred": False,
+            },
+            "market_data_mapping": self.mapping_row,
+            "benchmark_path_ready": self.benchmark_path_ready,
+            "legal_issuer_key": self.legal_issuer_key_value,
+            "blocker": self.blocker,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,39 +197,228 @@ def legal_issuer_key(*, ticker: str, legal_issuer: str) -> str:
     return " ".join(normalized.split())
 
 
-def distinct_new_legal_issuers(
+def canonical_target_registry_from_seed(
+    seed_instruments: Sequence[SeedInstrument] = SEED_INSTRUMENTS,
+) -> dict[str, CanonicalTargetInstrument]:
+    return {
+        instrument.ticker.upper(): CanonicalTargetInstrument.from_seed(instrument)
+        for instrument in seed_instruments
+    }
+
+
+def load_instrument_mapping_rows(
+    path: Path = DEFAULT_INSTRUMENT_MAPPING_PATH,
+) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    payload = _read_json(path)
+    rows_object: object = payload.get("instruments", [])
+    if not isinstance(rows_object, list):
+        return []
+    rows = cast("list[object]", rows_object)
+    typed_rows: list[dict[str, Any]] = []
+    for row_object in rows:
+        if isinstance(row_object, dict):
+            typed_rows.append(cast("dict[str, Any]", row_object))
+    return typed_rows
+
+
+def evaluate_target_eligibility(
     accepted_sources: Sequence[dict[str, Any]],
+    *,
+    canonical_registry: dict[str, CanonicalTargetInstrument] | None = None,
+    instrument_mapping_rows: Sequence[dict[str, Any]] = (),
+    frozen_tickers: Sequence[str] = HISTORICAL_ISSUER_TICKERS,
+    allowed_exchanges: Sequence[str] = ALLOWED_TARGET_EXCHANGES,
+    benchmark_ticker: str = APPROVED_BENCHMARK_TICKER,
+) -> list[TargetEligibilityResult]:
+    registry = (
+        canonical_target_registry_from_seed() if canonical_registry is None else canonical_registry
+    )
+    mapping_by_ticker: dict[str, list[dict[str, Any]]] = {}
+    for row in instrument_mapping_rows:
+        ticker = str(row.get("ticker", "")).strip().upper()
+        if not ticker:
+            continue
+        mapping_by_ticker.setdefault(ticker, []).append(dict(row))
+
+    benchmark_rows = mapping_by_ticker.get(benchmark_ticker.upper(), [])
+    benchmark_path_ready = any(
+        str(row.get("instrument_uid", "")).strip()
+        and str(row.get("figi", "")).strip()
+        and str(row.get("first_1day_candle_date", "")).strip()
+        for row in benchmark_rows
+    )
+    frozen = {ticker.upper() for ticker in frozen_tickers}
+    allowed_exchange_set = {exchange.lower() for exchange in allowed_exchanges}
+    results: list[TargetEligibilityResult] = []
+    for source in accepted_sources:
+        source_ticker = str(source["ticker"]).strip().upper()
+        source_issuer = str(source["legal_issuer"])
+        canonical = registry.get(source_ticker)
+        rows = mapping_by_ticker.get(source_ticker, [])
+        row = rows[0] if len(rows) == 1 else None
+        canonical_mapping_ready = canonical is not None and row is not None
+        target_instrument_eligible = False
+        feature_pipeline_compatible = False
+        counts_toward_ml_diversity = False
+        mapping_confidence = "NONE"
+        blocker: str | None = None
+        legal_key: str | None = None
+
+        if canonical is None:
+            blocker = "CANONICAL_INSTRUMENT_NOT_IN_PROJECT_TARGET_REGISTRY"
+        elif len(rows) == 0:
+            blocker = "CANONICAL_INSTRUMENT_MAPPING_MISSING"
+        elif len(rows) > 1:
+            blocker = "AMBIGUOUS_CANONICAL_INSTRUMENT_MAPPING"
+        else:
+            assert row is not None
+            mapping_confidence = "EXACT_CANONICAL_TICKER"
+            exchange = str(row.get("exchange", "")).strip().lower()
+            class_code = str(row.get("class_code", "")).strip().upper()
+            instrument_uid = str(row.get("instrument_uid", "")).strip()
+            figi = str(row.get("figi", "")).strip()
+            candle_start = str(row.get("first_1day_candle_date", "")).strip()
+            if canonical.primary_board.upper() != class_code:
+                blocker = "CANONICAL_BOARD_MISMATCH"
+            elif exchange not in allowed_exchange_set:
+                blocker = "UNSUPPORTED_EXCHANGE_OR_TRADING_VENUE"
+            elif not instrument_uid or not figi:
+                blocker = "CANONICAL_INSTRUMENT_MAPPING_INCOMPLETE"
+            elif not candle_start:
+                blocker = "INACTIVE_OR_UNUSABLE_INSTRUMENT"
+            elif source_ticker in frozen:
+                blocker = "ALREADY_IN_FROZEN_HISTORICAL_TARGET_UNIVERSE"
+            elif not benchmark_path_ready:
+                blocker = "APPROVED_BENCHMARK_PATH_MISSING"
+            else:
+                target_instrument_eligible = True
+                feature_pipeline_compatible = True
+                counts_toward_ml_diversity = True
+                legal_key = legal_issuer_key(
+                    ticker=canonical.ticker, legal_issuer=canonical.legal_issuer
+                )
+
+        if canonical is not None and legal_key is None:
+            legal_key = legal_issuer_key(
+                ticker=canonical.ticker, legal_issuer=canonical.legal_issuer
+            )
+        results.append(
+            TargetEligibilityResult(
+                source_id=str(source.get("source_id", f"{source_ticker}_SOURCE")),
+                source_ticker=source_ticker,
+                source_legal_issuer=source_issuer,
+                free_official_source_ready=True,
+                canonical_instrument=canonical,
+                canonical_mapping_ready=canonical_mapping_ready,
+                target_instrument_eligible=target_instrument_eligible,
+                feature_pipeline_compatible=feature_pipeline_compatible,
+                counts_toward_ml_diversity=counts_toward_ml_diversity,
+                legal_issuer_key_value=legal_key,
+                blocker=blocker,
+                mapping_confidence=mapping_confidence,
+                mapping_row=row,
+                benchmark_path_ready=benchmark_path_ready,
+            )
+        )
+    return results
+
+
+def distinct_new_target_eligible_legal_issuers(
+    eligibility_results: Sequence[TargetEligibilityResult],
     *,
     frozen_tickers: Sequence[str] = HISTORICAL_ISSUER_TICKERS,
 ) -> list[dict[str, str]]:
     frozen = {ticker.upper() for ticker in frozen_tickers}
     unique: dict[str, dict[str, str]] = {}
-    for source in accepted_sources:
-        ticker = str(source["ticker"]).upper()
+    for result in eligibility_results:
+        if not result.counts_toward_ml_diversity or result.canonical_instrument is None:
+            continue
+        ticker = result.canonical_instrument.ticker
         if ticker in frozen:
             continue
-        key = legal_issuer_key(ticker=ticker, legal_issuer=str(source["legal_issuer"]))
+        key = result.legal_issuer_key_value or legal_issuer_key(
+            ticker=ticker, legal_issuer=result.canonical_instrument.legal_issuer
+        )
         unique.setdefault(
             key,
             {
                 "legal_issuer_key": key,
-                "legal_issuer": str(source["legal_issuer"]),
+                "legal_issuer": result.canonical_instrument.legal_issuer,
                 "ticker": ticker,
             },
         )
     return sorted(unique.values(), key=lambda row: row["legal_issuer_key"])
 
 
+def distinct_new_legal_issuers(
+    accepted_sources: Sequence[dict[str, Any]],
+    *,
+    frozen_tickers: Sequence[str] = HISTORICAL_ISSUER_TICKERS,
+) -> list[dict[str, str]]:
+    eligibility = evaluate_target_eligibility(
+        accepted_sources,
+        instrument_mapping_rows=load_instrument_mapping_rows(),
+        frozen_tickers=frozen_tickers,
+    )
+    return distinct_new_target_eligible_legal_issuers(eligibility)
+
+
 def diversity_status(new_legal_issuer_count: int, *, universe_exhausted: bool = False) -> str:
     if universe_exhausted and new_legal_issuer_count < 3:
         return DiversityStatus.FREE_SOURCE_UNIVERSE_EXHAUSTED_FOR_NOW.value
     if new_legal_issuer_count <= 0:
-        return DiversityStatus.NO_NEW_FREE_ISSUERS.value
+        return DiversityStatus.NO_NEW_TARGET_ELIGIBLE_ISSUERS.value
     if new_legal_issuer_count == 1:
-        return DiversityStatus.ONE_NEW_FREE_ISSUER.value
+        return DiversityStatus.ONE_NEW_TARGET_ELIGIBLE_ISSUER.value
     if new_legal_issuer_count == 2:
-        return DiversityStatus.TWO_NEW_FREE_ISSUERS.value
-    return DiversityStatus.THREE_PLUS_NEW_FREE_ISSUERS.value
+        return DiversityStatus.TWO_NEW_TARGET_ELIGIBLE_ISSUERS.value
+    return DiversityStatus.THREE_PLUS_NEW_TARGET_ELIGIBLE_ISSUERS.value
+
+
+def diversity_eligibility_payload(
+    eligibility_results: Sequence[TargetEligibilityResult],
+    new_issuers: Sequence[dict[str, str]],
+) -> dict[str, Any]:
+    source_ready = [result for result in eligibility_results if result.free_official_source_ready]
+    target_eligible = [
+        result for result in eligibility_results if result.target_instrument_eligible
+    ]
+    feature_compatible = [
+        result for result in eligibility_results if result.feature_pipeline_compatible
+    ]
+    diversity_eligible = [
+        result for result in eligibility_results if result.counts_toward_ml_diversity
+    ]
+    return {
+        "FREE_OFFICIAL_SOURCE_READY": bool(source_ready),
+        "SOURCE_READY_DOES_NOT_IMPLY_ML_DIVERSITY_ELIGIBLE": True,
+        "NEW_FREE_OFFICIAL_SOURCE_COUNT": len(source_ready),
+        "NEW_TARGET_ELIGIBLE_SOURCE_COUNT": len(target_eligible),
+        "NEW_TARGET_ELIGIBLE_TICKER_COUNT": len(
+            {result.source_ticker for result in target_eligible}
+        ),
+        "NEW_TARGET_ELIGIBLE_DISTINCT_LEGAL_ISSUER_COUNT": len(new_issuers),
+        "FEATURE_PIPELINE_COMPATIBLE_SOURCE_COUNT": len(feature_compatible),
+        "COUNTS_TOWARD_ML_DIVERSITY_SOURCE_COUNT": len(diversity_eligible),
+        "TARGET_ELIGIBLE_DIVERSITY": "YES" if len(new_issuers) >= 3 else "NO",
+        "DIVERSITY": "YES" if len(new_issuers) >= 3 else "NO",
+        "FINAL_DIVERSITY_STATUS": diversity_status(len(new_issuers)),
+        "target_eligible_sources": [result.payload() for result in target_eligible],
+        "target_ineligible_sources": [
+            result.payload()
+            for result in eligibility_results
+            if not result.target_instrument_eligible
+        ],
+        "diversity_eligible_sources": [result.payload() for result in diversity_eligible],
+        "rejected_from_diversity": [
+            result.payload()
+            for result in eligibility_results
+            if not result.counts_toward_ml_diversity
+        ],
+        "new_target_eligible_distinct_legal_issuers": list(new_issuers),
+    }
 
 
 def registry_delta_from_accepted_sources(
@@ -314,6 +581,7 @@ def build_burnin_summary(
     status: dict[str, Any],
     collector_state: dict[str, Any],
     seal: dict[str, Any],
+    source_isolation_proof: str = "REAL_BURN_IN_PROOF",
 ) -> dict[str, Any]:
     source_results: list[dict[str, Any]] = []
     for cycle in poll_cycles:
@@ -355,29 +623,44 @@ def build_burnin_summary(
         for cycle in poll_cycles
     )
     health_real = bool(status.get("source_health")) and bool(status.get("enabled_sources"))
-    operation_ready = (
+    safety_counters_zero = (
+        status.get("outcome_counters", {}).get("LIVE_OUTCOMES_READ", 0) == 0
+        and status.get("outcome_counters", {}).get("LIVE_TARGETS_COMPUTED", 0) == 0
+        and status.get("outcome_counters", {}).get("LIVE_POST_EVENT_PRICE_READS", 0) == 0
+        and status.get("outcome_counters", {}).get("BROKER_MUTATIONS", 0) == 0
+    )
+    core_ready_without_isolation = (
         state_persistence
         and repeat_no_duplicate
         and health_real
         and bool(seal.get("sealed_epoch_verified"))
         and int(status.get("sealed_violations", 0)) == 0
-        and status.get("outcome_counters", {}).get("LIVE_OUTCOMES_READ", 0) == 0
-        and status.get("outcome_counters", {}).get("LIVE_TARGETS_COMPUTED", 0) == 0
-        and status.get("outcome_counters", {}).get("LIVE_POST_EVENT_PRICE_READS", 0) == 0
+        and int(status.get("timestamp_rejections", 0)) == 0
+        and safety_counters_zero
     )
+    proof_level = source_isolation_proof if isolated_failure else "NOT_PROVEN"
+    if not core_ready_without_isolation:
+        operational_burn_in = "FAIL"
+    elif isolated_failure:
+        operational_burn_in = "PASS"
+    else:
+        operational_burn_in = "PARTIAL"
     return {
         "cycles_observed": len(poll_cycles),
         "statuses_observed": sorted(statuses),
         "state_persistence_proven": state_persistence,
         "repeat_poll_no_duplicate": repeat_no_duplicate,
         "one_source_failure_isolated": isolated_failure,
+        "source_failure_isolation_proof_level": proof_level,
         "health_status_real": health_real,
         "raw_snapshots_immutable": bool(seal.get("sealed_epoch_verified")),
         "timestamp_violations": int(status.get("timestamp_rejections", 0)),
         "pre_event_features_bounded": status.get("feature_status", {}).get("upper_bound_policy")
         == "end_at <= published_at",
         "seal_pass": bool(seal.get("sealed_epoch_verified")),
-        "OPERATION": "YES" if operation_ready else "NO",
+        "safety_counters_zero": safety_counters_zero,
+        "OPERATIONAL_BURN_IN": operational_burn_in,
+        "OPERATION": "YES" if operational_burn_in == "PASS" else "NO",
     }
 
 
@@ -389,6 +672,7 @@ def run_free_live_operational_burnin_and_onboarding_v3(
     operation_root: Path = DEFAULT_OPERATION_ARTIFACT_ROOT,
     source_registry_path: Path = Path(DEFAULT_SOURCE_REGISTRY_PATH),
     historical_ticker_summary_path: Path = DEFAULT_HISTORICAL_TICKER_SUMMARY_PATH,
+    instrument_mapping_path: Path = DEFAULT_INSTRUMENT_MAPPING_PATH,
     candidate_configs: Sequence[SourceProbeConfig] | None = None,
     client: HttpClient | None = None,
     network_check: bool = True,
@@ -418,7 +702,13 @@ def run_free_live_operational_burnin_and_onboarding_v3(
     rejected_sources = [
         _rejected_source_payload(result) for result in probe_results if not _ready(result)
     ]
-    new_issuers = distinct_new_legal_issuers(accepted_sources)
+    instrument_mapping_rows = load_instrument_mapping_rows(instrument_mapping_path)
+    target_eligibility = evaluate_target_eligibility(
+        accepted_sources,
+        instrument_mapping_rows=instrument_mapping_rows,
+    )
+    new_issuers = distinct_new_target_eligible_legal_issuers(target_eligibility)
+    diversity_eligibility = diversity_eligibility_payload(target_eligibility, new_issuers)
     diversity = diversity_status(len(new_issuers), universe_exhausted=False)
     registry_delta = registry_delta_from_accepted_sources(accepted_sources)
     burnin = build_burnin_summary(
@@ -453,15 +743,36 @@ def run_free_live_operational_burnin_and_onboarding_v3(
         "CANDIDATES_AUDITED": len(candidates),
         "NEW_HYPOTHESES_TESTED": sum(bool(item.new_hypothesis.strip()) for item in candidates),
         "NEW_READY_SOURCES": len(accepted_sources),
+        "NEW_FREE_OFFICIAL_SOURCE_COUNT": len(accepted_sources),
         "NEW_ITEM_OBSERVED": any(source["real_item_observed"] for source in accepted_sources),
         "SOURCE_READY": bool(accepted_sources),
+        "FREE_OFFICIAL_SOURCE_READY": bool(accepted_sources),
+        "SOURCE_READY_DOES_NOT_IMPLY_ML_DIVERSITY_ELIGIBLE": True,
+        "NEW_TARGET_ELIGIBLE_SOURCE_COUNT": diversity_eligibility[
+            "NEW_TARGET_ELIGIBLE_SOURCE_COUNT"
+        ],
+        "NEW_TARGET_ELIGIBLE_TICKER_COUNT": diversity_eligibility[
+            "NEW_TARGET_ELIGIBLE_TICKER_COUNT"
+        ],
+        "NEW_TARGET_ELIGIBLE_DISTINCT_LEGAL_ISSUER_COUNT": diversity_eligibility[
+            "NEW_TARGET_ELIGIBLE_DISTINCT_LEGAL_ISSUER_COUNT"
+        ],
+        "FEATURE_PIPELINE_COMPATIBLE_SOURCE_COUNT": diversity_eligibility[
+            "FEATURE_PIPELINE_COMPATIBLE_SOURCE_COUNT"
+        ],
+        "COUNTS_TOWARD_ML_DIVERSITY_SOURCE_COUNT": diversity_eligibility[
+            "COUNTS_TOWARD_ML_DIVERSITY_SOURCE_COUNT"
+        ],
         "NEW_DISTINCT_LEGAL_ISSUER_COUNT": len(new_issuers),
         "NEW_DISTINCT_LEGAL_ISSUERS": new_issuers,
         "FINAL_DIVERSITY_STATUS": diversity,
         "DIVERSITY_COLLECTION_CAPABILITY_READY": diversity
-        == DiversityStatus.THREE_PLUS_NEW_FREE_ISSUERS.value,
+        == DiversityStatus.THREE_PLUS_NEW_TARGET_ELIGIBLE_ISSUERS.value,
+        "TARGET_ELIGIBLE_DIVERSITY": diversity_eligibility["TARGET_ELIGIBLE_DIVERSITY"],
         "ML_V2_DATASET_STATUS": "NOT_OPENED_BY_V3_ONBOARDING",
         "OPERATION": burnin["OPERATION"],
+        "OPERATIONAL_BURN_IN": burnin["OPERATIONAL_BURN_IN"],
+        "SOURCE_FAILURE_ISOLATION_PROOF_LEVEL": burnin["source_failure_isolation_proof_level"],
         "DIVERSITY": "YES" if len(new_issuers) >= 3 else "NO",
         "LIVE_RESEARCH_OPERATION_STATUS": status.get("LIVE_RESEARCH_OPERATION_STATUS"),
         "PAID_SOURCE_FALLBACK_CONSIDERED": False,
@@ -489,10 +800,39 @@ def run_free_live_operational_burnin_and_onboarding_v3(
     _write_json(output_root / "accepted-sources.json", {"sources": accepted_sources})
     _write_jsonl(output_root / "rejected-sources.jsonl", rejected_sources)
     _write_json(output_root / "ready-registry-delta.json", {"sources": registry_delta})
+    _write_jsonl(
+        output_root / "instrument-eligibility.jsonl",
+        [result.payload() for result in target_eligibility],
+    )
+    _write_jsonl(
+        output_root / "target-mapping.jsonl",
+        [result.payload()["source_to_canonical_mapping"] for result in target_eligibility],
+    )
+    _write_json(output_root / "diversity-eligibility.json", diversity_eligibility)
+    _write_json(
+        output_root / "burnin-gate.json",
+        {
+            "LIVE_RESEARCH_OPERATION_STATUS": status.get("LIVE_RESEARCH_OPERATION_STATUS"),
+            "OPERATIONAL_BURN_IN": burnin["OPERATIONAL_BURN_IN"],
+            "OPERATION": burnin["OPERATION"],
+            "source_failure_isolation_proof_level": burnin["source_failure_isolation_proof_level"],
+            "one_source_failure_isolated": burnin["one_source_failure_isolated"],
+            "seal_pass": burnin["seal_pass"],
+            "timestamp_violations": burnin["timestamp_violations"],
+            "safety_counters_zero": burnin["safety_counters_zero"],
+        },
+    )
     _write_json(output_root / "shadow-stats.json", shadow)
     _write_json(output_root / "feature-status.json", feature_status)
     _write_json(output_root / "safety.json", safety)
-    _write_report(output_root / "report.md", manifest, burnin, shadow, feature_status)
+    _write_report(
+        output_root / "report.md",
+        manifest,
+        burnin,
+        shadow,
+        feature_status,
+        diversity_eligibility,
+    )
     return manifest
 
 
@@ -796,20 +1136,35 @@ def _write_report(
     burnin: dict[str, Any],
     shadow: dict[str, Any],
     feature_status: dict[str, Any],
+    diversity_eligibility: dict[str, Any],
 ) -> None:
     lines = [
         "# Free live operational burn-in and onboarding v3",
         "",
         f"- OPERATION: {manifest['OPERATION']}",
+        f"- Operational burn-in: {manifest['OPERATIONAL_BURN_IN']}",
+        f"- Source failure isolation proof: {manifest['SOURCE_FAILURE_ISOLATION_PROOF_LEVEL']}",
         f"- DIVERSITY: {manifest['DIVERSITY']}",
         f"- Final diversity status: {manifest['FINAL_DIVERSITY_STATUS']}",
-        f"- New distinct legal issuer count: {manifest['NEW_DISTINCT_LEGAL_ISSUER_COUNT']}",
+        (
+            "- Source-ready / target-eligible / diversity-eligible: "
+            f"{manifest['NEW_FREE_OFFICIAL_SOURCE_COUNT']} / "
+            f"{manifest['NEW_TARGET_ELIGIBLE_SOURCE_COUNT']} / "
+            f"{manifest['COUNTS_TOWARD_ML_DIVERSITY_SOURCE_COUNT']}"
+        ),
+        (
+            "- New target-eligible distinct legal issuer count: "
+            f"{manifest['NEW_TARGET_ELIGIBLE_DISTINCT_LEGAL_ISSUER_COUNT']}"
+        ),
         f"- New READY sources: {manifest['NEW_READY_SOURCES']}",
+        (f"- Rejected from diversity: {len(diversity_eligibility['rejected_from_diversity'])}"),
         f"- Burn-in cycles observed: {burnin['cycles_observed']}",
         f"- State persistence proven: {burnin['state_persistence_proven']}",
         f"- Repeat poll no duplicate: {burnin['repeat_poll_no_duplicate']}",
+        f"- Source failure isolated: {burnin['one_source_failure_isolated']}",
         f"- Health/status real: {burnin['health_status_real']}",
         f"- Seal pass: {burnin['seal_pass']}",
+        f"- Timestamp violations: {burnin['timestamp_violations']}",
         f"- Total shadow events: {shadow['total_events']}",
         f"- Semantic ready: {shadow['semantic_ready']}",
         f"- UNKNOWN rate: {shadow['UNKNOWN_rate']}",
