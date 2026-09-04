@@ -1,12 +1,15 @@
 {
-  "OPERATION": "YES",
+  "OPERATION": "NO",
+  "OPERATIONAL_BURN_IN": "PARTIAL",
   "cycles_observed": 2,
   "health_status_real": true,
   "one_source_failure_isolated": false,
   "pre_event_features_bounded": true,
   "raw_snapshots_immutable": true,
   "repeat_poll_no_duplicate": true,
+  "safety_counters_zero": true,
   "seal_pass": true,
+  "source_failure_isolation_proof_level": "NOT_PROVEN",
   "state_persistence_proven": true,
   "statuses_observed": [
     "NO_NEW_ITEMS",
