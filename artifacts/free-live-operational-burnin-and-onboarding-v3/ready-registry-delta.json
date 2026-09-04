@@ -1,0 +1,148 @@
+{
+  "sources": [
+    {
+      "canonical_domain": "news.microsoft.com",
+      "content_path": [
+        "generic.title",
+        "generic.content"
+      ],
+      "discovery_type": "official_issuer_rss",
+      "discovery_url": "https://news.microsoft.com/feed/",
+      "enabled": false,
+      "expected_publication_frequency": "unknown; discovered by bounded live probe",
+      "identity_path": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Microsoft Corporation",
+      "official_domain": "news.microsoft.com",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "parser_type": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "interval_minutes": 180,
+        "max_items_per_poll": 5
+      },
+      "source_id": "MSFT_MICROSOFT_NEWS_OFFICIAL_RSS_EXACT_LIVE_V3",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_STRICT_EXACT_READY",
+      "source_version": 1,
+      "stable_identity": "rss.channel.item.guid || rss.channel.item.link",
+      "ticker": "MSFT",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "strict exact timestamp accepted by v3 probe"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=LEVEL_A_EXPLICIT_OFFSET_OR_UTC",
+        "evidence_value": "rss.channel.item.pubDate",
+        "policy": "accept only item-level publication timestamp with explicit offset or documented timezone"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    },
+    {
+      "canonical_domain": "nvidianews.nvidia.com",
+      "content_path": [
+        "generic.title",
+        "generic.content"
+      ],
+      "discovery_type": "official_issuer_rss",
+      "discovery_url": "https://nvidianews.nvidia.com/releases.xml",
+      "enabled": false,
+      "expected_publication_frequency": "unknown; discovered by bounded live probe",
+      "identity_path": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "NVIDIA Corporation",
+      "official_domain": "nvidianews.nvidia.com",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "parser_type": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "interval_minutes": 180,
+        "max_items_per_poll": 5
+      },
+      "source_id": "NVDA_NVIDIA_NEWSROOM_RELEASES_RSS_EXACT_LIVE_V3",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_STRICT_EXACT_READY",
+      "source_version": 1,
+      "stable_identity": "rss.channel.item.guid || rss.channel.item.link",
+      "ticker": "NVDA",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "strict exact timestamp accepted by v3 probe"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=LEVEL_A_EXPLICIT_OFFSET_OR_UTC",
+        "evidence_value": "rss.channel.item.pubDate",
+        "policy": "accept only item-level publication timestamp with explicit offset or documented timezone"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    },
+    {
+      "canonical_domain": "investor.dsv.com",
+      "content_path": [
+        "generic.title",
+        "generic.content"
+      ],
+      "discovery_type": "official_issuer_rss",
+      "discovery_url": "https://investor.dsv.com/rss/news-releases.xml?category=company%20announcements",
+      "enabled": false,
+      "expected_publication_frequency": "unknown; discovered by bounded live probe",
+      "identity_path": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "DSV A/S",
+      "official_domain": "investor.dsv.com",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "parser_type": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "interval_minutes": 180,
+        "max_items_per_poll": 5
+      },
+      "source_id": "DSV_DSV_INVESTOR_NEWS_RSS_EXACT_LIVE_V3",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_STRICT_EXACT_READY",
+      "source_version": 1,
+      "stable_identity": "rss.channel.item.guid || rss.channel.item.link",
+      "ticker": "DSV",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "strict exact timestamp accepted by v3 probe"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=LEVEL_A_EXPLICIT_OFFSET_OR_UTC",
+        "evidence_value": "rss.channel.item.pubDate",
+        "policy": "accept only item-level publication timestamp with explicit offset or documented timezone"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    },
+    {
+      "canonical_domain": "www.group.dentsu.com",
+      "content_path": [
+        "generic.title",
+        "generic.content"
+      ],
+      "discovery_type": "official_issuer_rss",
+      "discovery_url": "https://www.group.dentsu.com/en/news/release/index.xml",
+      "enabled": false,
+      "expected_publication_frequency": "unknown; discovered by bounded live probe",
+      "identity_path": "rss.channel.item.guid || rss.channel.item.link",
+      "issuer": "Dentsu Group Inc.",
+      "official_domain": "www.group.dentsu.com",
+      "parser": "rss-item-pubdate-explicit-offset-v1",
+      "parser_type": "rss-item-pubdate-explicit-offset-v1",
+      "polling_policy": {
+        "interval_minutes": 180,
+        "max_items_per_poll": 5
+      },
+      "source_id": "DENTSU_GROUP_OFFICIAL_RELEASES_RSS_EXACT_LIVE_V3",
+      "source_origin": "ISSUER_ORIGINATED",
+      "source_status": "LIVE_STRICT_EXACT_READY",
+      "source_version": 1,
+      "stable_identity": "rss.channel.item.guid || rss.channel.item.link",
+      "ticker": "4324",
+      "ticker_binding": {
+        "binding": "single_issuer_source",
+        "publication_date_validity": "strict exact timestamp accepted by v3 probe"
+      },
+      "timestamp_contract": {
+        "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=LEVEL_A_EXPLICIT_OFFSET_OR_UTC",
+        "evidence_value": "rss.channel.item.pubDate",
+        "policy": "accept only item-level publication timestamp with explicit offset or documented timezone"
+      },
+      "timestamp_path": "rss.channel.item.pubDate"
+    }
+  ]
+}

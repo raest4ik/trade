@@ -1,0 +1,36 @@
+{
+  "feature_attempts": 6,
+  "feature_blocked": 6,
+  "feature_ready": 0,
+  "late_retry_uses_publication_upper_bound": true,
+  "new_source_feature_status": [
+    {
+      "blocker": "NEW_SOURCE_SMOKE_DID_NOT_READ_MARKET_DATA",
+      "feature_ready": false,
+      "source_id": "MSFT_MICROSOFT_NEWS_OFFICIAL_RSS_EXACT_LIVE_V3",
+      "ticker": "MSFT"
+    },
+    {
+      "blocker": "NEW_SOURCE_SMOKE_DID_NOT_READ_MARKET_DATA",
+      "feature_ready": false,
+      "source_id": "NVDA_NVIDIA_NEWSROOM_RELEASES_RSS_EXACT_LIVE_V3",
+      "ticker": "NVDA"
+    },
+    {
+      "blocker": "NEW_SOURCE_SMOKE_DID_NOT_READ_MARKET_DATA",
+      "feature_ready": false,
+      "source_id": "DSV_DSV_INVESTOR_NEWS_RSS_EXACT_LIVE_V3",
+      "ticker": "DSV"
+    },
+    {
+      "blocker": "NEW_SOURCE_SMOKE_DID_NOT_READ_MARKET_DATA",
+      "feature_ready": false,
+      "source_id": "DENTSU_GROUP_OFFICIAL_RELEASES_RSS_EXACT_LIVE_V3",
+      "ticker": "4324"
+    }
+  ],
+  "permanent_feature_blockers": 6,
+  "retryable_feature_blockers": 0,
+  "target_metrics_included": false,
+  "upper_bound_policy": "end_at <= published_at"
+}

@@ -1,0 +1,25 @@
+{
+  "UNKNOWN_count": 3,
+  "UNKNOWN_rate": 0.5,
+  "by_source": {
+    "ROSN_ROSNEFT_PRESS_RELEASES_RSS_EXACT_LIVE_V1": 1,
+    "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1": 5
+  },
+  "by_ticker": {
+    "ROSN": 1,
+    "YDEX": 5
+  },
+  "feature_ready": 0,
+  "new_ready_sources_by_ticker": {
+    "4324": 1,
+    "DSV": 1,
+    "MSFT": 1,
+    "NVDA": 1
+  },
+  "semantic_ready": 6,
+  "target_metrics_included": false,
+  "ticker_hhi": 0.722222,
+  "top1_live_ticker_share": 0.833333,
+  "top3_live_ticker_share": 1.0,
+  "total_events": 6
+}

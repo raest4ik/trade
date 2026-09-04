@@ -1,0 +1,10 @@
+{
+  "LIVE_RESEARCH_OPERATION_STATUS": "READY",
+  "OPERATION": "NO",
+  "OPERATIONAL_BURN_IN": "PARTIAL",
+  "one_source_failure_isolated": false,
+  "safety_counters_zero": true,
+  "seal_pass": true,
+  "source_failure_isolation_proof_level": "NOT_PROVEN",
+  "timestamp_violations": 0
+}

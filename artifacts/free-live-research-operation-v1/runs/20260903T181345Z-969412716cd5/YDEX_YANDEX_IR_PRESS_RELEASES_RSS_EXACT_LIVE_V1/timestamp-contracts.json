@@ -1,0 +1,14 @@
+{
+  "YDEX_YANDEX_IR_PRESS_RELEASES_RSS_EXACT_LIVE_V1": {
+    "TIMESTAMP_CONTRACT_SHA": "ff9b4ed1f3306048fda620761ac8a1eb53f754c0b53cdc40999fd61fadfaca93",
+    "TIMESTAMP_EVIDENCE_TYPE": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+    "TIMESTAMP_EVIDENCE_VALUE": "RSS item pubDate contains numeric UTC offset such as +0300",
+    "ticker": "YDEX",
+    "timestamp_field": "rss.channel.item.pubDate",
+    "timezone_contract": {
+      "evidence_type": "TIMESTAMP_EVIDENCE_TYPE=RFC822_EXPLICIT_OFFSET",
+      "evidence_value": "RSS item pubDate contains numeric UTC offset such as +0300",
+      "policy": "accept only item-level pubDate with explicit numeric offset"
+    }
+  }
+}
