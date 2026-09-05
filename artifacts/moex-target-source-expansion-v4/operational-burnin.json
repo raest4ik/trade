@@ -1,0 +1,21 @@
+{
+  "OPERATION": "YES",
+  "OPERATIONAL_BURN_IN": "PASS",
+  "live_collector_rosn_ydex_ready": true,
+  "live_research_operation_status": "READY",
+  "live_seal": {
+    "BROKER_MUTATIONS": 0,
+    "LIVE_OUTCOMES_READ": 0,
+    "LIVE_POST_EVENT_PRICE_READS": 0,
+    "LIVE_TARGETS_COMPUTED": 0,
+    "MODEL_TRAINING_PERFORMED": false,
+    "child_artifacts_checked": 4,
+    "sealed_epoch_verified": true,
+    "violations": 0
+  },
+  "safety_counters_zero": true,
+  "sealed_violations": 0,
+  "source_isolation_application_proof": true,
+  "source_isolation_required": true,
+  "timestamp_violations": 0
+}
