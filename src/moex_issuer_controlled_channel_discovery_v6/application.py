@@ -46,9 +46,11 @@ from src.moex_target_source_discovery_v5.application import (
 ARTIFACT_VERSION = "moex-issuer-controlled-channel-discovery-v6"
 SOURCE_CLASS = "ISSUER_CONTROLLED_PLATFORM_HOSTED_PUBLIC_SOURCE"
 DEFAULT_OUTPUT_ROOT = Path(f"artifacts/{ARTIFACT_VERSION}")
+DEFAULT_V4_ROOT = Path("artifacts/moex-target-source-expansion-v4")
 LIVE_EPOCH_START = datetime(2026, 8, 11, tzinfo=UTC)
 MAX_CHANNELS_PER_ISSUER = 2
 MAX_POSTS_PER_CHANNEL = 3
+SOURCE_FAILURE_ISOLATION_PROOF_LEVELS = {"APPLICATION_PROOF", "REAL_BURNIN_PROOF"}
 TELEGRAM_LINK_RE = re.compile(
     r"https?://t\.me/(?:s/|\+)?(?P<channel>[A-Za-z0-9_]{4,})", re.IGNORECASE
 )
@@ -157,6 +159,7 @@ def run_moex_issuer_controlled_channel_discovery_v6(
     git_sha: str,
     operation_root: Path = DEFAULT_OPERATION_ROOT,
     instrument_mapping_path: Path = DEFAULT_INSTRUMENT_MAPPING_PATH,
+    v4_root: Path = DEFAULT_V4_ROOT,
     v5_root: Path = DEFAULT_V5_ROOT,
     client: HttpClient | None = None,
     network_check: bool = True,
@@ -241,7 +244,8 @@ def run_moex_issuer_controlled_channel_discovery_v6(
     live_status = build_operation_status(operation_root)
     live_seal = verify_operation_seal(operation_root)
     safety = safety_payload(live_status)
-    burnin = operational_burnin_payload(live_status, live_seal, safety)
+    source_isolation = load_canonical_v4_source_isolation_proof(v4_root)
+    burnin = operational_burnin_payload(live_status, live_seal, safety, source_isolation)
     blockers = Counter(row["blocker"] for row in rejected_sources if row.get("blocker"))
     live_shadow_posts = [
         post.payload()
@@ -285,6 +289,10 @@ def run_moex_issuer_controlled_channel_discovery_v6(
         "LIVE_RESEARCH_OPERATION_STATUS": live_status["LIVE_RESEARCH_OPERATION_STATUS"],
         "OPERATIONAL_BURN_IN": burnin["OPERATIONAL_BURN_IN"],
         "OPERATION": burnin["OPERATION"],
+        "SOURCE_FAILURE_ISOLATION": burnin["SOURCE_FAILURE_ISOLATION"],
+        "SOURCE_FAILURE_ISOLATION_PROOF_LEVEL": burnin["SOURCE_FAILURE_ISOLATION_PROOF_LEVEL"],
+        "SOURCE_FAILURE_ISOLATION_PROOF_PATH": burnin["SOURCE_FAILURE_ISOLATION_PROOF_PATH"],
+        "SOURCE_FAILURE_ISOLATION_BLOCKER": burnin["SOURCE_FAILURE_ISOLATION_BLOCKER"],
         "LIVE_SHADOW_POSTS_ELIGIBLE": len(live_shadow_posts),
         "ML_V2_DATASET_STATUS": "NOT_OPENED_BY_V6_CHANNEL_DISCOVERY",
         "SOURCE_READY_DOES_NOT_IMPLY_ML_DIVERSITY_ELIGIBLE": True,
@@ -614,8 +622,78 @@ def safety_payload(status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def load_canonical_v4_source_isolation_proof(v4_root: Path = DEFAULT_V4_ROOT) -> dict[str, Any]:
+    proof_path = v4_root / "source-isolation-proof.json"
+    if not proof_path.exists():
+        return _source_isolation_not_proven("MISSING_V4_SOURCE_ISOLATION_PROOF", proof_path)
+    try:
+        proof_object: Any = json.loads(proof_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _source_isolation_not_proven("MALFORMED_V4_SOURCE_ISOLATION_PROOF", proof_path)
+    if not isinstance(proof_object, dict):
+        return _source_isolation_not_proven("MALFORMED_V4_SOURCE_ISOLATION_PROOF", proof_path)
+    proof = cast("dict[str, Any]", proof_object)
+
+    burnin = proof.get("burnin")
+    seal = proof.get("seal")
+    failed = proof.get("failed_source")
+    healthy = proof.get("healthy_source_continued")
+    recovered = proof.get("recovered_source")
+    if not all(isinstance(row, dict) for row in (burnin, seal, failed, healthy, recovered)):
+        return _source_isolation_not_proven("MALFORMED_V4_SOURCE_ISOLATION_PROOF", proof_path)
+
+    burnin_row = cast("dict[str, Any]", burnin)
+    seal_row = cast("dict[str, Any]", seal)
+    failed_row = cast("dict[str, Any]", failed)
+    healthy_row = cast("dict[str, Any]", healthy)
+    recovered_row = cast("dict[str, Any]", recovered)
+    proof_level = str(burnin_row.get("source_failure_isolation_proof_level", "")).strip()
+    application_proof = (
+        proof.get("SOURCE_ISOLATION_APPLICATION_PROOF") is True
+        and proof_level == "APPLICATION_PROOF"
+        and failed_row.get("status") == "SOURCE_FAILURE"
+        and healthy_row.get("status") == "SUCCESS"
+        and recovered_row.get("status") == "SUCCESS"
+        and proof.get("state_b_persisted") is True
+    )
+    real_burnin_proof = (
+        proof.get("SOURCE_ISOLATION_REAL_NETWORK_PROOF") is True
+        and proof_level == "REAL_BURNIN_PROOF"
+    )
+    proven = (
+        proof_level in SOURCE_FAILURE_ISOLATION_PROOF_LEVELS
+        and (application_proof or real_burnin_proof)
+        and burnin_row.get("one_source_failure_isolated") is True
+        and burnin_row.get("safety_counters_zero") is True
+        and burnin_row.get("timestamp_violations") == 0
+        and seal_row.get("sealed_epoch_verified") is True
+    )
+    if not proven:
+        return _source_isolation_not_proven("V4_SOURCE_ISOLATION_NOT_PROVEN", proof_path)
+    return {
+        "SOURCE_FAILURE_ISOLATION": True,
+        "SOURCE_FAILURE_ISOLATION_PROOF_LEVEL": proof_level,
+        "SOURCE_FAILURE_ISOLATION_PROOF_PATH": str(proof_path),
+        "SOURCE_FAILURE_ISOLATION_BLOCKER": None,
+        "one_source_failure_isolated": True,
+    }
+
+
+def _source_isolation_not_proven(blocker: str, proof_path: Path | None) -> dict[str, Any]:
+    return {
+        "SOURCE_FAILURE_ISOLATION": "NOT_PROVEN",
+        "SOURCE_FAILURE_ISOLATION_PROOF_LEVEL": "NOT_PROVEN",
+        "SOURCE_FAILURE_ISOLATION_PROOF_PATH": None if proof_path is None else str(proof_path),
+        "SOURCE_FAILURE_ISOLATION_BLOCKER": blocker,
+        "one_source_failure_isolated": False,
+    }
+
+
 def operational_burnin_payload(
-    live_status: dict[str, Any], live_seal: dict[str, Any], safety: dict[str, Any]
+    live_status: dict[str, Any],
+    live_seal: dict[str, Any],
+    safety: dict[str, Any],
+    source_isolation: dict[str, Any],
 ) -> dict[str, Any]:
     safety_zero = all(
         safety[key] == expected
@@ -630,16 +708,50 @@ def operational_burnin_payload(
             "BROKER_MUTATIONS": 0,
         }.items()
     )
-    passed = (
+    timestamp_violations = int(
+        live_status.get("timestamp_violations", live_status.get("timestamp_rejections", 0))
+    )
+    sealed_violations = int(live_status.get("sealed_violations", 0))
+    isolation_proven = (
+        source_isolation.get("SOURCE_FAILURE_ISOLATION") is True
+        and source_isolation.get("one_source_failure_isolated") is True
+        and source_isolation.get("SOURCE_FAILURE_ISOLATION_PROOF_LEVEL")
+        in SOURCE_FAILURE_ISOLATION_PROOF_LEVELS
+    )
+    pass_gate = (
         live_status["LIVE_RESEARCH_OPERATION_STATUS"] == "READY"
         and live_seal["sealed_epoch_verified"] is True
-        and int(live_status.get("timestamp_rejections", 0)) == 0
-        and int(live_status.get("sealed_violations", 0)) == 0
+        and timestamp_violations == 0
+        and sealed_violations == 0
+        and safety_zero
+        and isolation_proven
+    )
+    hard_gate_ready = (
+        live_status["LIVE_RESEARCH_OPERATION_STATUS"] == "READY"
+        and live_seal["sealed_epoch_verified"] is True
+        and timestamp_violations == 0
+        and sealed_violations == 0
         and safety_zero
     )
+    burnin_status = "PASS" if pass_gate else "PARTIAL" if hard_gate_ready else "FAIL"
     return {
-        "OPERATIONAL_BURN_IN": "PASS" if passed else "FAIL",
-        "OPERATION": "YES" if passed else "NO",
+        "OPERATIONAL_BURN_IN": burnin_status,
+        "OPERATION": "YES" if pass_gate else "NO",
+        "SOURCE_FAILURE_ISOLATION": source_isolation["SOURCE_FAILURE_ISOLATION"],
+        "SOURCE_FAILURE_ISOLATION_PROOF_LEVEL": source_isolation[
+            "SOURCE_FAILURE_ISOLATION_PROOF_LEVEL"
+        ],
+        "SOURCE_FAILURE_ISOLATION_PROOF_PATH": source_isolation[
+            "SOURCE_FAILURE_ISOLATION_PROOF_PATH"
+        ],
+        "SOURCE_FAILURE_ISOLATION_BLOCKER": source_isolation["SOURCE_FAILURE_ISOLATION_BLOCKER"],
+        "source_isolation_required": True,
+        "one_source_failure_isolated": isolation_proven,
+        "live_research_operation_status": live_status["LIVE_RESEARCH_OPERATION_STATUS"],
+        "live_seal": live_seal,
+        "safety_counters_zero": safety_zero,
+        "timestamp_violations": timestamp_violations,
+        "sealed_violations": sealed_violations,
     }
 
 
@@ -692,7 +804,10 @@ def _write_report(path: Path, manifest: dict[str, Any]) -> None:
         f"- Blockers by category: {manifest['BLOCKERS_BY_CATEGORY']}",
         f"- TARGET_DIVERSITY: {manifest['TARGET_DIVERSITY']}",
         f"- LIVE_RESEARCH_OPERATION_STATUS: {manifest['LIVE_RESEARCH_OPERATION_STATUS']}",
+        f"- Source failure isolation: {manifest['SOURCE_FAILURE_ISOLATION']}",
+        (f"- Source failure isolation proof: {manifest['SOURCE_FAILURE_ISOLATION_PROOF_LEVEL']}"),
         f"- OPERATIONAL_BURN_IN: {manifest['OPERATIONAL_BURN_IN']}",
+        f"- OPERATION: {manifest['OPERATION']}",
         "",
         (
             "No auth bypass, private channel reads, outcomes, targets, model training, "

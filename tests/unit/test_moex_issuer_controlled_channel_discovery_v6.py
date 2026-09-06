@@ -13,6 +13,8 @@ from src.moex_issuer_controlled_channel_discovery_v6.application import (
     OwnershipProof,
     accepted_source_payload,
     discover_issuer_controlled_channels,
+    load_canonical_v4_source_isolation_proof,
+    operational_burnin_payload,
     probe_platform_channel,
     run_moex_issuer_controlled_channel_discovery_v6,
 )
@@ -229,6 +231,86 @@ def test_two_and_three_eligible_issuers_drive_diversity(tmp_path: Path) -> None:
     assert three["FINAL_DIVERSITY_STATUS"] == "THREE_PLUS_NEW_TARGET_ELIGIBLE_ISSUERS"
 
 
+def test_ready_seal_zero_counters_without_isolation_is_not_pass() -> None:
+    burnin = operational_burnin_payload(
+        _ready_live_status(),
+        _seal(),
+        _safety(),
+        {
+            "SOURCE_FAILURE_ISOLATION": "NOT_PROVEN",
+            "SOURCE_FAILURE_ISOLATION_PROOF_LEVEL": "NOT_PROVEN",
+            "SOURCE_FAILURE_ISOLATION_PROOF_PATH": None,
+            "SOURCE_FAILURE_ISOLATION_BLOCKER": "UNIT_TEST",
+            "one_source_failure_isolated": False,
+        },
+    )
+
+    assert burnin["OPERATIONAL_BURN_IN"] == "PARTIAL"
+    assert burnin["OPERATION"] == "NO"
+    assert burnin["SOURCE_FAILURE_ISOLATION"] == "NOT_PROVEN"
+
+
+def test_canonical_v4_application_proof_allows_operation_pass(tmp_path: Path) -> None:
+    v4_root = _v4_proof_root(tmp_path / "v4")
+
+    proof = load_canonical_v4_source_isolation_proof(v4_root)
+    burnin = operational_burnin_payload(_ready_live_status(), _seal(), _safety(), proof)
+
+    assert proof["SOURCE_FAILURE_ISOLATION"] is True
+    assert proof["SOURCE_FAILURE_ISOLATION_PROOF_LEVEL"] == "APPLICATION_PROOF"
+    assert burnin["OPERATIONAL_BURN_IN"] == "PASS"
+    assert burnin["OPERATION"] == "YES"
+
+
+def test_missing_v4_isolation_proof_fails_closed(tmp_path: Path) -> None:
+    proof = load_canonical_v4_source_isolation_proof(tmp_path / "missing-v4")
+    burnin = operational_burnin_payload(_ready_live_status(), _seal(), _safety(), proof)
+
+    assert proof["SOURCE_FAILURE_ISOLATION"] == "NOT_PROVEN"
+    assert proof["SOURCE_FAILURE_ISOLATION_PROOF_LEVEL"] == "NOT_PROVEN"
+    assert burnin["OPERATIONAL_BURN_IN"] == "PARTIAL"
+    assert burnin["OPERATION"] == "NO"
+
+
+def test_malformed_v4_isolation_proof_fails_closed(tmp_path: Path) -> None:
+    v4_root = tmp_path / "v4"
+    v4_root.mkdir()
+    (v4_root / "source-isolation-proof.json").write_text("{not-json", encoding="utf-8")
+
+    proof = load_canonical_v4_source_isolation_proof(v4_root)
+    burnin = operational_burnin_payload(_ready_live_status(), _seal(), _safety(), proof)
+
+    assert proof["SOURCE_FAILURE_ISOLATION"] == "NOT_PROVEN"
+    assert proof["SOURCE_FAILURE_ISOLATION_BLOCKER"] == "MALFORMED_V4_SOURCE_ISOLATION_PROOF"
+    assert burnin["OPERATIONAL_BURN_IN"] == "PARTIAL"
+    assert burnin["OPERATION"] == "NO"
+
+
+def test_v4_isolation_false_fails_closed(tmp_path: Path) -> None:
+    v4_root = _v4_proof_root(tmp_path / "v4", isolated=False)
+
+    proof = load_canonical_v4_source_isolation_proof(v4_root)
+    burnin = operational_burnin_payload(_ready_live_status(), _seal(), _safety(), proof)
+
+    assert proof["SOURCE_FAILURE_ISOLATION"] == "NOT_PROVEN"
+    assert proof["SOURCE_FAILURE_ISOLATION_BLOCKER"] == "V4_SOURCE_ISOLATION_NOT_PROVEN"
+    assert burnin["OPERATIONAL_BURN_IN"] == "PARTIAL"
+    assert burnin["OPERATION"] == "NO"
+
+
+def test_run_manifest_uses_canonical_v4_isolation_proof(tmp_path: Path) -> None:
+    manifest = _run(
+        tmp_path,
+        tickers=("ALRS",),
+        telegram_timestamps={"ALRS": "2026-08-10T09:00:00+00:00"},
+    )
+
+    assert manifest["SOURCE_FAILURE_ISOLATION"] is True
+    assert manifest["SOURCE_FAILURE_ISOLATION_PROOF_LEVEL"] == "APPLICATION_PROOF"
+    assert manifest["OPERATIONAL_BURN_IN"] == "PASS"
+    assert manifest["OPERATION"] == "YES"
+
+
 def _run(
     tmp_path: Path,
     *,
@@ -252,6 +334,7 @@ def _run(
             tmp_path / "mapping.json",
             [*[_mapping(ticker) for ticker in tickers], _mapping("IMOEX", exchange="imoex_index")],
         ),
+        v4_root=_v4_proof_root(tmp_path / "v4"),
         v5_root=_v5_root(tmp_path / "v5", v5_tickers or tickers),
         client=_Client(responses),
         created_at=NOW,
@@ -331,6 +414,72 @@ def _v5_root(path: Path, tickers: tuple[str, ...]) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+def _v4_proof_root(path: Path, *, isolated: bool = True) -> Path:
+    path.mkdir(parents=True)
+    (path / "source-isolation-proof.json").write_text(
+        json.dumps(_v4_isolation_proof(isolated=isolated)),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _v4_isolation_proof(*, isolated: bool) -> dict[str, object]:
+    return {
+        "SOURCE_ISOLATION_APPLICATION_PROOF": isolated,
+        "SOURCE_ISOLATION_REAL_NETWORK_PROOF": False,
+        "SOURCE_ISOLATION_UNIT_PROOF": True,
+        "burnin": {
+            "OPERATION": "YES" if isolated else "NO",
+            "OPERATIONAL_BURN_IN": "PASS" if isolated else "PARTIAL",
+            "one_source_failure_isolated": isolated,
+            "safety_counters_zero": True,
+            "seal_pass": True,
+            "source_failure_isolation_proof_level": "APPLICATION_PROOF",
+            "timestamp_violations": 0,
+        },
+        "failed_source": {"source_id": "AAA_SOURCE_ISOLATION_V4", "status": "SOURCE_FAILURE"},
+        "healthy_source_continued": {
+            "source_id": "BBB_SOURCE_ISOLATION_V4",
+            "status": "SUCCESS",
+        },
+        "recovered_source": {"source_id": "AAA_SOURCE_ISOLATION_V4", "status": "SUCCESS"},
+        "seal": {"sealed_epoch_verified": True, "violations": 0},
+        "state_b_persisted": isolated,
+    }
+
+
+def _ready_live_status() -> dict[str, object]:
+    return {
+        "LIVE_RESEARCH_OPERATION_STATUS": "READY",
+        "timestamp_rejections": 0,
+        "timestamp_violations": 0,
+        "sealed_violations": 0,
+        "outcome_counters": {
+            "LIVE_OUTCOMES_READ": 0,
+            "LIVE_TARGETS_COMPUTED": 0,
+            "LIVE_POST_EVENT_PRICE_READS": 0,
+            "BROKER_MUTATIONS": 0,
+        },
+    }
+
+
+def _seal() -> dict[str, object]:
+    return {"sealed_epoch_verified": True, "violations": 0}
+
+
+def _safety() -> dict[str, object]:
+    return {
+        "LIVE_OUTCOMES_READ": 0,
+        "LIVE_TARGETS_COMPUTED": 0,
+        "LIVE_POST_EVENT_PRICE_READS": 0,
+        "LIVE_MODEL_PREDICTIONS": 0,
+        "MODEL_TRAINING_PERFORMED": False,
+        "BACKTEST_PERFORMED": False,
+        "OLD_FUTURE_HOLDOUT_OPENED": False,
+        "BROKER_MUTATIONS": 0,
+    }
 
 
 def _live_operation_root(path: Path) -> Path:
