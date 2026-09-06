@@ -457,9 +457,10 @@ def channel_probe(
     response: FetchResult | None,
     posts: tuple[PlatformPost, ...],
 ) -> ChannelProbe:
-    timestamp_ready = blocker not in {"TIMESTAMP_UNVERIFIED"} and bool(posts)
-    identity_ready = blocker not in {"STABLE_IDENTITY_UNVERIFIED"} and bool(posts)
-    public_ready = blocker not in {
+    mapped = blocker if blocker in BLOCKERS else "TECHNICAL_FAILURE"
+    timestamp_ready = mapped not in {"TIMESTAMP_UNVERIFIED"} and bool(posts)
+    identity_ready = mapped not in {"STABLE_IDENTITY_UNVERIFIED"} and bool(posts)
+    public_ready = mapped not in {
         "AUTH_REQUIRED",
         "PRIVATE_CHANNEL",
         "PUBLIC_ACCESS_FAILURE",
@@ -472,8 +473,8 @@ def channel_probe(
         timestamp_ready=timestamp_ready,
         identity_ready=identity_ready,
         source_ready=False,
-        status=blocker,
-        blocker=blocker,
+        status=mapped,
+        blocker=mapped,
         response=response,
         posts=posts,
     )

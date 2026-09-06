@@ -149,6 +149,22 @@ def test_private_channel_rejected() -> None:
     assert probe.blocker == "PRIVATE_CHANNEL"
 
 
+def test_platform_timeout_maps_to_technical_failure() -> None:
+    proof = _proof("ALRS", "alrosa_official")
+    client = _Client(
+        {
+            "https://t.me/s/alrosa_official": FetchResult(
+                "https://t.me/s/alrosa_official", None, None, None, b"", 0, (), "TIMEOUT"
+            )
+        }
+    )
+
+    probe = probe_platform_channel(proof, client=client)
+
+    assert probe.source_ready is False
+    assert probe.blocker == "TECHNICAL_FAILURE"
+
+
 def test_foreign_non_target_issuer_excluded_before_probe(tmp_path: Path) -> None:
     manifest = _run(
         tmp_path,
