@@ -12,6 +12,7 @@ from src.risk_engine_paper_v1.application import (
     ARTIFACT_VERSION,
     evaluate_agent_run,
     execute_paper_plan,
+    mark_to_market,
     portfolio_state_sha,
     replay_portfolio,
     restore_operational_portfolio,
@@ -47,6 +48,7 @@ class MultiRunSample:
     multi_run_verification: dict[str, Any]
     idempotency_verification: dict[str, Any]
     stale_plan_verification: dict[str, Any]
+    mark_completeness_verification: dict[str, Any]
     safety: PipelineSafety
 
 
@@ -90,6 +92,56 @@ def build_sample_execution(
         policy,
         run_2_time,
     )
+    proof_time = as_of + timedelta(minutes=2)
+    missing_repository = InMemoryPaperLedgerRepository(repository.events())
+    missing_buy = _evaluate(
+        missing_repository,
+        _sample_agent_run(
+            agent_artifact_path,
+            "paper-mark-incomplete-buy",
+            [_proposal("GAZP", "BUY", 0.10, "missing-held-mark")],
+        ),
+        [
+            MarketQuote(
+                ticker="GAZP",
+                as_of=proof_time,
+                last_price=103.5,
+                bid=103.3,
+                ask=103.7,
+                lot_size=10,
+            )
+        ],
+        policy,
+        proof_time,
+    )
+    stale_sell = _evaluate(
+        InMemoryPaperLedgerRepository(repository.events()),
+        _sample_agent_run(
+            agent_artifact_path,
+            "paper-defensive-sell",
+            [_proposal("SBER", "SELL", 0.05, "stale-other-held-mark")],
+        ),
+        [
+            MarketQuote(
+                ticker="SBER",
+                as_of=proof_time,
+                last_price=100.0,
+                bid=99.8,
+                ask=100.2,
+                lot_size=10,
+            ),
+            MarketQuote(
+                ticker="YDEX",
+                as_of=proof_time - timedelta(hours=1),
+                last_price=110.5,
+                bid=110.3,
+                ask=110.7,
+                lot_size=1,
+            ),
+        ],
+        policy,
+        proof_time,
+    )
     stale_result = execute_paper_plan(stale_plan, repository, execution_as_of=run_2_time)
 
     run_3_time = as_of + timedelta(minutes=2)
@@ -110,7 +162,13 @@ def build_sample_execution(
     restarted = InMemoryPaperLedgerRepository(repository.events())
     duplicate = execute_paper_plan(run_1.plan, restarted, execution_as_of=run_3_time)
     after_duplicate = replay_portfolio(restarted.events())
-    replayed = replay_portfolio(repository.events())
+    replayed = mark_to_market(
+        replay_portfolio(repository.events()),
+        run_3.plan.market_snapshot,
+        run_3.plan.decision_as_of,
+        max_stale_market_age=policy.max_stale_market_age,
+        allow_incomplete=True,
+    )
     final = run_3.result.final_portfolio
     replay_sha = portfolio_state_sha(replayed)
     final_sha = portfolio_state_sha(final)
@@ -166,6 +224,37 @@ def build_sample_execution(
             "paper_orders_filled": stale_result.safety.PAPER_ORDERS_FILLED,
             "paper_portfolio_mutations": stale_result.safety.PAPER_PORTFOLIO_MUTATIONS,
         },
+        mark_completeness_verification={
+            "PORTFOLIO_MARK_COMPLETENESS": (
+                "PASS"
+                if (
+                    missing_buy.portfolio_mark_status.value == "DEGRADED"
+                    and missing_buy.position_mark_statuses["SBER"].value == "MISSING"
+                    and missing_buy.position_mark_statuses["YDEX"].value == "MISSING"
+                    and not missing_buy.paper_orders
+                    and missing_buy.decisions[0].reason_codes == ["PORTFOLIO_MARK_INCOMPLETE"]
+                    and stale_sell.portfolio_mark_status.value == "DEGRADED"
+                    and stale_sell.position_mark_statuses["YDEX"].value == "STALE"
+                    and bool(stale_sell.paper_orders)
+                )
+                else "FAIL"
+            ),
+            "BUY_WITH_MISSING_HELD_MARK": (
+                "REJECT" if not missing_buy.paper_orders else "NOT_REJECTED"
+            ),
+            "PAPER_ORDERS_PLANNED": len(missing_buy.paper_orders),
+            "buy_reason_codes": [reason.value for reason in missing_buy.decisions[0].reason_codes],
+            "buy_position_mark_statuses": {
+                ticker: status.value
+                for ticker, status in missing_buy.position_mark_statuses.items()
+            },
+            "RISK_REDUCING_SELL_WITH_OTHER_STALE_MARK": (
+                "ALLOWED" if stale_sell.paper_orders else "NOT_ALLOWED"
+            ),
+            "sell_position_mark_statuses": {
+                ticker: status.value for ticker, status in stale_sell.position_mark_statuses.items()
+            },
+        },
         safety=safety,
     )
 
@@ -187,6 +276,7 @@ def write_audit_artifact(
         sample.multi_run_verification["MULTI_RUN_PORTFOLIO_STATE"] == "PASS"
         and sample.idempotency_verification["IDEMPOTENCY_VERIFIED"] is True
         and sample.stale_plan_verification["STALE_PLAN_REJECTED"] is True
+        and sample.mark_completeness_verification["PORTFOLIO_MARK_COMPLETENESS"] == "PASS"
         and replay_verified
     )
     manifest: dict[str, Any] = {
@@ -210,6 +300,15 @@ def write_audit_artifact(
         else "NO",
         "MULTI_RUN_PORTFOLIO_STATE": sample.multi_run_verification["MULTI_RUN_PORTFOLIO_STATE"],
         "PORTFOLIO_RESET_BETWEEN_RUNS": False,
+        "PORTFOLIO_MARK_COMPLETENESS": sample.mark_completeness_verification[
+            "PORTFOLIO_MARK_COMPLETENESS"
+        ],
+        "BUY_WITH_MISSING_HELD_MARK": sample.mark_completeness_verification[
+            "BUY_WITH_MISSING_HELD_MARK"
+        ],
+        "RISK_REDUCING_SELL_WITH_OTHER_STALE_MARK": sample.mark_completeness_verification[
+            "RISK_REDUCING_SELL_WITH_OTHER_STALE_MARK"
+        ],
         "APPROVE_COUNT": counts["APPROVE"],
         "REDUCE_COUNT": counts["REDUCE"],
         "REJECT_COUNT": counts["REJECT"],
@@ -237,6 +336,10 @@ def write_audit_artifact(
     write_json(output_root / "multi-run-verification.json", sample.multi_run_verification)
     write_json(output_root / "idempotency-verification.json", sample.idempotency_verification)
     write_json(output_root / "stale-plan-verification.json", sample.stale_plan_verification)
+    write_json(
+        output_root / "mark-completeness-verification.json",
+        sample.mark_completeness_verification,
+    )
     write_json(output_root / "safety.json", sample.safety.model_dump(mode="json"))
     _write_jsonl(output_root / "paper-ledger.jsonl", sample.ledger)
     _write_report(output_root / "report.md", manifest, sample)
@@ -374,6 +477,12 @@ def _write_report(
         f"- REPLAY_VERIFIED: {manifest['REPLAY_VERIFIED']}",
         f"- IDEMPOTENCY_VERIFIED: {manifest['IDEMPOTENCY_VERIFIED']}",
         f"- PORTFOLIO_RESET_BETWEEN_RUNS: {manifest['PORTFOLIO_RESET_BETWEEN_RUNS']}",
+        f"- PORTFOLIO_MARK_COMPLETENESS: {manifest['PORTFOLIO_MARK_COMPLETENESS']}",
+        f"- BUY_WITH_MISSING_HELD_MARK: {manifest['BUY_WITH_MISSING_HELD_MARK']}",
+        (
+            "- RISK_REDUCING_SELL_WITH_OTHER_STALE_MARK: "
+            f"{manifest['RISK_REDUCING_SELL_WITH_OTHER_STALE_MARK']}"
+        ),
         f"- paper orders filled: {manifest['PAPER_ORDERS_FILLED']}",
         f"- final cash: {final.cash:.4f} RUB",
         f"- final equity: {final.equity:.4f} RUB",

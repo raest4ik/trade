@@ -105,6 +105,7 @@ def _positioned_portfolio() -> PaperPortfolio:
                 market_value=100_000.0,
                 weight=0.10,
                 unrealized_pnl=10_000.0,
+                mark_as_of=NOW,
             )
         ],
         peak_equity=1_000_000.0,
@@ -292,6 +293,10 @@ def test_deterministic_sample_covers_all_decisions_and_artifact(tmp_path: Path) 
     assert first_manifest["STALE_PLAN_PROTECTION"] == "YES"
     assert first_manifest["REPLAY_VERIFIED"] == "YES"
     assert first_manifest["IDEMPOTENCY_VERIFIED"] == "YES"
+    assert first_manifest["PORTFOLIO_MARK_COMPLETENESS"] == "PASS"
+    assert first_manifest["BUY_WITH_MISSING_HELD_MARK"] == "REJECT"
+    assert first_manifest["RISK_REDUCING_SELL_WITH_OTHER_STALE_MARK"] == "ALLOWED"
+    assert sample.mark_completeness_verification["PAPER_ORDERS_PLANNED"] == 0
     assert first_manifest["ARTIFACT_SHA"] == second_manifest["ARTIFACT_SHA"]
     required = {
         "manifest.json",
@@ -310,6 +315,7 @@ def test_deterministic_sample_covers_all_decisions_and_artifact(tmp_path: Path) 
         "multi-run-verification.json",
         "idempotency-verification.json",
         "stale-plan-verification.json",
+        "mark-completeness-verification.json",
         "safety.json",
         "report.md",
     }

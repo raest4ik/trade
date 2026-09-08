@@ -4,7 +4,7 @@ import json
 import math
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 from zoneinfo import ZoneInfo
@@ -25,6 +25,8 @@ from src.risk_engine_paper_v1.domain import (
     PaperSide,
     PaperTrade,
     PipelineSafety,
+    PortfolioMarkStatus,
+    PositionMarkStatus,
     ReplayVerification,
     RiskDecision,
     RiskDecisionType,
@@ -82,6 +84,12 @@ def evaluate_agent_run(
     )
     ticker_counts = Counter(proposal.ticker.upper() for proposal in proposals)
     has_conflict = any(count > 1 for count in ticker_counts.values())
+    portfolio_mark_status, position_mark_statuses = portfolio_mark_health(
+        portfolio,
+        market_snapshot,
+        decision_as_of=decision_as_of,
+        max_stale_market_age=policy.max_stale_market_age,
+    )
 
     projected_values = {
         position.ticker.upper(): position.quantity * position.last_price
@@ -108,6 +116,7 @@ def evaluate_agent_run(
             research_ready=research_ready,
             has_conflict=has_conflict,
             portfolio=portfolio,
+            portfolio_marks_complete=portfolio_mark_status == PortfolioMarkStatus.COMPLETE,
         )
         if rejection is not None:
             decisions.append(
@@ -323,6 +332,9 @@ def evaluate_agent_run(
         portfolio_as_of=portfolio.as_of,
         ledger_event_count=ledger_event_count,
         market_snapshot_sha=snapshot_sha,
+        portfolio_mark_status=portfolio_mark_status,
+        position_mark_statuses=position_mark_statuses,
+        max_stale_market_age=policy.max_stale_market_age,
         max_risk_plan_age=policy.max_risk_plan_age,
         decision_as_of=decision_as_of,
         initial_portfolio=portfolio,
@@ -384,7 +396,13 @@ def execute_paper_plan(
         )
 
     current = (
-        mark_to_market(replay_portfolio(events), plan.market_snapshot, plan.decision_as_of)
+        mark_to_market(
+            replay_portfolio(events),
+            plan.market_snapshot,
+            plan.decision_as_of,
+            max_stale_market_age=plan.max_stale_market_age,
+            allow_incomplete=True,
+        )
         if events
         else plan.initial_portfolio
     )
@@ -441,6 +459,9 @@ def execute_paper_plan(
                     "order": filled.model_dump(mode="json"),
                     "trade": trade.model_dump(mode="json"),
                     "position_mark_price": _quote(plan.market_snapshot, filled.ticker).last_price,
+                    "position_mark_as_of": _quote(
+                        plan.market_snapshot, filled.ticker
+                    ).as_of.isoformat(),
                 },
             )
         )
@@ -448,9 +469,19 @@ def execute_paper_plan(
         trades.append(trade)
 
     replayed = mark_to_market(
-        replay_portfolio(repository.events()), plan.market_snapshot, plan.decision_as_of
+        replay_portfolio(repository.events()),
+        plan.market_snapshot,
+        plan.decision_as_of,
+        max_stale_market_age=plan.max_stale_market_age,
+        allow_incomplete=True,
     )
-    expected = mark_to_market(portfolio, plan.market_snapshot, plan.decision_as_of)
+    expected = mark_to_market(
+        portfolio,
+        plan.market_snapshot,
+        plan.decision_as_of,
+        max_stale_market_age=plan.max_stale_market_age,
+        allow_incomplete=True,
+    )
     expected_sha = portfolio_state_sha(expected)
     replayed_sha = portfolio_state_sha(replayed)
     verification = ReplayVerification(
@@ -549,6 +580,7 @@ def apply_paper_order(
         portfolio,
         order,
         mark_price=quote.last_price or order.execution_price,
+        mark_as_of=quote.as_of,
         as_of=executed_at,
     )
     filled = order.model_copy(
@@ -562,6 +594,7 @@ def _apply_order_economics(
     order: PaperOrder,
     *,
     mark_price: float,
+    mark_as_of: datetime,
     as_of: datetime,
 ) -> PaperPortfolio:
     positions = {position.ticker: position for position in portfolio.positions}
@@ -587,7 +620,12 @@ def _apply_order_economics(
         ) * order.quantity - order.commission
     if new_quantity:
         positions[order.ticker] = _position(
-            order.ticker, new_quantity, average_cost, mark_price, 0.0
+            order.ticker,
+            new_quantity,
+            average_cost,
+            mark_price,
+            0.0,
+            mark_as_of,
         )
     else:
         positions.pop(order.ticker, None)
@@ -621,10 +659,17 @@ def replay_portfolio(events: Sequence[LedgerEvent]) -> PaperPortfolio:
             mark_price = float(
                 cast("int | float", event.payload.get("position_mark_price", order.execution_price))
             )
+            mark_as_of_raw = event.payload.get("position_mark_as_of")
+            mark_as_of = (
+                datetime.fromisoformat(str(mark_as_of_raw).replace("Z", "+00:00"))
+                if mark_as_of_raw is not None
+                else event.occurred_at
+            )
             portfolio = _apply_order_economics(
                 portfolio,
                 order,
                 mark_price=mark_price,
+                mark_as_of=mark_as_of,
                 as_of=event.occurred_at,
             )
         elif event.event_type == LedgerEventType.DAY_CLOSED:
@@ -638,6 +683,9 @@ def mark_to_market(
     portfolio: PaperPortfolio,
     market_snapshot: Sequence[MarketQuote],
     as_of: datetime,
+    *,
+    max_stale_market_age: timedelta | None = timedelta(minutes=30),
+    allow_incomplete: bool = False,
 ) -> PaperPortfolio:
     if as_of < portfolio.as_of:
         raise ValueError("MARK_TIME_PRECEDES_PORTFOLIO_STATE")
@@ -645,15 +693,22 @@ def mark_to_market(
     positions: list[PaperPosition] = []
     for position in portfolio.positions:
         quote = quotes.get(position.ticker.upper())
-        if quote is None:
-            positions.append(position)
-            continue
-        if quote.last_price is None or quote.last_price <= 0:
+        status = _position_mark_status(
+            position,
+            quote,
+            decision_as_of=as_of,
+            max_stale_market_age=max_stale_market_age,
+        )
+        if status != PositionMarkStatus.FRESH:
+            if allow_incomplete:
+                positions.append(position)
+                continue
+            if status == PositionMarkStatus.FUTURE:
+                raise ValueError("FUTURE_MARKET_SNAPSHOT")
+            if status == PositionMarkStatus.STALE:
+                raise ValueError("STALE_MARKET_SNAPSHOT")
             raise ValueError(f"MARK_PRICE_UNAVAILABLE:{position.ticker}")
-        if quote.as_of > as_of:
-            raise ValueError("FUTURE_MARKET_SNAPSHOT")
-        if quote.as_of < portfolio.as_of:
-            raise ValueError("MARK_SNAPSHOT_PRECEDES_PORTFOLIO_STATE")
+        assert quote is not None and quote.last_price is not None
         positions.append(
             _position(
                 position.ticker,
@@ -661,6 +716,7 @@ def mark_to_market(
                 position.average_cost,
                 quote.last_price,
                 0.0,
+                quote.as_of,
             )
         )
     return _portfolio_from_positions(
@@ -673,16 +729,68 @@ def mark_to_market(
     )
 
 
+def portfolio_mark_health(
+    portfolio: PaperPortfolio,
+    market_snapshot: Sequence[MarketQuote],
+    *,
+    decision_as_of: datetime,
+    max_stale_market_age: timedelta,
+) -> tuple[PortfolioMarkStatus, dict[str, PositionMarkStatus]]:
+    quotes = {quote.ticker.upper(): quote for quote in market_snapshot}
+    statuses = {
+        position.ticker: _position_mark_status(
+            position,
+            quotes.get(position.ticker.upper()),
+            decision_as_of=decision_as_of,
+            max_stale_market_age=max_stale_market_age,
+        )
+        for position in portfolio.positions
+    }
+    overall = (
+        PortfolioMarkStatus.COMPLETE
+        if all(status == PositionMarkStatus.FRESH for status in statuses.values())
+        else PortfolioMarkStatus.DEGRADED
+    )
+    return overall, dict(sorted(statuses.items()))
+
+
+def _position_mark_status(
+    position: PaperPosition,
+    quote: MarketQuote | None,
+    *,
+    decision_as_of: datetime,
+    max_stale_market_age: timedelta | None,
+) -> PositionMarkStatus:
+    if quote is None:
+        return PositionMarkStatus.MISSING
+    if quote.as_of > decision_as_of:
+        return PositionMarkStatus.FUTURE
+    if quote.last_price is None or quote.last_price <= 0:
+        return PositionMarkStatus.INVALID
+    if max_stale_market_age is not None and decision_as_of - quote.as_of > max_stale_market_age:
+        return PositionMarkStatus.STALE
+    if quote.as_of < position.mark_as_of:
+        return PositionMarkStatus.STALE
+    return PositionMarkStatus.FRESH
+
+
 def restore_operational_portfolio(
     repository: PaperLedgerRepository,
     *,
     as_of: datetime,
     market_snapshot: Sequence[MarketQuote] = (),
+    max_stale_market_age: timedelta = timedelta(minutes=30),
 ) -> PaperPortfolio:
     events = repository.events()
     portfolio = replay_portfolio(events) if events else initial_paper_portfolio(as_of)
     if market_snapshot:
-        portfolio = mark_to_market(portfolio, market_snapshot, as_of)
+        portfolio = mark_to_market(
+            portfolio,
+            market_snapshot,
+            as_of,
+            max_stale_market_age=max_stale_market_age,
+            allow_incomplete=True,
+        )
     return portfolio
 
 
@@ -761,6 +869,7 @@ def _pre_trade_rejection(
     research_ready: bool,
     has_conflict: bool,
     portfolio: PaperPortfolio,
+    portfolio_marks_complete: bool,
 ) -> RiskReasonCode | None:
     ticker = proposal.ticker.upper()
     if not agent_valid:
@@ -769,6 +878,8 @@ def _pre_trade_rejection(
         return RiskReasonCode.DUPLICATE_OR_CONFLICTING_PROPOSAL
     if ticker not in universe or quote is None or not quote.supported:
         return RiskReasonCode.UNSUPPORTED_INSTRUMENT
+    if proposal.action == TradeAction.BUY and not portfolio_marks_complete:
+        return RiskReasonCode.PORTFOLIO_MARK_INCOMPLETE
     if quote.as_of > decision_as_of:
         return RiskReasonCode.FUTURE_MARKET_SNAPSHOT
     if decision_as_of - quote.as_of > policy.max_stale_market_age:
@@ -1004,6 +1115,7 @@ def _portfolio_from_positions(
             position.average_cost,
             position.last_price,
             (position.quantity * position.last_price / equity) if equity else 0.0,
+            position.mark_as_of,
         )
         for position in positions
     ]
@@ -1032,6 +1144,7 @@ def _position(
     average_cost: float,
     last_price: float,
     weight: float,
+    mark_as_of: datetime,
 ) -> PaperPosition:
     market_value = quantity * last_price
     return PaperPosition(
@@ -1042,6 +1155,7 @@ def _position(
         market_value=_money(market_value),
         weight=round(weight, 8),
         unrealized_pnl=_money((last_price - average_cost) * quantity),
+        mark_as_of=mark_as_of,
     )
 
 

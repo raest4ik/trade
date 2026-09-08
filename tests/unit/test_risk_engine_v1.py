@@ -97,6 +97,7 @@ def _portfolio(
                 market_value=market_value,
                 weight=market_value / equity,
                 unrealized_pnl=quantity * 10.0,
+                mark_as_of=NOW,
             )
         ]
     return PaperPortfolio(
@@ -118,6 +119,7 @@ def _evaluate(
     *,
     portfolio: PaperPortfolio | None = None,
     quote: MarketQuote | None = None,
+    market_snapshot: list[MarketQuote] | None = None,
     policy: RiskPolicy | None = None,
     agent: dict[str, Any] | None = None,
 ) -> RiskPlan:
@@ -125,7 +127,7 @@ def _evaluate(
     return evaluate_agent_run(
         agent_run=source,
         portfolio=portfolio or initial_paper_portfolio(NOW),
-        market_snapshot=[quote or _quote(str(proposal["ticker"]))],
+        market_snapshot=market_snapshot or [quote or _quote(str(proposal["ticker"]))],
         policy=policy or RiskPolicy(),
         decision_as_of=NOW,
     )
@@ -190,6 +192,7 @@ def test_cash_policy_can_reject_instead_of_reduce() -> None:
     plan = _evaluate(
         _proposal(ticker="GAZP", weight=0.10),
         portfolio=_portfolio(cash=50_000.0, quantity=9_500),
+        market_snapshot=[_quote("GAZP"), _quote("SBER")],
         policy=RiskPolicy(reduce_to_available_cash=False),
     )
 

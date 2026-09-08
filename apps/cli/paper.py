@@ -39,6 +39,7 @@ def run(args: argparse.Namespace) -> int:
                     "cash": portfolio.cash,
                     "equity": portfolio.equity,
                     "position_count": len(portfolio.positions),
+                    "PORTFOLIO_MARK_STATUS": ("DEGRADED" if portfolio.positions else "COMPLETE"),
                     "turnover_today": portfolio.turnover_today,
                     "last_event_at": events[-1].occurred_at.isoformat() if events else None,
                     "replay_verified": True,

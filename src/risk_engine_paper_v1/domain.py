@@ -40,6 +40,20 @@ class RiskReasonCode(StrEnum):
     FUTURE_MARKET_SNAPSHOT = "FUTURE_MARKET_SNAPSHOT"
     LOT_SIZE_UNAVAILABLE = "LOT_SIZE_UNAVAILABLE"
     DUPLICATE_OR_CONFLICTING_PROPOSAL = "DUPLICATE_OR_CONFLICTING_PROPOSAL"
+    PORTFOLIO_MARK_INCOMPLETE = "PORTFOLIO_MARK_INCOMPLETE"
+
+
+class PositionMarkStatus(StrEnum):
+    FRESH = "FRESH"
+    STALE = "STALE"
+    MISSING = "MISSING"
+    INVALID = "INVALID"
+    FUTURE = "FUTURE"
+
+
+class PortfolioMarkStatus(StrEnum):
+    COMPLETE = "COMPLETE"
+    DEGRADED = "DEGRADED"
 
 
 class PaperSide(StrEnum):
@@ -129,6 +143,7 @@ class PaperPosition(BaseModel):
     market_value: float = Field(ge=0.0)
     weight: float = Field(ge=0.0)
     unrealized_pnl: float
+    mark_as_of: datetime
 
 
 class PaperPortfolio(BaseModel):
@@ -220,6 +235,9 @@ class RiskPlan(BaseModel):
     portfolio_as_of: datetime
     ledger_event_count: int = Field(ge=0)
     market_snapshot_sha: str
+    portfolio_mark_status: PortfolioMarkStatus
+    position_mark_statuses: dict[str, PositionMarkStatus]
+    max_stale_market_age: timedelta
     max_risk_plan_age: timedelta
     decision_as_of: datetime
     initial_portfolio: PaperPortfolio

@@ -22,6 +22,8 @@ from src.risk_engine_paper_v1.domain import (
     PaperExecutionResult,
     PaperExecutionStatus,
     PaperSide,
+    PortfolioMarkStatus,
+    PositionMarkStatus,
     RiskDecisionType,
     RiskPlan,
     RiskPolicy,
@@ -115,6 +117,43 @@ def _buy_once(
     return plan, execute_paper_plan(plan, repository)
 
 
+def _evaluate_with_quotes(
+    repository: InMemoryPaperLedgerRepository,
+    run_id: str,
+    proposal: dict[str, Any],
+    quotes: list[MarketQuote],
+    as_of: datetime,
+) -> RiskPlan:
+    portfolio = restore_operational_portfolio(
+        repository,
+        as_of=as_of,
+        market_snapshot=quotes,
+    )
+    return evaluate_agent_run(
+        agent_run=_agent(run_id, proposal),
+        portfolio=portfolio,
+        market_snapshot=quotes,
+        policy=RiskPolicy(),
+        decision_as_of=as_of,
+        ledger_event_count=repository.last_sequence(),
+    )
+
+
+def _buy_ticker(
+    repository: InMemoryPaperLedgerRepository,
+    ticker: str,
+    *,
+    as_of: datetime,
+    existing_tickers: tuple[str, ...] = (),
+) -> PaperExecutionResult:
+    proposal = _proposal(ticker, "BUY", 0.10)
+    quotes = _quotes(as_of, ticker, *existing_tickers)
+    plan = _evaluate_with_quotes(
+        repository, f"buy-{ticker}-{as_of.isoformat()}", proposal, quotes, as_of
+    )
+    return execute_paper_plan(plan, repository, execution_as_of=as_of)
+
+
 def test_second_run_uses_persisted_portfolio() -> None:
     repository = InMemoryPaperLedgerRepository()
     _, first = _buy_once(repository)
@@ -124,6 +163,175 @@ def test_second_run_uses_persisted_portfolio() -> None:
     assert second.initial_portfolio.positions[0].quantity > 0
     assert second.initial_portfolio.turnover_today == first.final_portfolio.turnover_today
     assert second.ledger_event_count == repository.last_sequence()
+
+
+def test_buy_rejected_when_existing_position_quote_missing() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    decision_as_of = NOW + timedelta(minutes=1)
+    plan = _evaluate_with_quotes(
+        repository,
+        "buy-sber-missing-ydex",
+        _proposal("SBER", "BUY", 0.10),
+        _quotes(decision_as_of, "SBER"),
+        decision_as_of,
+    )
+
+    assert plan.portfolio_mark_status == PortfolioMarkStatus.DEGRADED
+    assert plan.position_mark_statuses == {"YDEX": PositionMarkStatus.MISSING}
+    assert plan.decisions[0].reason_codes == [RiskReasonCode.PORTFOLIO_MARK_INCOMPLETE]
+    assert plan.paper_orders == []
+
+
+def test_buy_rejected_when_existing_position_quote_stale() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    decision_as_of = NOW + timedelta(hours=1)
+    quotes = _quotes(decision_as_of, "SBER") + _quotes(NOW, "YDEX")
+
+    plan = _evaluate_with_quotes(
+        repository,
+        "buy-sber-stale-ydex",
+        _proposal("SBER", "BUY", 0.10),
+        quotes,
+        decision_as_of,
+    )
+
+    assert plan.position_mark_statuses["YDEX"] == PositionMarkStatus.STALE
+    assert plan.decisions[0].reason_codes == [RiskReasonCode.PORTFOLIO_MARK_INCOMPLETE]
+    assert plan.paper_orders == []
+
+
+def test_buy_rejected_when_existing_position_quote_future() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    decision_as_of = NOW + timedelta(minutes=1)
+    quotes = _quotes(decision_as_of, "SBER") + _quotes(
+        decision_as_of + timedelta(seconds=1), "YDEX"
+    )
+
+    plan = _evaluate_with_quotes(
+        repository,
+        "buy-sber-future-ydex",
+        _proposal("SBER", "BUY", 0.10),
+        quotes,
+        decision_as_of,
+    )
+
+    assert plan.position_mark_statuses["YDEX"] == PositionMarkStatus.FUTURE
+    assert plan.decisions[0].reason_codes == [RiskReasonCode.PORTFOLIO_MARK_INCOMPLETE]
+    assert plan.paper_orders == []
+
+
+def test_buy_rejected_when_existing_position_quote_invalid() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    decision_as_of = NOW + timedelta(minutes=1)
+    quotes = [
+        *_quotes(decision_as_of, "SBER"),
+        MarketQuote(
+            ticker="YDEX",
+            as_of=decision_as_of,
+            last_price=None,
+            lot_size=1,
+        ),
+    ]
+
+    plan = _evaluate_with_quotes(
+        repository,
+        "buy-sber-invalid-ydex",
+        _proposal("SBER", "BUY", 0.10),
+        quotes,
+        decision_as_of,
+    )
+
+    assert plan.position_mark_statuses["YDEX"] == PositionMarkStatus.INVALID
+    assert plan.decisions[0].reason_codes == [RiskReasonCode.PORTFOLIO_MARK_INCOMPLETE]
+    assert plan.paper_orders == []
+
+
+def test_buy_allowed_when_all_existing_positions_fresh() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    decision_as_of = NOW + timedelta(minutes=1)
+    quotes = _quotes(decision_as_of, "SBER", "YDEX")
+
+    plan = _evaluate_with_quotes(
+        repository,
+        "buy-sber-fresh-portfolio",
+        _proposal("SBER", "BUY", 0.10),
+        quotes,
+        decision_as_of,
+    )
+
+    assert plan.portfolio_mark_status == PortfolioMarkStatus.COMPLETE
+    assert plan.position_mark_statuses == {"YDEX": PositionMarkStatus.FRESH}
+    assert RiskReasonCode.PORTFOLIO_MARK_INCOMPLETE not in plan.decisions[0].reason_codes
+    assert len(plan.paper_orders) == 1
+
+
+def test_risk_reducing_sell_allowed_with_other_position_mark_missing() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    _buy_ticker(
+        repository,
+        "SBER",
+        as_of=NOW + timedelta(minutes=1),
+        existing_tickers=("YDEX",),
+    )
+    decision_as_of = NOW + timedelta(minutes=2)
+    plan = _evaluate_with_quotes(
+        repository,
+        "sell-sber-defensive",
+        _proposal("SBER", "SELL", 0.0),
+        _quotes(decision_as_of, "SBER"),
+        decision_as_of,
+    )
+
+    assert plan.portfolio_mark_status == PortfolioMarkStatus.DEGRADED
+    assert plan.position_mark_statuses["YDEX"] == PositionMarkStatus.MISSING
+    assert plan.position_mark_statuses["SBER"] == PositionMarkStatus.FRESH
+    assert plan.decisions[0].risk_decision == RiskDecisionType.APPROVE
+    assert plan.paper_orders[0].side == PaperSide.SELL
+
+    result = execute_paper_plan(plan, repository, execution_as_of=decision_as_of)
+
+    assert result.execution_status == PaperExecutionStatus.SUCCESS
+    assert result.filled_orders[0].side == PaperSide.SELL
+
+
+def test_missing_mark_does_not_become_fresh_after_restore() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    before = replay_portfolio(repository.events()).positions[0]
+    restored_as_of = NOW + timedelta(minutes=1)
+
+    restored = restore_operational_portfolio(
+        repository,
+        as_of=restored_as_of,
+        market_snapshot=_quotes(restored_as_of, "SBER"),
+    )
+
+    assert restored.as_of == restored_as_of
+    assert restored.positions[0].mark_as_of == before.mark_as_of == NOW
+
+
+def test_hold_reports_degraded_portfolio_mark_health() -> None:
+    repository = InMemoryPaperLedgerRepository()
+    _buy_ticker(repository, "YDEX", as_of=NOW)
+    decision_as_of = NOW + timedelta(minutes=1)
+
+    plan = _evaluate_with_quotes(
+        repository,
+        "hold-sber-missing-ydex",
+        _proposal("SBER", "HOLD", 0.0),
+        _quotes(decision_as_of, "SBER"),
+        decision_as_of,
+    )
+
+    assert plan.portfolio_mark_status == PortfolioMarkStatus.DEGRADED
+    assert plan.decisions[0].risk_decision == RiskDecisionType.NO_ACTION
+    assert plan.paper_orders == []
 
 
 def test_second_buy_uses_delta_not_empty_portfolio() -> None:

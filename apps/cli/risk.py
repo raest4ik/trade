@@ -38,16 +38,18 @@ def run(args: argparse.Namespace) -> int:
     decision_as_of = _datetime(args.as_of) if args.as_of else datetime.now(UTC)
     quotes = _quotes(agent_run)
     ledger = JsonlPaperLedgerRepository(state_root / "ledger.jsonl")
+    policy = RiskPolicy()
     portfolio = restore_operational_portfolio(
         ledger,
         as_of=decision_as_of,
         market_snapshot=quotes,
+        max_stale_market_age=policy.max_stale_market_age,
     )
     plan = evaluate_agent_run(
         agent_run=agent_run,
         portfolio=portfolio,
         market_snapshot=quotes,
-        policy=RiskPolicy(),
+        policy=policy,
         decision_as_of=decision_as_of,
         ledger_event_count=ledger.last_sequence(),
     )
@@ -63,6 +65,8 @@ def run(args: argparse.Namespace) -> int:
                 "portfolio_mutated": False,
                 "portfolio_state_sha": plan.portfolio_state_sha,
                 "ledger_event_count": plan.ledger_event_count,
+                "portfolio_mark_status": plan.portfolio_mark_status,
+                "position_mark_statuses": plan.position_mark_statuses,
                 "real_execution_ready": False,
                 "ledger_path": str(state_root / DEFAULT_LEDGER_PATH.name),
             },
