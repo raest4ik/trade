@@ -4,9 +4,10 @@ import json
 import math
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 from src.ai_trading_agent_v1.domain import TradeAction, TradeProposal
 from src.free_live_issuer_accumulation.domain import sha256_payload
@@ -16,6 +17,7 @@ from src.risk_engine_paper_v1.domain import (
     LedgerEventType,
     MarketQuote,
     PaperExecutionResult,
+    PaperExecutionStatus,
     PaperOrder,
     PaperOrderStatus,
     PaperPortfolio,
@@ -30,11 +32,12 @@ from src.risk_engine_paper_v1.domain import (
     RiskPolicy,
     RiskReasonCode,
 )
-from src.risk_engine_paper_v1.repository import PaperLedgerRepository
+from src.risk_engine_paper_v1.repository import PaperLedgerRepository, validate_ledger_events
 
 ARTIFACT_VERSION = "risk-engine-paper-portfolio-v1"
 DEFAULT_ARTIFACT_ROOT = Path(f"artifacts/{ARTIFACT_VERSION}")
 DEFAULT_LEDGER_PATH = Path("state/paper-portfolio-v1/ledger.jsonl")
+MOEX_TIMEZONE = ZoneInfo("Europe/Moscow")
 
 
 def evaluate_agent_run(
@@ -44,11 +47,23 @@ def evaluate_agent_run(
     market_snapshot: Sequence[MarketQuote],
     policy: RiskPolicy,
     decision_as_of: datetime,
+    ledger_event_count: int = 0,
 ) -> RiskPlan:
+    if decision_as_of.tzinfo is None or decision_as_of.utcoffset() is None:
+        raise ValueError("DECISION_TIME_MUST_BE_TIMEZONE_AWARE")
     agent_run_id = str(agent_run.get("run_id", ""))
     proposals = _proposals(agent_run)
     agent_run_sha = sha256_payload(agent_run)
-    plan_id = _id("risk-plan", agent_run_id, agent_run_sha, policy.policy_version)
+    input_portfolio_sha = portfolio_state_sha(portfolio)
+    snapshot_sha = market_snapshot_sha(market_snapshot)
+    plan_id = _id(
+        "risk-plan",
+        agent_run_id,
+        agent_run_sha,
+        policy.policy_version,
+        input_portfolio_sha,
+        snapshot_sha,
+    )
     quotes = {quote.ticker.upper(): quote for quote in market_snapshot}
     universe = {
         str(row.get("ticker", "")).upper()
@@ -199,7 +214,28 @@ def evaluate_agent_run(
                 continue
         else:
             desired_value = max(0.0, desired_value)
+            desired_value, sell_reasons = _cap_sell_value(
+                desired_value=desired_value,
+                current_value=current_value,
+                projected_turnover=projected_turnover,
+                portfolio=portfolio,
+                policy=policy,
+            )
+            reasons.extend(sell_reasons)
             delta = desired_value - current_value
+            if delta >= 0:
+                decisions.append(
+                    _decision(
+                        proposal_id,
+                        agent_run_id,
+                        proposal,
+                        RiskDecisionType.REJECT,
+                        current_weight,
+                        reasons or [RiskReasonCode.INVALID_PROPOSAL],
+                        decision_as_of,
+                    )
+                )
+                continue
 
         order = _plan_order(
             agent_run_id=agent_run_id,
@@ -253,7 +289,11 @@ def evaluate_agent_run(
             else current_value - order.quantity * quote.last_price
         )
         approved_weight = max(0.0, approved_value / portfolio.equity)
-        reduced = approved_weight + policy.target_weight_tolerance < proposal.target_weight
+        reduced = (
+            approved_weight + policy.target_weight_tolerance < proposal.target_weight
+            if side == PaperSide.BUY
+            else approved_weight - policy.target_weight_tolerance > proposal.target_weight
+        )
         decision_type = RiskDecisionType.REDUCE if reduced else RiskDecisionType.APPROVE
         if not reasons:
             reasons.append(RiskReasonCode.OK)
@@ -278,6 +318,12 @@ def evaluate_agent_run(
         agent_run_id=agent_run_id,
         agent_run_sha=agent_run_sha,
         policy_version=policy.policy_version,
+        portfolio_id=portfolio.portfolio_id,
+        portfolio_state_sha=input_portfolio_sha,
+        portfolio_as_of=portfolio.as_of,
+        ledger_event_count=ledger_event_count,
+        market_snapshot_sha=snapshot_sha,
+        max_risk_plan_age=policy.max_risk_plan_age,
         decision_as_of=decision_as_of,
         initial_portfolio=portfolio,
         market_snapshot=list(market_snapshot),
@@ -289,8 +335,81 @@ def evaluate_agent_run(
 def execute_paper_plan(
     plan: RiskPlan,
     repository: PaperLedgerRepository,
+    *,
+    execution_as_of: datetime | None = None,
 ) -> PaperExecutionResult:
-    if not repository.events():
+    execution_time = execution_as_of or plan.decision_as_of
+    if execution_time.tzinfo is None or execution_time.utcoffset() is None:
+        raise ValueError("EXECUTION_TIME_MUST_BE_TIMEZONE_AWARE")
+    events = repository.events()
+    plan_contract_invalid = (
+        plan.portfolio_id != plan.initial_portfolio.portfolio_id
+        or plan.portfolio_as_of != plan.initial_portfolio.as_of
+        or plan.portfolio_state_sha != portfolio_state_sha(plan.initial_portfolio)
+        or plan.market_snapshot_sha != market_snapshot_sha(plan.market_snapshot)
+    )
+    if plan_contract_invalid:
+        current = replay_portfolio(events) if events else plan.initial_portfolio
+        return _execution_result(
+            plan=plan,
+            portfolio=current,
+            repository=repository,
+            execution_status=PaperExecutionStatus.STALE_RISK_PLAN,
+            status_code="STALE_RISK_PLAN",
+        )
+    if (
+        events
+        and plan.paper_orders
+        and all(
+            repository.contains_idempotency_key(order.idempotency_key)
+            for order in plan.paper_orders
+        )
+    ):
+        current = replay_portfolio(events)
+        return _execution_result(
+            plan=plan,
+            portfolio=current,
+            repository=repository,
+            duplicate_skips=len(plan.paper_orders),
+        )
+
+    if len(events) != plan.ledger_event_count:
+        current = replay_portfolio(events) if events else plan.initial_portfolio
+        return _execution_result(
+            plan=plan,
+            portfolio=current,
+            repository=repository,
+            execution_status=PaperExecutionStatus.STALE_RISK_PLAN,
+            status_code="PORTFOLIO_STATE_MISMATCH",
+        )
+
+    current = (
+        mark_to_market(replay_portfolio(events), plan.market_snapshot, plan.decision_as_of)
+        if events
+        else plan.initial_portfolio
+    )
+    if execution_time - plan.decision_as_of > plan.max_risk_plan_age:
+        return _execution_result(
+            plan=plan,
+            portfolio=current,
+            repository=repository,
+            execution_status=PaperExecutionStatus.PLAN_EXPIRED,
+            status_code="PLAN_EXPIRED",
+        )
+    state_mismatch = (
+        current.portfolio_id != plan.portfolio_id
+        or portfolio_state_sha(current) != plan.portfolio_state_sha
+    )
+    if state_mismatch:
+        return _execution_result(
+            plan=plan,
+            portfolio=current,
+            repository=repository,
+            execution_status=PaperExecutionStatus.STALE_RISK_PLAN,
+            status_code="PORTFOLIO_STATE_MISMATCH",
+        )
+
+    if not events:
         repository.append(
             LedgerEvent(
                 sequence=1,
@@ -298,10 +417,10 @@ def execute_paper_plan(
                 event_type=LedgerEventType.PORTFOLIO_CREATED,
                 portfolio_id=plan.initial_portfolio.portfolio_id,
                 occurred_at=plan.decision_as_of,
-                payload={"portfolio": plan.initial_portfolio.model_dump(mode="json")},
+                payload={"portfolio": current.model_dump(mode="json")},
             )
         )
-    portfolio = replay_portfolio(plan.initial_portfolio, repository.events(), plan.market_snapshot)
+    portfolio = replay_portfolio(repository.events())
     filled_orders: list[PaperOrder] = []
     trades: list[PaperTrade] = []
     duplicate_skips = 0
@@ -321,14 +440,18 @@ def execute_paper_plan(
                 payload={
                     "order": filled.model_dump(mode="json"),
                     "trade": trade.model_dump(mode="json"),
+                    "position_mark_price": _quote(plan.market_snapshot, filled.ticker).last_price,
                 },
             )
         )
         filled_orders.append(filled)
         trades.append(trade)
 
-    replayed = replay_portfolio(plan.initial_portfolio, repository.events(), plan.market_snapshot)
-    expected_sha = portfolio_state_sha(portfolio)
+    replayed = mark_to_market(
+        replay_portfolio(repository.events()), plan.market_snapshot, plan.decision_as_of
+    )
+    expected = mark_to_market(portfolio, plan.market_snapshot, plan.decision_as_of)
+    expected_sha = portfolio_state_sha(expected)
     replayed_sha = portfolio_state_sha(replayed)
     verification = ReplayVerification(
         replay_matches=expected_sha == replayed_sha,
@@ -341,6 +464,7 @@ def execute_paper_plan(
         PAPER_ORDERS_FILLED=len(filled_orders),
         PAPER_PORTFOLIO_MUTATIONS=len(filled_orders),
     )
+    replay_ok = verification.replay_matches
     return PaperExecutionResult(
         plan=plan,
         filled_orders=filled_orders,
@@ -349,6 +473,44 @@ def execute_paper_plan(
         replay_verification=verification,
         duplicate_executions_skipped=duplicate_skips,
         safety=safety,
+        execution_status=(
+            PaperExecutionStatus.SUCCESS
+            if replay_ok
+            else PaperExecutionStatus.LEDGER_INTEGRITY_FAILURE
+        ),
+        status_code="OK" if replay_ok else "REPLAY_VERIFICATION_FAILED",
+    )
+
+
+def _execution_result(
+    *,
+    plan: RiskPlan,
+    portfolio: PaperPortfolio,
+    repository: PaperLedgerRepository,
+    duplicate_skips: int = 0,
+    execution_status: PaperExecutionStatus = PaperExecutionStatus.SUCCESS,
+    status_code: str = "OK",
+) -> PaperExecutionResult:
+    state_sha = portfolio_state_sha(portfolio)
+    return PaperExecutionResult(
+        plan=plan,
+        filled_orders=[],
+        paper_trades=[],
+        final_portfolio=portfolio,
+        replay_verification=ReplayVerification(
+            replay_matches=True,
+            expected_sha=state_sha,
+            replayed_sha=state_sha,
+            event_count=repository.last_sequence(),
+        ),
+        duplicate_executions_skipped=duplicate_skips,
+        safety=PipelineSafety(
+            PAPER_ORDERS_PLANNED=len(plan.paper_orders),
+            PAPER_ORDERS_FILLED=0,
+            PAPER_PORTFOLIO_MUTATIONS=0,
+        ),
+        execution_status=execution_status,
+        status_code=status_code,
     )
 
 
@@ -383,7 +545,33 @@ def apply_paper_order(
         cash_delta=order.net_cash_effect,
         executed_at=executed_at,
     )
-    new_cash = _money(portfolio.cash + trade.cash_delta)
+    updated = _apply_order_economics(
+        portfolio,
+        order,
+        mark_price=quote.last_price or order.execution_price,
+        as_of=executed_at,
+    )
+    filled = order.model_copy(
+        update={"status": PaperOrderStatus.FILLED, "executed_at": executed_at}
+    )
+    return updated, filled, trade
+
+
+def _apply_order_economics(
+    portfolio: PaperPortfolio,
+    order: PaperOrder,
+    *,
+    mark_price: float,
+    as_of: datetime,
+) -> PaperPortfolio:
+    positions = {position.ticker: position for position in portfolio.positions}
+    existing = positions.get(order.ticker)
+    current_quantity = 0 if existing is None else existing.quantity
+    if order.side == PaperSide.SELL and order.quantity > current_quantity:
+        raise ValueError("INSUFFICIENT_PAPER_POSITION")
+    if order.side == PaperSide.BUY and portfolio.cash + order.net_cash_effect < -0.0001:
+        raise ValueError("NEGATIVE_PAPER_CASH")
+    new_cash = _money(portfolio.cash + order.net_cash_effect)
     new_realized = portfolio.realized_pnl
     if order.side == PaperSide.BUY:
         old_quantity = current_quantity
@@ -399,7 +587,7 @@ def apply_paper_order(
         ) * order.quantity - order.commission
     if new_quantity:
         positions[order.ticker] = _position(
-            order.ticker, new_quantity, average_cost, quote.last_price or order.execution_price, 0.0
+            order.ticker, new_quantity, average_cost, mark_price, 0.0
         )
     else:
         positions.pop(order.ticker, None)
@@ -410,28 +598,39 @@ def apply_paper_order(
         realized_pnl=new_realized,
         turnover_today=portfolio.turnover_today
         + order.gross_notional / portfolio.start_of_day_equity,
-        as_of=executed_at,
+        as_of=as_of,
     )
-    filled = order.model_copy(
-        update={"status": PaperOrderStatus.FILLED, "executed_at": executed_at}
-    )
-    return updated, filled, trade
+    return updated
 
 
-def replay_portfolio(
-    initial: PaperPortfolio,
-    events: Sequence[LedgerEvent],
-    market_snapshot: Sequence[MarketQuote],
-) -> PaperPortfolio:
-    portfolio = initial
+def replay_portfolio(events: Sequence[LedgerEvent]) -> PaperPortfolio:
+    validate_ledger_events(list(events))
+    if not events:
+        raise ValueError("EMPTY_PAPER_LEDGER")
+    created = events[0]
+    if created.event_type != LedgerEventType.PORTFOLIO_CREATED:
+        raise ValueError("MISSING_PORTFOLIO_CREATED")
+    portfolio = PaperPortfolio.model_validate(created.payload["portfolio"])
     for event in events:
-        if event.portfolio_id != initial.portfolio_id:
+        if event.portfolio_id != portfolio.portfolio_id:
+            raise ValueError("LEDGER_PORTFOLIO_ID_MISMATCH")
+        if event.event_type == LedgerEventType.PORTFOLIO_CREATED:
             continue
-        if event.event_type != LedgerEventType.PAPER_ORDER_FILLED:
-            continue
-        order = PaperOrder.model_validate(event.payload["order"])
-        planned = order.model_copy(update={"status": PaperOrderStatus.PLANNED, "executed_at": None})
-        portfolio, _, _ = apply_paper_order(portfolio, planned, market_snapshot)
+        if event.event_type == LedgerEventType.PAPER_ORDER_FILLED:
+            order = PaperOrder.model_validate(event.payload["order"])
+            mark_price = float(
+                cast("int | float", event.payload.get("position_mark_price", order.execution_price))
+            )
+            portfolio = _apply_order_economics(
+                portfolio,
+                order,
+                mark_price=mark_price,
+                as_of=event.occurred_at,
+            )
+        elif event.event_type == LedgerEventType.DAY_CLOSED:
+            portfolio = _apply_day_closed(portfolio, event)
+        else:
+            raise ValueError("UNSUPPORTED_LEDGER_EVENT_TYPE")
     return portfolio
 
 
@@ -440,14 +639,21 @@ def mark_to_market(
     market_snapshot: Sequence[MarketQuote],
     as_of: datetime,
 ) -> PaperPortfolio:
+    if as_of < portfolio.as_of:
+        raise ValueError("MARK_TIME_PRECEDES_PORTFOLIO_STATE")
     quotes = {quote.ticker.upper(): quote for quote in market_snapshot}
     positions: list[PaperPosition] = []
     for position in portfolio.positions:
         quote = quotes.get(position.ticker.upper())
-        if quote is None or quote.last_price is None or quote.last_price <= 0:
+        if quote is None:
+            positions.append(position)
+            continue
+        if quote.last_price is None or quote.last_price <= 0:
             raise ValueError(f"MARK_PRICE_UNAVAILABLE:{position.ticker}")
         if quote.as_of > as_of:
             raise ValueError("FUTURE_MARKET_SNAPSHOT")
+        if quote.as_of < portfolio.as_of:
+            raise ValueError("MARK_SNAPSHOT_PRECEDES_PORTFOLIO_STATE")
         positions.append(
             _position(
                 position.ticker,
@@ -467,7 +673,70 @@ def mark_to_market(
     )
 
 
+def restore_operational_portfolio(
+    repository: PaperLedgerRepository,
+    *,
+    as_of: datetime,
+    market_snapshot: Sequence[MarketQuote] = (),
+) -> PaperPortfolio:
+    events = repository.events()
+    portfolio = replay_portfolio(events) if events else initial_paper_portfolio(as_of)
+    if market_snapshot:
+        portfolio = mark_to_market(portfolio, market_snapshot, as_of)
+    return portfolio
+
+
+def close_paper_day(
+    repository: PaperLedgerRepository,
+    *,
+    next_day_as_of: datetime,
+) -> PaperPortfolio:
+    if next_day_as_of.tzinfo is None or next_day_as_of.utcoffset() is None:
+        raise ValueError("DAY_TRANSITION_TIME_MUST_BE_TIMEZONE_AWARE")
+    events = repository.events()
+    if not events:
+        raise ValueError("EMPTY_PAPER_LEDGER")
+    portfolio = replay_portfolio(events)
+    if _moex_day(next_day_as_of) <= _moex_day(portfolio.as_of):
+        raise ValueError("DAY_TRANSITION_MUST_ADVANCE_MOEX_DATE")
+    repository.append(
+        LedgerEvent(
+            sequence=repository.last_sequence() + 1,
+            event_id=_id(
+                "ledger", portfolio.portfolio_id, "day-closed", next_day_as_of.isoformat()
+            ),
+            event_type=LedgerEventType.DAY_CLOSED,
+            portfolio_id=portfolio.portfolio_id,
+            occurred_at=next_day_as_of,
+            payload={"start_of_day_equity": portfolio.equity},
+        )
+    )
+    return replay_portfolio(repository.events())
+
+
+def _apply_day_closed(portfolio: PaperPortfolio, event: LedgerEvent) -> PaperPortfolio:
+    start_equity = float(cast("int | float", event.payload.get("start_of_day_equity", 0.0)))
+    if start_equity <= 0 or _moex_day(event.occurred_at) <= _moex_day(portfolio.as_of):
+        raise ValueError("INVALID_DAY_CLOSED_EVENT")
+    return portfolio.model_copy(
+        update={
+            "start_of_day_equity": _money(start_equity),
+            "turnover_today": 0.0,
+            "daily_pnl": 0.0,
+            "as_of": event.occurred_at,
+        }
+    )
+
+
+def _moex_day(value: datetime) -> date:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("TIME_MUST_BE_TIMEZONE_AWARE")
+    return value.astimezone(MOEX_TIMEZONE).date()
+
+
 def initial_paper_portfolio(as_of: datetime, cash: float = 1_000_000.0) -> PaperPortfolio:
+    if as_of.tzinfo is None or as_of.utcoffset() is None:
+        raise ValueError("PORTFOLIO_TIME_MUST_BE_TIMEZONE_AWARE")
     return PaperPortfolio(
         portfolio_id="paper-portfolio-v1",
         cash=cash,
@@ -563,7 +832,7 @@ def _cap_buy_value(
         ),
         (
             current_value + policy.max_single_order_notional_pct * equity,
-            RiskReasonCode.LIQUIDITY_LIMIT,
+            RiskReasonCode.SINGLE_ORDER_LIMIT,
         ),
     ]
     approved = desired_value
@@ -573,6 +842,42 @@ def _cap_buy_value(
             reasons.append(reason)
         approved = min(approved, cap)
     return max(current_value, approved), reasons
+
+
+def _cap_sell_value(
+    *,
+    desired_value: float,
+    current_value: float,
+    projected_turnover: float,
+    portfolio: PaperPortfolio,
+    policy: RiskPolicy,
+) -> tuple[float, list[RiskReasonCode]]:
+    requested_reduction = max(0.0, current_value - desired_value)
+    caps: list[tuple[float, RiskReasonCode]] = []
+    if not policy.risk_reducing_sell_turnover_exempt:
+        caps.append(
+            (
+                max(
+                    0.0,
+                    policy.max_daily_turnover * portfolio.start_of_day_equity - projected_turnover,
+                ),
+                RiskReasonCode.TURNOVER_LIMIT,
+            )
+        )
+    if not policy.risk_reducing_sell_order_cap_exempt:
+        caps.append(
+            (
+                policy.max_single_order_notional_pct * portfolio.equity,
+                RiskReasonCode.SINGLE_ORDER_LIMIT,
+            )
+        )
+    allowed_reduction = requested_reduction
+    reasons: list[RiskReasonCode] = []
+    for cap, reason in caps:
+        if cap < requested_reduction:
+            reasons.append(reason)
+        allowed_reduction = min(allowed_reduction, cap)
+    return current_value - max(0.0, allowed_reduction), reasons
 
 
 def _plan_order(
@@ -755,6 +1060,15 @@ def _quote(snapshot: Sequence[MarketQuote], ticker: str) -> MarketQuote:
 
 def portfolio_state_sha(portfolio: PaperPortfolio) -> str:
     return sha256_payload(portfolio.model_dump(mode="json"))
+
+
+def market_snapshot_sha(snapshot: Sequence[MarketQuote]) -> str:
+    return sha256_payload(
+        [
+            row.model_dump(mode="json")
+            for row in sorted(snapshot, key=lambda value: value.ticker.upper())
+        ]
+    )
 
 
 def _id(prefix: str, *parts: str) -> str:

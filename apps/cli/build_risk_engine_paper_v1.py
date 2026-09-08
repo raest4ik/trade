@@ -10,14 +10,11 @@ from src.risk_engine_paper_v1.reporting import build_sample_execution, write_aud
 
 
 def run(args: argparse.Namespace) -> int:
-    agent_run, policy, result, ledger = build_sample_execution(Path(args.agent_run))
+    sample = build_sample_execution(Path(args.agent_run))
     manifest = write_audit_artifact(
         output_root=Path(args.output_root),
         code_sha=git_sha(),
-        agent_run=agent_run,
-        policy=policy,
-        result=result,
-        ledger=ledger,
+        sample=sample,
     )
     print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
     return 0

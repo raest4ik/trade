@@ -9,11 +9,12 @@ from typing import Any, cast
 from src.risk_engine_paper_v1.application import (
     DEFAULT_LEDGER_PATH,
     evaluate_agent_run,
-    initial_paper_portfolio,
     load_json,
+    restore_operational_portfolio,
     write_json,
 )
 from src.risk_engine_paper_v1.domain import MarketQuote, RiskPlan, RiskPolicy
+from src.risk_engine_paper_v1.repository import JsonlPaperLedgerRepository
 
 
 def run(args: argparse.Namespace) -> int:
@@ -36,12 +37,19 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit(f"agent run not found: {args.run_id}")
     decision_as_of = _datetime(args.as_of) if args.as_of else datetime.now(UTC)
     quotes = _quotes(agent_run)
+    ledger = JsonlPaperLedgerRepository(state_root / "ledger.jsonl")
+    portfolio = restore_operational_portfolio(
+        ledger,
+        as_of=decision_as_of,
+        market_snapshot=quotes,
+    )
     plan = evaluate_agent_run(
         agent_run=agent_run,
-        portfolio=initial_paper_portfolio(decision_as_of),
+        portfolio=portfolio,
         market_snapshot=quotes,
         policy=RiskPolicy(),
         decision_as_of=decision_as_of,
+        ledger_event_count=ledger.last_sequence(),
     )
     output = state_root / "plans" / f"{args.run_id}.json"
     write_json(output, plan.model_dump(mode="json"))
@@ -53,8 +61,10 @@ def run(args: argparse.Namespace) -> int:
                 "decisions": len(plan.decisions),
                 "paper_orders_planned": len(plan.paper_orders),
                 "portfolio_mutated": False,
+                "portfolio_state_sha": plan.portfolio_state_sha,
+                "ledger_event_count": plan.ledger_event_count,
                 "real_execution_ready": False,
-                "ledger_path": str(DEFAULT_LEDGER_PATH),
+                "ledger_path": str(state_root / DEFAULT_LEDGER_PATH.name),
             },
             sort_keys=True,
         )

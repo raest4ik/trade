@@ -142,6 +142,11 @@ def test_valid_proposal_is_approved_and_confidence_does_not_size() -> None:
 
     assert low_plan.decisions[0].risk_decision == RiskDecisionType.APPROVE
     assert low_plan.paper_orders[0].quantity == high_plan.paper_orders[0].quantity
+    assert low_plan.portfolio_id == low_plan.initial_portfolio.portfolio_id
+    assert low_plan.portfolio_as_of == low_plan.initial_portfolio.as_of
+    assert low_plan.ledger_event_count == 0
+    assert low_plan.portfolio_state_sha
+    assert low_plan.market_snapshot_sha
 
 
 def test_position_above_policy_limit_is_reduced() -> None:
@@ -301,6 +306,9 @@ def test_short_margin_and_leverage_are_disabled_and_agent_tools_unchanged(
     assert not policy.short_selling_enabled
     assert not policy.margin_enabled
     assert not policy.leverage_enabled
+    assert policy.risk_reducing_sell_turnover_exempt
+    assert policy.risk_reducing_sell_order_cap_exempt
+    assert policy.trading_day_timezone == "Europe/Moscow"
     assert "paper_buy" not in tools
     assert "paper_sell" not in tools
     assert "execute_paper_plan" not in tools

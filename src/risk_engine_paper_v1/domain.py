@@ -30,6 +30,7 @@ class RiskReasonCode(StrEnum):
     DRAWDOWN_LIMIT = "DRAWDOWN_LIMIT"
     CONCENTRATION_LIMIT = "CONCENTRATION_LIMIT"
     LIQUIDITY_LIMIT = "LIQUIDITY_LIMIT"
+    SINGLE_ORDER_LIMIT = "SINGLE_ORDER_LIMIT"
     MIN_TRADE_NOTIONAL = "MIN_TRADE_NOTIONAL"
     PRICE_UNAVAILABLE = "PRICE_UNAVAILABLE"
     INVALID_PRICE = "INVALID_PRICE"
@@ -59,6 +60,13 @@ class PaperOrderStatus(StrEnum):
     SKIPPED = "SKIPPED"
 
 
+class PaperExecutionStatus(StrEnum):
+    SUCCESS = "SUCCESS"
+    STALE_RISK_PLAN = "STALE_RISK_PLAN"
+    PLAN_EXPIRED = "PLAN_EXPIRED"
+    LEDGER_INTEGRITY_FAILURE = "LEDGER_INTEGRITY_FAILURE"
+
+
 class LedgerEventType(StrEnum):
     PORTFOLIO_CREATED = "PORTFOLIO_CREATED"
     MARK_TO_MARKET = "MARK_TO_MARKET"
@@ -84,6 +92,7 @@ class RiskPolicy(BaseModel):
     max_single_order_notional_pct: float = Field(default=0.10, gt=0.0, le=1.0)
     max_agent_confidence_not_required: bool = True
     max_stale_market_age: timedelta = timedelta(minutes=30)
+    max_risk_plan_age: timedelta = timedelta(minutes=5)
     kill_switch_enabled: bool = False
     target_weight_tolerance: float = Field(default=0.005, ge=0.0, lt=1.0)
     slippage_bps: int = Field(default=10, ge=0)
@@ -93,6 +102,9 @@ class RiskPolicy(BaseModel):
     margin_enabled: bool = False
     leverage_enabled: bool = False
     paper_auto_execution_enabled: bool = False
+    risk_reducing_sell_turnover_exempt: bool = True
+    risk_reducing_sell_order_cap_exempt: bool = True
+    trading_day_timezone: str = "Europe/Moscow"
 
 
 class MarketQuote(BaseModel):
@@ -203,6 +215,12 @@ class RiskPlan(BaseModel):
     agent_run_id: str
     agent_run_sha: str
     policy_version: str
+    portfolio_id: str
+    portfolio_state_sha: str
+    portfolio_as_of: datetime
+    ledger_event_count: int = Field(ge=0)
+    market_snapshot_sha: str
+    max_risk_plan_age: timedelta
     decision_as_of: datetime
     initial_portfolio: PaperPortfolio
     market_snapshot: list[MarketQuote]
@@ -260,3 +278,5 @@ class PaperExecutionResult(BaseModel):
     replay_verification: ReplayVerification
     duplicate_executions_skipped: int = Field(ge=0)
     safety: PipelineSafety
+    execution_status: PaperExecutionStatus = PaperExecutionStatus.SUCCESS
+    status_code: str = "OK"

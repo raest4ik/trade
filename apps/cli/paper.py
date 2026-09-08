@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from apps.cli.risk import run as run_risk
-from src.risk_engine_paper_v1.application import execute_paper_plan, replay_portfolio, write_json
-from src.risk_engine_paper_v1.domain import RiskPlan
+from src.risk_engine_paper_v1.application import (
+    execute_paper_plan,
+    initial_paper_portfolio,
+    portfolio_state_sha,
+    replay_portfolio,
+    write_json,
+)
+from src.risk_engine_paper_v1.domain import PaperExecutionStatus, PaperPortfolio, RiskPlan
 from src.risk_engine_paper_v1.repository import JsonlPaperLedgerRepository
 
 
@@ -16,6 +23,8 @@ def run(args: argparse.Namespace) -> int:
     state_root = Path(args.state_root)
     ledger = JsonlPaperLedgerRepository(state_root / "ledger.jsonl")
     if args.command == "status":
+        portfolio = _current_portfolio(ledger)
+        events = ledger.events()
         print(
             json.dumps(
                 {
@@ -24,7 +33,15 @@ def run(args: argparse.Namespace) -> int:
                     "REAL_EXECUTION_READY": "NO",
                     "REAL_BROKER_MUTATIONS": 0,
                     "REAL_ORDERS_SENT": 0,
-                    "ledger_events": len(ledger.events()),
+                    "portfolio_id": portfolio.portfolio_id,
+                    "ledger_event_count": len(events),
+                    "portfolio_state_sha": portfolio_state_sha(portfolio),
+                    "cash": portfolio.cash,
+                    "equity": portfolio.equity,
+                    "position_count": len(portfolio.positions),
+                    "turnover_today": portfolio.turnover_today,
+                    "last_event_at": events[-1].occurred_at.isoformat() if events else None,
+                    "replay_verified": True,
                 },
                 sort_keys=True,
             )
@@ -38,10 +55,22 @@ def run(args: argparse.Namespace) -> int:
         print(json.dumps({"sample_state_reset": True, "real_broker_affected": False}))
         return 0
 
-    plan = _plan(state_root, args.run_id)
     if args.command == "execute-agent-run":
-        result = execute_paper_plan(plan, ledger)
-        write_json(state_root / "portfolio.json", result.final_portfolio.model_dump(mode="json"))
+        plan = _plan(state_root, args.run_id)
+        execution_as_of = (
+            datetime.fromisoformat(args.execution_as_of.replace("Z", "+00:00"))
+            if args.execution_as_of
+            else datetime.now(UTC)
+        )
+        result = execute_paper_plan(plan, ledger, execution_as_of=execution_as_of)
+        if (
+            result.execution_status == PaperExecutionStatus.SUCCESS
+            and result.replay_verification.replay_matches
+        ):
+            write_json(
+                state_root / "portfolio.json",
+                result.final_portfolio.model_dump(mode="json"),
+            )
         print(
             json.dumps(
                 {
@@ -49,13 +78,15 @@ def run(args: argparse.Namespace) -> int:
                     "paper_orders_filled": len(result.filled_orders),
                     "duplicate_executions_skipped": result.duplicate_executions_skipped,
                     "replay_matches": result.replay_verification.replay_matches,
+                    "execution_status": result.execution_status,
+                    "status_code": result.status_code,
                     "real_orders_sent": 0,
                 },
                 sort_keys=True,
             )
         )
-        return 0
-    replayed = replay_portfolio(plan.initial_portfolio, ledger.events(), plan.market_snapshot)
+        return 0 if result.execution_status == PaperExecutionStatus.SUCCESS else 2
+    replayed = _current_portfolio(ledger)
     if args.command == "portfolio":
         print(replayed.model_dump_json(indent=2))
         return 0
@@ -65,7 +96,9 @@ def run(args: argparse.Namespace) -> int:
                 {
                     "portfolio": replayed.model_dump(mode="json"),
                     "event_count": len(ledger.events()),
+                    "portfolio_state_sha": portfolio_state_sha(replayed),
                     "replay_completed": True,
+                    "integrity_valid": True,
                 },
                 sort_keys=True,
             )
@@ -81,11 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--state-root", default="state/paper-portfolio-v1")
     for name in ("portfolio", "replay"):
         command = subparsers.add_parser(name)
-        command.add_argument("run_id", nargs="?")
         command.add_argument("--state-root", default="state/paper-portfolio-v1")
     execute = subparsers.add_parser("execute-agent-run")
     execute.add_argument("run_id")
     execute.add_argument("--state-root", default="state/paper-portfolio-v1")
+    execute.add_argument("--execution-as-of")
     evaluate = subparsers.add_parser("evaluate-agent-run")
     evaluate.add_argument("run_id")
     evaluate.add_argument("--agent-root", default="artifacts/ai-trading-agent-v1")
@@ -97,17 +130,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _plan(state_root: Path, run_id: str | None) -> RiskPlan:
-    if run_id is None:
-        plans = sorted((state_root / "plans").glob("*.json"))
-        if not plans:
-            raise SystemExit("no risk plans found")
-        path = plans[-1]
-    else:
-        path = state_root / "plans" / f"{run_id}.json"
+def _plan(state_root: Path, run_id: str) -> RiskPlan:
+    path = state_root / "plans" / f"{run_id}.json"
     if not path.exists():
         raise SystemExit(f"risk plan not found: {path}")
     return RiskPlan.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _current_portfolio(ledger: JsonlPaperLedgerRepository) -> PaperPortfolio:
+    events = ledger.events()
+    return replay_portfolio(events) if events else initial_paper_portfolio(datetime.now(UTC))
 
 
 def main() -> None:

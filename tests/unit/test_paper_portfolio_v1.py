@@ -14,6 +14,7 @@ from src.risk_engine_paper_v1.application import (
     execute_paper_plan,
     initial_paper_portfolio,
     mark_to_market,
+    market_snapshot_sha,
     replay_portfolio,
 )
 from src.risk_engine_paper_v1.domain import (
@@ -41,9 +42,15 @@ def test_paper_cli_exposes_two_phase_evaluate_and_execute_commands() -> None:
 
     evaluate = parser.parse_args(["evaluate-agent-run", "agent-run-1"])
     execute = parser.parse_args(["execute-agent-run", "agent-run-1"])
+    portfolio = parser.parse_args(["portfolio"])
+    replay = parser.parse_args(["replay"])
 
     assert evaluate.command == "evaluate-agent-run"
     assert execute.command == "execute-agent-run"
+    assert portfolio.command == "portfolio"
+    assert replay.command == "replay"
+    assert not hasattr(portfolio, "run_id")
+    assert not hasattr(replay, "run_id")
 
 
 def _agent(action: str = "BUY", weight: float = 0.10) -> dict[str, Any]:
@@ -197,7 +204,7 @@ def test_replay_reproduces_portfolio_and_duplicate_execution_is_idempotent() -> 
     plan = _plan()
     first = execute_paper_plan(plan, repository)
     second = execute_paper_plan(plan, repository)
-    replayed = replay_portfolio(plan.initial_portfolio, repository.events(), plan.market_snapshot)
+    replayed = replay_portfolio(repository.events())
 
     assert first.replay_verification.replay_matches
     assert second.duplicate_executions_skipped == len(plan.paper_orders)
@@ -234,7 +241,12 @@ def test_mark_to_market_is_not_a_trade_and_rejects_future_snapshot() -> None:
 def test_execution_rejects_snapshot_after_decision() -> None:
     plan = _plan()
     future_quote = plan.market_snapshot[0].model_copy(update={"as_of": NOW.replace(hour=13)})
-    future_plan = plan.model_copy(update={"market_snapshot": [future_quote]})
+    future_plan = plan.model_copy(
+        update={
+            "market_snapshot": [future_quote],
+            "market_snapshot_sha": market_snapshot_sha([future_quote]),
+        }
+    )
 
     with pytest.raises(ValueError, match="FUTURE_MARKET_SNAPSHOT"):
         execute_paper_plan(future_plan, InMemoryPaperLedgerRepository())
@@ -256,44 +268,48 @@ def test_no_target_outcome_holdout_or_real_broker_fields_exist() -> None:
 
 def test_deterministic_sample_covers_all_decisions_and_artifact(tmp_path: Path) -> None:
     agent_path = Path("artifacts/ai-trading-agent-v1/run.json")
-    agent_run, policy, result, ledger = build_sample_execution(agent_path)
+    sample = build_sample_execution(agent_path)
     first = tmp_path / "first"
     second = tmp_path / "second"
     first_manifest = write_audit_artifact(
         output_root=first,
         code_sha="a" * 40,
-        agent_run=agent_run,
-        policy=policy,
-        result=result,
-        ledger=ledger,
+        sample=sample,
     )
     second_manifest = write_audit_artifact(
         output_root=second,
         code_sha="a" * 40,
-        agent_run=agent_run,
-        policy=policy,
-        result=result,
-        ledger=ledger,
+        sample=sample,
     )
 
-    assert first_manifest["APPROVE_COUNT"] == 1
+    assert first_manifest["APPROVE_COUNT"] == 3
     assert first_manifest["REDUCE_COUNT"] == 1
     assert first_manifest["REJECT_COUNT"] == 1
-    assert first_manifest["NO_ACTION_COUNT"] == 2
-    assert first_manifest["PAPER_ORDERS_FILLED"] == 2
+    assert first_manifest["NO_ACTION_COUNT"] == 1
+    assert first_manifest["PAPER_ORDERS_FILLED"] == 4
     assert first_manifest["REAL_EXECUTION_READY"] == "NO"
+    assert first_manifest["MULTI_RUN_PAPER_READY"] == "YES"
+    assert first_manifest["STALE_PLAN_PROTECTION"] == "YES"
+    assert first_manifest["REPLAY_VERIFIED"] == "YES"
+    assert first_manifest["IDEMPOTENCY_VERIFIED"] == "YES"
     assert first_manifest["ARTIFACT_SHA"] == second_manifest["ARTIFACT_SHA"]
-    assert result.replay_verification.replay_matches
     required = {
         "manifest.json",
         "risk-policy.json",
-        "initial-portfolio.json",
-        "agent-run-input.json",
-        "risk-decisions.json",
-        "paper-orders.json",
-        "paper-trades.json",
+        "run-1-agent.json",
+        "run-1-risk-plan.json",
+        "run-1-orders.json",
+        "run-2-agent.json",
+        "run-2-risk-plan.json",
+        "run-2-orders.json",
+        "run-3-agent.json",
+        "run-3-risk-plan.json",
+        "run-3-orders.json",
         "final-portfolio.json",
         "replay-verification.json",
+        "multi-run-verification.json",
+        "idempotency-verification.json",
+        "stale-plan-verification.json",
         "safety.json",
         "report.md",
     }
@@ -303,8 +319,5 @@ def test_deterministic_sample_covers_all_decisions_and_artifact(tmp_path: Path) 
         write_audit_artifact(
             output_root=first,
             code_sha="a" * 40,
-            agent_run=agent_run,
-            policy=policy,
-            result=result,
-            ledger=ledger,
+            sample=sample,
         )
