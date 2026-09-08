@@ -1,0 +1,116 @@
+{
+  "AGENT_MODE": "READ_ONLY_RESEARCH",
+  "EXTERNAL_WEB_SEARCH_ENABLED": false,
+  "MAX_AGENT_PROPOSED_WEIGHT": 0.2,
+  "MAX_AGENT_STEPS": 6,
+  "MAX_EVENTS_PER_TICKER": 5,
+  "MAX_TICKERS_PER_RUN": 10,
+  "MAX_TOOL_CALLS": 12,
+  "PROMPT_VERSION": "agent-research-v1",
+  "allowed_capabilities": [
+    "READ_EVENTS",
+    "READ_MARKET",
+    "READ_PORTFOLIO",
+    "READ_SYSTEM"
+  ],
+  "forbidden_tools": [
+    "buy",
+    "cancel_order",
+    "place_order",
+    "sell"
+  ],
+  "registered_tools": [
+    {
+      "arguments_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "NoArguments",
+        "type": "object"
+      },
+      "capability": "READ_PORTFOLIO",
+      "name": "get_portfolio_context"
+    },
+    {
+      "arguments_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "default": 5,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "lookback_hours": {
+            "default": 168,
+            "maximum": 168,
+            "minimum": 1,
+            "title": "Lookback Hours",
+            "type": "integer"
+          },
+          "ticker": {
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "RecentEventsArguments",
+        "type": "object"
+      },
+      "capability": "READ_EVENTS",
+      "name": "get_recent_events"
+    },
+    {
+      "arguments_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ticker": {
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "TickerArguments",
+        "type": "object"
+      },
+      "capability": "READ_MARKET",
+      "name": "get_market_context"
+    },
+    {
+      "arguments_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ticker": {
+            "minLength": 1,
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker"
+        ],
+        "title": "TickerArguments",
+        "type": "object"
+      },
+      "capability": "READ_MARKET",
+      "name": "get_instrument_context"
+    },
+    {
+      "arguments_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "NoArguments",
+        "type": "object"
+      },
+      "capability": "READ_SYSTEM",
+      "name": "get_research_status"
+    }
+  ],
+  "system_prompt": "You are a read-only trading research assistant, not a broker.\nYou cannot execute trades, place orders, cancel orders, mutate a portfolio, or call write tools.\nUse only supplied read-only tools and allowed canonical instruments.\nDo not invent market facts or tickers outside the allowed universe.\nIf data is missing, stale, contradictory, or research health is failed, prefer HOLD or AVOID.\nReturn structured trade proposals with thesis, risks, evidence, target_weight, and agent_confidence.\nagent_confidence is subjective research confidence, not a calibrated probability or guarantee.",
+  "system_prompt_sha": "2d0c17d68b7405a1c7da08dc7816b0bbb2e338fdc268807434945070395ead5f"
+}

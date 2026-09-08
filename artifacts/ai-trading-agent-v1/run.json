@@ -1,0 +1,377 @@
+{
+  "AGENT_DECISION_STATUS": "VALID",
+  "AGENT_MODE": "READ_ONLY_RESEARCH",
+  "AGENT_RESEARCH_CAPABILITY_READY": true,
+  "ML_V2_DATASET_STATUS": "BLOCKED_INSUFFICIENT_ISSUER_DIVERSITY",
+  "agent_model_id": "fake-agent-research-v1",
+  "code_sha": "2086d63f32e00ea25ce3621bb7a34b4d17f31d3b",
+  "created_at": "2026-09-08T12:00:00Z",
+  "event_context_snapshot": {
+    "events": [
+      {
+        "confidence": "COMPLETE",
+        "event_id": "sample-sber-event",
+        "exact_timestamp_evidence": "fixture exact timestamp",
+        "legal_issuer": "ПАО Сбербанк",
+        "materiality": "MEDIUM",
+        "published_at": "2026-09-08T10:00:00+00:00",
+        "semantic_class": "FINANCIAL_RESULTS",
+        "source": "sample-read-only",
+        "ticker": "SBER",
+        "title": "Sample issuer publication"
+      }
+    ],
+    "events_as_of": "2026-09-08T12:00:00+00:00",
+    "lookback_hours": 168
+  },
+  "final_proposals": [
+    {
+      "action": "BUY",
+      "agent_confidence": 0.68,
+      "data_quality": "GOOD",
+      "evidence": [
+        {
+          "id": "sample-sber-event",
+          "type": "EVENT"
+        }
+      ],
+      "holding_horizon": "1-5d",
+      "risks": [
+        "Synthetic sample; no performance claim and no execution semantics."
+      ],
+      "target_weight": 0.1,
+      "thesis": [
+        "SBER read-only research proposal from deterministic fake model."
+      ],
+      "ticker": "SBER"
+    },
+    {
+      "action": "HOLD",
+      "agent_confidence": 0.55,
+      "data_quality": "GOOD",
+      "evidence": [
+        {
+          "id": "sample-market-context",
+          "type": "EVENT"
+        }
+      ],
+      "holding_horizon": "1-5d",
+      "risks": [
+        "Synthetic sample; no performance claim and no execution semantics."
+      ],
+      "target_weight": 0.05,
+      "thesis": [
+        "GAZP read-only research proposal from deterministic fake model."
+      ],
+      "ticker": "GAZP"
+    },
+    {
+      "action": "AVOID",
+      "agent_confidence": 0.61,
+      "data_quality": "GOOD",
+      "evidence": [
+        {
+          "id": "sample-risk",
+          "type": "EVENT"
+        }
+      ],
+      "holding_horizon": "1-5d",
+      "risks": [
+        "Synthetic sample; no performance claim and no execution semantics."
+      ],
+      "target_weight": 0.0,
+      "thesis": [
+        "ROSN read-only research proposal from deterministic fake model."
+      ],
+      "ticker": "ROSN"
+    }
+  ],
+  "market_context_snapshot": {
+    "as_of": "2026-09-08T12:00:00+00:00",
+    "by_ticker": {
+      "GAZP": {
+        "ask": 103.7,
+        "bid": 103.3,
+        "imoex_relative_return": 0.001,
+        "last_price": 103.5,
+        "market_data_as_of": "2026-09-08T12:00:00+00:00",
+        "market_regime": "sample_neutral",
+        "return_15m": 0.002,
+        "return_1d": 0.008,
+        "return_1h": 0.004,
+        "return_5m": 0.001,
+        "stale": false,
+        "ticker": "GAZP",
+        "volatility": 0.013,
+        "volume_context": "synthetic_read_only_sample"
+      },
+      "ROSN": {
+        "ask": 107.2,
+        "bid": 106.8,
+        "imoex_relative_return": 0.002,
+        "last_price": 107.0,
+        "market_data_as_of": "2026-09-08T12:00:00+00:00",
+        "market_regime": "sample_neutral",
+        "return_15m": 0.003,
+        "return_1d": 0.012,
+        "return_1h": 0.006,
+        "return_5m": 0.0015,
+        "stale": false,
+        "ticker": "ROSN",
+        "volatility": 0.014,
+        "volume_context": "synthetic_read_only_sample"
+      },
+      "SBER": {
+        "ask": 100.2,
+        "bid": 99.8,
+        "imoex_relative_return": 0.0,
+        "last_price": 100.0,
+        "market_data_as_of": "2026-09-08T12:00:00+00:00",
+        "market_regime": "sample_neutral",
+        "return_15m": 0.001,
+        "return_1d": 0.004,
+        "return_1h": 0.002,
+        "return_5m": 0.0005,
+        "stale": false,
+        "ticker": "SBER",
+        "volatility": 0.012,
+        "volume_context": "synthetic_read_only_sample"
+      },
+      "YDEX": {
+        "ask": 110.7,
+        "bid": 110.3,
+        "imoex_relative_return": 0.003,
+        "last_price": 110.5,
+        "market_data_as_of": "2026-09-08T12:00:00+00:00",
+        "market_regime": "sample_neutral",
+        "return_15m": 0.004,
+        "return_1d": 0.016,
+        "return_1h": 0.008,
+        "return_5m": 0.002,
+        "stale": false,
+        "ticker": "YDEX",
+        "volatility": 0.015,
+        "volume_context": "synthetic_read_only_sample"
+      }
+    }
+  },
+  "parsed_structured_output": {
+    "as_of": "2026-09-08T12:00:00Z",
+    "input_snapshot_as_of": {
+      "events_as_of": "2026-09-08T12:00:00Z",
+      "market_data_as_of": "2026-09-08T12:00:00Z",
+      "portfolio_as_of": "2026-09-08T12:00:00Z"
+    },
+    "proposals": [
+      {
+        "action": "BUY",
+        "agent_confidence": 0.68,
+        "data_quality": "GOOD",
+        "evidence": [
+          {
+            "id": "sample-sber-event",
+            "type": "EVENT"
+          }
+        ],
+        "holding_horizon": "1-5d",
+        "risks": [
+          "Synthetic sample; no performance claim and no execution semantics."
+        ],
+        "target_weight": 0.1,
+        "thesis": [
+          "SBER read-only research proposal from deterministic fake model."
+        ],
+        "ticker": "SBER"
+      },
+      {
+        "action": "HOLD",
+        "agent_confidence": 0.55,
+        "data_quality": "GOOD",
+        "evidence": [
+          {
+            "id": "sample-market-context",
+            "type": "EVENT"
+          }
+        ],
+        "holding_horizon": "1-5d",
+        "risks": [
+          "Synthetic sample; no performance claim and no execution semantics."
+        ],
+        "target_weight": 0.05,
+        "thesis": [
+          "GAZP read-only research proposal from deterministic fake model."
+        ],
+        "ticker": "GAZP"
+      },
+      {
+        "action": "AVOID",
+        "agent_confidence": 0.61,
+        "data_quality": "GOOD",
+        "evidence": [
+          {
+            "id": "sample-risk",
+            "type": "EVENT"
+          }
+        ],
+        "holding_horizon": "1-5d",
+        "risks": [
+          "Synthetic sample; no performance claim and no execution semantics."
+        ],
+        "target_weight": 0.0,
+        "thesis": [
+          "ROSN read-only research proposal from deterministic fake model."
+        ],
+        "ticker": "ROSN"
+      }
+    ]
+  },
+  "portfolio_snapshot": {
+    "as_of": "2026-09-08T12:00:00+00:00",
+    "cash": 870000.0,
+    "equity": 1000000.0,
+    "positions": [
+      {
+        "average_price": 100.88,
+        "current_price": 104.0,
+        "current_weight": 0.08,
+        "quantity": 769.2308,
+        "ticker": "SBER",
+        "unrealized_pnl": 2400.0001
+      },
+      {
+        "average_price": 100.88,
+        "current_price": 104.0,
+        "current_weight": 0.05,
+        "quantity": 480.7692,
+        "ticker": "GAZP",
+        "unrealized_pnl": 1499.9999
+      }
+    ]
+  },
+  "prompt_version": "agent-research-v1",
+  "raw_model_output": "{\"as_of\": \"2026-09-08T12:00:00+00:00\", \"input_snapshot_as_of\": {\"portfolio_as_of\": \"2026-09-08T12:00:00+00:00\", \"market_data_as_of\": \"2026-09-08T12:00:00+00:00\", \"events_as_of\": \"2026-09-08T12:00:00+00:00\"}, \"proposals\": [{\"ticker\": \"SBER\", \"action\": \"BUY\", \"agent_confidence\": 0.68, \"target_weight\": 0.1, \"holding_horizon\": \"1-5d\", \"thesis\": [\"SBER read-only research proposal from deterministic fake model.\"], \"risks\": [\"Synthetic sample; no performance claim and no execution semantics.\"], \"evidence\": [{\"type\": \"EVENT\", \"id\": \"sample-sber-event\"}], \"data_quality\": \"GOOD\"}, {\"ticker\": \"GAZP\", \"action\": \"HOLD\", \"agent_confidence\": 0.55, \"target_weight\": 0.05, \"holding_horizon\": \"1-5d\", \"thesis\": [\"GAZP read-only research proposal from deterministic fake model.\"], \"risks\": [\"Synthetic sample; no performance claim and no execution semantics.\"], \"evidence\": [{\"type\": \"EVENT\", \"id\": \"sample-market-context\"}], \"data_quality\": \"GOOD\"}, {\"ticker\": \"ROSN\", \"action\": \"AVOID\", \"agent_confidence\": 0.61, \"target_weight\": 0.0, \"holding_horizon\": \"1-5d\", \"thesis\": [\"ROSN read-only research proposal from deterministic fake model.\"], \"risks\": [\"Synthetic sample; no performance claim and no execution semantics.\"], \"evidence\": [{\"type\": \"EVENT\", \"id\": \"sample-risk\"}], \"data_quality\": \"GOOD\"}]}",
+  "research_status_snapshot": {
+    "LIVE_RESEARCH_OPERATION_STATUS": "READY",
+    "ML_V2_DATASET_STATUS": "BLOCKED_INSUFFICIENT_ISSUER_DIVERSITY",
+    "OPERATIONAL_BURN_IN": "PASS",
+    "data_freshness": {
+      "last_new_publication": "2026-09-08T12:00:00+00:00",
+      "last_successful_poll": "2026-09-08T12:00:00+00:00"
+    },
+    "event_freshness_minutes": 120,
+    "research_status_as_of": "2026-09-08T12:00:00+00:00",
+    "seal": {
+      "sealed_epoch_verified": true,
+      "violations": 0
+    },
+    "source_health": []
+  },
+  "run_id": "sample-agent-run-v1",
+  "safety": {
+    "BACKTEST_PERFORMED": false,
+    "BROKER_MUTATIONS": 0,
+    "EXTERNAL_WEB_SEARCH_ENABLED": false,
+    "LIVE_OUTCOMES_READ": 0,
+    "LIVE_POST_EVENT_PRICE_READS": 0,
+    "LIVE_TARGETS_COMPUTED": 0,
+    "MODEL_TRAINING_PERFORMED": false,
+    "OLD_FUTURE_HOLDOUT_OPENED": false,
+    "PAID_SOURCE_CALLS": 0,
+    "PAPER_ORDERS_SENT": 0,
+    "PORTFOLIO_MUTATIONS": 0,
+    "REAL_ORDERS_SENT": 0
+  },
+  "tool_calls": [
+    {
+      "arguments_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "capability": "READ_PORTFOLIO",
+      "error": null,
+      "result_hash": "1019aebf303a355b99c1ebe23b862beec25b1b3340ba4505c8bc41e31fb90e9d",
+      "status": "OK",
+      "step": 1,
+      "tool_name": "get_portfolio_context"
+    },
+    {
+      "arguments_hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "capability": "READ_SYSTEM",
+      "error": null,
+      "result_hash": "c6b8f3873ecdcf9b437627ee4ce89f0d8ff9332fa15713001917c98d7f35f369",
+      "status": "OK",
+      "step": 1,
+      "tool_name": "get_research_status"
+    },
+    {
+      "arguments_hash": "ad326af4eed2864de72ff8c48dd421c0d55dd6d9df618aa369660d27ccd46748",
+      "capability": "READ_MARKET",
+      "error": null,
+      "result_hash": "d27dabb31be1a7bee99bdd5a662eddd42aba2f7671997ffc12f0397af6d76d8a",
+      "status": "OK",
+      "step": 1,
+      "tool_name": "get_market_context"
+    },
+    {
+      "arguments_hash": "ca0f036daa6d28ba321999c1cf97e5d1ad8a1a8e1645fd0cb627c78b06f159f6",
+      "capability": "READ_EVENTS",
+      "error": null,
+      "result_hash": "1e539cd58ea4f608e8896acfdbe565e6e3ecfa75c72058d330c4fe64633c76b8",
+      "status": "OK",
+      "step": 1,
+      "tool_name": "get_recent_events"
+    }
+  ],
+  "universe": [
+    {
+      "active": true,
+      "board": "TQBR",
+      "feature_compatible": true,
+      "figi": "FIGI-SBER",
+      "instrument_type": "INSTRUMENT_TYPE_SHARE",
+      "instrument_uid": "UID-SBER",
+      "legal_issuer": "ПАО Сбербанк",
+      "market_data_compatible": true,
+      "supported": true,
+      "ticker": "SBER"
+    },
+    {
+      "active": true,
+      "board": "TQBR",
+      "feature_compatible": true,
+      "figi": "FIGI-GAZP",
+      "instrument_type": "INSTRUMENT_TYPE_SHARE",
+      "instrument_uid": "UID-GAZP",
+      "legal_issuer": "ПАО Газпром",
+      "market_data_compatible": true,
+      "supported": true,
+      "ticker": "GAZP"
+    },
+    {
+      "active": true,
+      "board": "TQBR",
+      "feature_compatible": true,
+      "figi": "FIGI-ROSN",
+      "instrument_type": "INSTRUMENT_TYPE_SHARE",
+      "instrument_uid": "UID-ROSN",
+      "legal_issuer": "Rosneft Oil Company",
+      "market_data_compatible": true,
+      "supported": true,
+      "ticker": "ROSN"
+    },
+    {
+      "active": true,
+      "board": "TQBR",
+      "feature_compatible": true,
+      "figi": "FIGI-YDEX",
+      "instrument_type": "INSTRUMENT_TYPE_SHARE",
+      "instrument_uid": "UID-YDEX",
+      "legal_issuer": "Yandex",
+      "market_data_compatible": true,
+      "supported": true,
+      "ticker": "YDEX"
+    }
+  ],
+  "validation": {
+    "reasons": [],
+    "stale_tickers": [],
+    "status": "VALID"
+  }
+}

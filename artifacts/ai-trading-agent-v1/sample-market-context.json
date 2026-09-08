@@ -1,0 +1,69 @@
+{
+  "as_of": "2026-09-08T12:00:00+00:00",
+  "by_ticker": {
+    "GAZP": {
+      "ask": 103.7,
+      "bid": 103.3,
+      "imoex_relative_return": 0.001,
+      "last_price": 103.5,
+      "market_data_as_of": "2026-09-08T12:00:00+00:00",
+      "market_regime": "sample_neutral",
+      "return_15m": 0.002,
+      "return_1d": 0.008,
+      "return_1h": 0.004,
+      "return_5m": 0.001,
+      "stale": false,
+      "ticker": "GAZP",
+      "volatility": 0.013,
+      "volume_context": "synthetic_read_only_sample"
+    },
+    "ROSN": {
+      "ask": 107.2,
+      "bid": 106.8,
+      "imoex_relative_return": 0.002,
+      "last_price": 107.0,
+      "market_data_as_of": "2026-09-08T12:00:00+00:00",
+      "market_regime": "sample_neutral",
+      "return_15m": 0.003,
+      "return_1d": 0.012,
+      "return_1h": 0.006,
+      "return_5m": 0.0015,
+      "stale": false,
+      "ticker": "ROSN",
+      "volatility": 0.014,
+      "volume_context": "synthetic_read_only_sample"
+    },
+    "SBER": {
+      "ask": 100.2,
+      "bid": 99.8,
+      "imoex_relative_return": 0.0,
+      "last_price": 100.0,
+      "market_data_as_of": "2026-09-08T12:00:00+00:00",
+      "market_regime": "sample_neutral",
+      "return_15m": 0.001,
+      "return_1d": 0.004,
+      "return_1h": 0.002,
+      "return_5m": 0.0005,
+      "stale": false,
+      "ticker": "SBER",
+      "volatility": 0.012,
+      "volume_context": "synthetic_read_only_sample"
+    },
+    "YDEX": {
+      "ask": 110.7,
+      "bid": 110.3,
+      "imoex_relative_return": 0.003,
+      "last_price": 110.5,
+      "market_data_as_of": "2026-09-08T12:00:00+00:00",
+      "market_regime": "sample_neutral",
+      "return_15m": 0.004,
+      "return_1d": 0.016,
+      "return_1h": 0.008,
+      "return_5m": 0.002,
+      "stale": false,
+      "ticker": "YDEX",
+      "volatility": 0.015,
+      "volume_context": "synthetic_read_only_sample"
+    }
+  }
+}

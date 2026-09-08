@@ -1,0 +1,18 @@
+{
+  "events": [
+    {
+      "confidence": "COMPLETE",
+      "event_id": "sample-sber-event",
+      "exact_timestamp_evidence": "fixture exact timestamp",
+      "legal_issuer": "ПАО Сбербанк",
+      "materiality": "MEDIUM",
+      "published_at": "2026-09-08T10:00:00+00:00",
+      "semantic_class": "FINANCIAL_RESULTS",
+      "source": "sample-read-only",
+      "ticker": "SBER",
+      "title": "Sample issuer publication"
+    }
+  ],
+  "events_as_of": "2026-09-08T12:00:00+00:00",
+  "lookback_hours": 168
+}
