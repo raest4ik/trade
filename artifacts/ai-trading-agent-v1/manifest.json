@@ -1,0 +1,47 @@
+{
+  "AGENT_DECISION_STATUS": "VALID",
+  "AGENT_MODE": "READ_ONLY_RESEARCH",
+  "AGENT_RESEARCH_CAPABILITY_READY": true,
+  "ARTIFACT_SHA": "4d06861db8a27c00702db65b48b481791ee012d466716e4883acbd1c541cdb00",
+  "ARTIFACT_VERSION": "ai-trading-agent-v1",
+  "BACKTEST_PERFORMED": false,
+  "BROKER_MUTATIONS": 0,
+  "EXTERNAL_WEB_SEARCH_ENABLED": false,
+  "LIVE_OUTCOMES_READ": 0,
+  "LIVE_POST_EVENT_PRICE_READS": 0,
+  "LIVE_TARGETS_COMPUTED": 0,
+  "ML_V2_DATASET_STATUS": "BLOCKED_INSUFFICIENT_ISSUER_DIVERSITY",
+  "MODEL_TRAINING_PERFORMED": false,
+  "OLD_FUTURE_HOLDOUT_OPENED": false,
+  "PAID_SOURCE_CALLS": 0,
+  "PAPER_ORDERS_SENT": 0,
+  "PORTFOLIO_MUTATIONS": 0,
+  "REAL_ORDERS_SENT": 0,
+  "agent_model_id": "fake-agent-research-v1",
+  "allowed_universe_size": 4,
+  "code_sha": "2086d63f32e00ea25ce3621bb7a34b4d17f31d3b",
+  "created_at": "2026-09-08T12:00:00+00:00",
+  "input_snapshot_as_of": {
+    "events_as_of": "2026-09-08T12:00:00+00:00",
+    "market_data_as_of": "2026-09-08T12:00:00+00:00",
+    "portfolio_as_of": "2026-09-08T12:00:00+00:00"
+  },
+  "input_snapshot_hashes": {
+    "allowed_universe": "bdc6d7e24803b6f949087b3b09228edd859847b7c2c9d7e71222f5c6ae5eb2ae",
+    "event_context_snapshot": "a1fc198a5ff5545c42516e68a14ce96f2cc7a9764d52bcefb91fe59776d97fcf",
+    "market_context_snapshot": "7d7179147b70d949b7e2e018ca311abd1503a5cb2c98f0c488d663dc79ce695d",
+    "portfolio_snapshot": "1019aebf303a355b99c1ebe23b862beec25b1b3340ba4505c8bc41e31fb90e9d",
+    "research_status_snapshot": "c6b8f3873ecdcf9b437627ee4ce89f0d8ff9332fa15713001917c98d7f35f369"
+  },
+  "prompt_version": "agent-research-v1",
+  "proposal_count": 3,
+  "run_id": "sample-agent-run-v1",
+  "tool_call_count": 4,
+  "tool_result_hashes": [
+    "1019aebf303a355b99c1ebe23b862beec25b1b3340ba4505c8bc41e31fb90e9d",
+    "c6b8f3873ecdcf9b437627ee4ce89f0d8ff9332fa15713001917c98d7f35f369",
+    "d27dabb31be1a7bee99bdd5a662eddd42aba2f7671997ffc12f0397af6d76d8a",
+    "1e539cd58ea4f608e8896acfdbe565e6e3ecfa75c72058d330c4fe64633c76b8"
+  ],
+  "validation_status": "VALID"
+}

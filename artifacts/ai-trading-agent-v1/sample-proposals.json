@@ -1,0 +1,135 @@
+{
+  "final_proposals": [
+    {
+      "action": "BUY",
+      "agent_confidence": 0.68,
+      "data_quality": "GOOD",
+      "evidence": [
+        {
+          "id": "sample-sber-event",
+          "type": "EVENT"
+        }
+      ],
+      "holding_horizon": "1-5d",
+      "risks": [
+        "Synthetic sample; no performance claim and no execution semantics."
+      ],
+      "target_weight": 0.1,
+      "thesis": [
+        "SBER read-only research proposal from deterministic fake model."
+      ],
+      "ticker": "SBER"
+    },
+    {
+      "action": "HOLD",
+      "agent_confidence": 0.55,
+      "data_quality": "GOOD",
+      "evidence": [
+        {
+          "id": "sample-market-context",
+          "type": "EVENT"
+        }
+      ],
+      "holding_horizon": "1-5d",
+      "risks": [
+        "Synthetic sample; no performance claim and no execution semantics."
+      ],
+      "target_weight": 0.05,
+      "thesis": [
+        "GAZP read-only research proposal from deterministic fake model."
+      ],
+      "ticker": "GAZP"
+    },
+    {
+      "action": "AVOID",
+      "agent_confidence": 0.61,
+      "data_quality": "GOOD",
+      "evidence": [
+        {
+          "id": "sample-risk",
+          "type": "EVENT"
+        }
+      ],
+      "holding_horizon": "1-5d",
+      "risks": [
+        "Synthetic sample; no performance claim and no execution semantics."
+      ],
+      "target_weight": 0.0,
+      "thesis": [
+        "ROSN read-only research proposal from deterministic fake model."
+      ],
+      "ticker": "ROSN"
+    }
+  ],
+  "parsed_structured_output": {
+    "as_of": "2026-09-08T12:00:00Z",
+    "input_snapshot_as_of": {
+      "events_as_of": "2026-09-08T12:00:00Z",
+      "market_data_as_of": "2026-09-08T12:00:00Z",
+      "portfolio_as_of": "2026-09-08T12:00:00Z"
+    },
+    "proposals": [
+      {
+        "action": "BUY",
+        "agent_confidence": 0.68,
+        "data_quality": "GOOD",
+        "evidence": [
+          {
+            "id": "sample-sber-event",
+            "type": "EVENT"
+          }
+        ],
+        "holding_horizon": "1-5d",
+        "risks": [
+          "Synthetic sample; no performance claim and no execution semantics."
+        ],
+        "target_weight": 0.1,
+        "thesis": [
+          "SBER read-only research proposal from deterministic fake model."
+        ],
+        "ticker": "SBER"
+      },
+      {
+        "action": "HOLD",
+        "agent_confidence": 0.55,
+        "data_quality": "GOOD",
+        "evidence": [
+          {
+            "id": "sample-market-context",
+            "type": "EVENT"
+          }
+        ],
+        "holding_horizon": "1-5d",
+        "risks": [
+          "Synthetic sample; no performance claim and no execution semantics."
+        ],
+        "target_weight": 0.05,
+        "thesis": [
+          "GAZP read-only research proposal from deterministic fake model."
+        ],
+        "ticker": "GAZP"
+      },
+      {
+        "action": "AVOID",
+        "agent_confidence": 0.61,
+        "data_quality": "GOOD",
+        "evidence": [
+          {
+            "id": "sample-risk",
+            "type": "EVENT"
+          }
+        ],
+        "holding_horizon": "1-5d",
+        "risks": [
+          "Synthetic sample; no performance claim and no execution semantics."
+        ],
+        "target_weight": 0.0,
+        "thesis": [
+          "ROSN read-only research proposal from deterministic fake model."
+        ],
+        "ticker": "ROSN"
+      }
+    ]
+  },
+  "raw_model_output": "{\"as_of\": \"2026-09-08T12:00:00+00:00\", \"input_snapshot_as_of\": {\"portfolio_as_of\": \"2026-09-08T12:00:00+00:00\", \"market_data_as_of\": \"2026-09-08T12:00:00+00:00\", \"events_as_of\": \"2026-09-08T12:00:00+00:00\"}, \"proposals\": [{\"ticker\": \"SBER\", \"action\": \"BUY\", \"agent_confidence\": 0.68, \"target_weight\": 0.1, \"holding_horizon\": \"1-5d\", \"thesis\": [\"SBER read-only research proposal from deterministic fake model.\"], \"risks\": [\"Synthetic sample; no performance claim and no execution semantics.\"], \"evidence\": [{\"type\": \"EVENT\", \"id\": \"sample-sber-event\"}], \"data_quality\": \"GOOD\"}, {\"ticker\": \"GAZP\", \"action\": \"HOLD\", \"agent_confidence\": 0.55, \"target_weight\": 0.05, \"holding_horizon\": \"1-5d\", \"thesis\": [\"GAZP read-only research proposal from deterministic fake model.\"], \"risks\": [\"Synthetic sample; no performance claim and no execution semantics.\"], \"evidence\": [{\"type\": \"EVENT\", \"id\": \"sample-market-context\"}], \"data_quality\": \"GOOD\"}, {\"ticker\": \"ROSN\", \"action\": \"AVOID\", \"agent_confidence\": 0.61, \"target_weight\": 0.0, \"holding_horizon\": \"1-5d\", \"thesis\": [\"ROSN read-only research proposal from deterministic fake model.\"], \"risks\": [\"Synthetic sample; no performance claim and no execution semantics.\"], \"evidence\": [{\"type\": \"EVENT\", \"id\": \"sample-risk\"}], \"data_quality\": \"GOOD\"}]}"
+}
