@@ -10,6 +10,7 @@
   "max_net_exposure": 0.8,
   "max_portfolio_drawdown_pct": 0.1,
   "max_position_weight": 0.15,
+  "max_risk_plan_age": "PT5M",
   "max_single_order_notional_pct": 0.1,
   "max_stale_market_age": "PT30M",
   "min_cash_buffer_pct": 0.1,
@@ -17,7 +18,10 @@
   "paper_auto_execution_enabled": false,
   "policy_version": "paper-risk-policy-v1",
   "reduce_to_available_cash": true,
+  "risk_reducing_sell_order_cap_exempt": true,
+  "risk_reducing_sell_turnover_exempt": true,
   "short_selling_enabled": false,
   "slippage_bps": 10,
-  "target_weight_tolerance": 0.005
+  "target_weight_tolerance": 0.005,
+  "trading_day_timezone": "Europe/Moscow"
 }

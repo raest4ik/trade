@@ -1,6 +1,7 @@
 {
-  "event_count": 3,
-  "expected_sha": "5fbd84d6b9c54097cee5c2bb491f6dd069b526f4edefe7387cc1cb48019e0130",
+  "event_count": 5,
+  "expected_sha": "130bff73ab2d4f184cb13d4da31363f95de42e279d4da7a17415fe338e816501",
+  "historical_quotes_required": false,
   "replay_matches": true,
-  "replayed_sha": "5fbd84d6b9c54097cee5c2bb491f6dd069b526f4edefe7387cc1cb48019e0130"
+  "replayed_sha": "130bff73ab2d4f184cb13d4da31363f95de42e279d4da7a17415fe338e816501"
 }

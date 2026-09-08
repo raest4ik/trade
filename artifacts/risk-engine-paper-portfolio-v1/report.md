@@ -1,14 +1,14 @@
-# Risk engine and paper portfolio V1
+# Risk engine and paper portfolio V1 multi-run audit
 
-- ARTIFACT_SHA: ae56974d23615f489d0a29258c032c72505106c68d04f5738b3cda7b4a989402
-- RISK_ENGINE_READY: YES
-- PAPER_PORTFOLIO_READY: YES
-- REAL_EXECUTION_READY: NO
-- APPROVE / REDUCE / REJECT / NO_ACTION: 1 / 1 / 1 / 2
-- paper orders filled: 2
-- final cash: 800762.7925 RUB
-- final equity: 999323.2925 RUB
-- final positions: SBER:990, YDEX:901
-- replay verified: True
+- ARTIFACT_SHA: a4da51933cb2df2a94ac99d19704e4306433be8ee573b61a7c83bbbeb3a9ad6b
+- MULTI_RUN_PAPER_READY: YES
+- STALE_PLAN_PROTECTION: YES
+- REPLAY_VERIFIED: YES
+- IDEMPOTENCY_VERIFIED: YES
+- PORTFOLIO_RESET_BETWEEN_RUNS: False
+- paper orders filled: 4
+- final cash: 849241.4638 RUB
+- final equity: 998801.9638 RUB
+- final positions: SBER:500, YDEX:901
 
-This artifact proves deterministic paper execution safety only. It makes no performance claim.
+This artifact proves deterministic multi-run paper execution safety only. It makes no performance claim.

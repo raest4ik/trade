@@ -1,0 +1,23 @@
+[
+  {
+    "commission": 49.3516,
+    "commission_bps": 5,
+    "created_at": "2026-09-08T12:02:00Z",
+    "executed_at": "2026-09-08T12:02:00Z",
+    "execution_price": 99.7002,
+    "gross_notional": 98703.198,
+    "idempotency_key": "paper-multi-run-3:proposal-4e5f9c646b089ba8be6c",
+    "lot_size": 10,
+    "net_cash_effect": 98653.8464,
+    "paper_order_id": "paper-order-1837e3200a328b79bc1f",
+    "planned_price": 99.8,
+    "price_source": "BID_MINUS_SLIPPAGE",
+    "proposal_id": "proposal-4e5f9c646b089ba8be6c",
+    "quantity": 990,
+    "run_id": "paper-multi-run-3",
+    "side": "SELL",
+    "slippage_bps": 10,
+    "status": "FILLED",
+    "ticker": "SBER"
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "STALE_PLAN_REJECTED": true,
+  "execution_status": "STALE_RISK_PLAN",
+  "paper_orders_filled": 0,
+  "paper_portfolio_mutations": 0,
+  "status_code": "PORTFOLIO_STATE_MISMATCH"
+}
