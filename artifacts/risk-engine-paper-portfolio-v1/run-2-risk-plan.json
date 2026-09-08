@@ -74,6 +74,7 @@
       {
         "average_cost": 100.3504,
         "last_price": 100.0,
+        "mark_as_of": "2026-09-08T12:01:00Z",
         "market_value": 99000.0,
         "quantity": 990,
         "ticker": "SBER",
@@ -127,6 +128,7 @@
   ],
   "market_snapshot_sha": "acbb9182a9dd1c8f221cd1fb0657c23bb5ef2033d20a2e77c01285e5b186b562",
   "max_risk_plan_age": "PT5M",
+  "max_stale_market_age": "PT30M",
   "paper_orders": [
     {
       "commission": 25.0751,
@@ -171,9 +173,13 @@
       "ticker": "YDEX"
     }
   ],
-  "plan_id": "risk-plan-eb10b401a0ad26d8a8ae",
+  "plan_id": "risk-plan-efe4cab5a257616fe7fe",
   "policy_version": "paper-risk-policy-v1",
   "portfolio_as_of": "2026-09-08T12:01:00Z",
   "portfolio_id": "paper-portfolio-v1",
-  "portfolio_state_sha": "aeda20a35f67331121d6eb42c33d3e210565d953f025b2a859f55c19c6bba669"
+  "portfolio_mark_status": "COMPLETE",
+  "portfolio_state_sha": "174ceb37afb642feb45db8830f02db478ad5bef1bdfdae90544f4b5030c3402e",
+  "position_mark_statuses": {
+    "SBER": "FRESH"
+  }
 }

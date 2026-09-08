@@ -1,0 +1,17 @@
+{
+  "BUY_WITH_MISSING_HELD_MARK": "REJECT",
+  "PAPER_ORDERS_PLANNED": 0,
+  "PORTFOLIO_MARK_COMPLETENESS": "PASS",
+  "RISK_REDUCING_SELL_WITH_OTHER_STALE_MARK": "ALLOWED",
+  "buy_position_mark_statuses": {
+    "SBER": "MISSING",
+    "YDEX": "MISSING"
+  },
+  "buy_reason_codes": [
+    "PORTFOLIO_MARK_INCOMPLETE"
+  ],
+  "sell_position_mark_statuses": {
+    "SBER": "FRESH",
+    "YDEX": "STALE"
+  }
+}

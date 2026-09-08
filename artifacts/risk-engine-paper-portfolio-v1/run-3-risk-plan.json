@@ -30,6 +30,7 @@
       {
         "average_cost": 100.3504,
         "last_price": 100.0,
+        "mark_as_of": "2026-09-08T12:02:00Z",
         "market_value": 149000.0,
         "quantity": 1490,
         "ticker": "SBER",
@@ -39,6 +40,7 @@
       {
         "average_cost": 110.8661,
         "last_price": 110.5,
+        "mark_as_of": "2026-09-08T12:02:00Z",
         "market_value": 99560.5,
         "quantity": 901,
         "ticker": "YDEX",
@@ -83,6 +85,7 @@
   ],
   "market_snapshot_sha": "2f737a8a97b247aab1b23e38da297ca14e4a956e5e288e0de3a625eb61afbb45",
   "max_risk_plan_age": "PT5M",
+  "max_stale_market_age": "PT30M",
   "paper_orders": [
     {
       "commission": 49.3516,
@@ -106,9 +109,14 @@
       "ticker": "SBER"
     }
   ],
-  "plan_id": "risk-plan-a5bb9bb4d3841d85a39e",
+  "plan_id": "risk-plan-26b28d7c25ea54c238fa",
   "policy_version": "paper-risk-policy-v1",
   "portfolio_as_of": "2026-09-08T12:02:00Z",
   "portfolio_id": "paper-portfolio-v1",
-  "portfolio_state_sha": "1a63c2acc0a0d2d6624a0a69bfd3fbb522234d549b3c19867cb166fea1d5a4d5"
+  "portfolio_mark_status": "COMPLETE",
+  "portfolio_state_sha": "421898968a6fa8d1e0828e74912dd163bf0a316365862c7d2993d2fca275e1a6",
+  "position_mark_statuses": {
+    "SBER": "FRESH",
+    "YDEX": "FRESH"
+  }
 }

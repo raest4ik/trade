@@ -10,6 +10,7 @@
     {
       "average_cost": 100.3504,
       "last_price": 100.0,
+      "mark_as_of": "2026-09-08T12:02:00Z",
       "market_value": 50000.0,
       "quantity": 500,
       "ticker": "SBER",
@@ -19,6 +20,7 @@
     {
       "average_cost": 110.8661,
       "last_price": 110.5,
+      "mark_as_of": "2026-09-08T12:02:00Z",
       "market_value": 99560.5,
       "quantity": 901,
       "ticker": "YDEX",

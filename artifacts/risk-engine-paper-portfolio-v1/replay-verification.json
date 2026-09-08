@@ -1,7 +1,7 @@
 {
   "event_count": 5,
-  "expected_sha": "130bff73ab2d4f184cb13d4da31363f95de42e279d4da7a17415fe338e816501",
+  "expected_sha": "06b95172cb9f6f8e28ea4f8c9c1998328fb7ec8ed71f9692109b521e365f2b17",
   "historical_quotes_required": false,
   "replay_matches": true,
-  "replayed_sha": "130bff73ab2d4f184cb13d4da31363f95de42e279d4da7a17415fe338e816501"
+  "replayed_sha": "06b95172cb9f6f8e28ea4f8c9c1998328fb7ec8ed71f9692109b521e365f2b17"
 }

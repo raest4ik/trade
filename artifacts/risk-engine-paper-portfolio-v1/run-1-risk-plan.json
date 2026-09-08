@@ -64,6 +64,7 @@
   ],
   "market_snapshot_sha": "a9c64d962489798b1276926e93f993059299fd46d180ed80647d5908dac60596",
   "max_risk_plan_age": "PT5M",
+  "max_stale_market_age": "PT30M",
   "paper_orders": [
     {
       "commission": 49.6486,
@@ -91,5 +92,7 @@
   "policy_version": "paper-risk-policy-v1",
   "portfolio_as_of": "2026-09-08T12:00:00Z",
   "portfolio_id": "paper-portfolio-v1",
-  "portfolio_state_sha": "074a15d8f7d6fa8a66c04bc24abb91879135d7c515d709b6a4dbb5680c65e634"
+  "portfolio_mark_status": "COMPLETE",
+  "portfolio_state_sha": "074a15d8f7d6fa8a66c04bc24abb91879135d7c515d709b6a4dbb5680c65e634",
+  "position_mark_statuses": {}
 }
