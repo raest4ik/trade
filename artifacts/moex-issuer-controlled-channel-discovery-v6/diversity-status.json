@@ -1,0 +1,18 @@
+{
+  "COUNTS_TOWARD_ML_DIVERSITY_SOURCE_COUNT": 0,
+  "DIVERSITY": "NO",
+  "FEATURE_PIPELINE_COMPATIBLE_SOURCE_COUNT": 0,
+  "FINAL_DIVERSITY_STATUS": "NO_NEW_TARGET_ELIGIBLE_ISSUERS",
+  "FREE_OFFICIAL_SOURCE_READY": false,
+  "NEW_FREE_OFFICIAL_SOURCE_COUNT": 0,
+  "NEW_TARGET_ELIGIBLE_DISTINCT_LEGAL_ISSUER_COUNT": 0,
+  "NEW_TARGET_ELIGIBLE_SOURCE_COUNT": 0,
+  "NEW_TARGET_ELIGIBLE_TICKER_COUNT": 0,
+  "SOURCE_READY_DOES_NOT_IMPLY_ML_DIVERSITY_ELIGIBLE": true,
+  "TARGET_ELIGIBLE_DIVERSITY": "NO",
+  "diversity_eligible_sources": [],
+  "new_target_eligible_distinct_legal_issuers": [],
+  "rejected_from_diversity": [],
+  "target_eligible_sources": [],
+  "target_ineligible_sources": []
+}
