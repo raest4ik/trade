@@ -1,0 +1,14 @@
+{
+  "as_of": "2026-09-08T12:00:00Z",
+  "cash": 1000000.0,
+  "daily_pnl": 0.0,
+  "drawdown": 0.0,
+  "equity": 1000000.0,
+  "peak_equity": 1000000.0,
+  "portfolio_id": "paper-portfolio-v1",
+  "positions": [],
+  "realized_pnl": 0.0,
+  "start_of_day_equity": 1000000.0,
+  "turnover_today": 0.0,
+  "unrealized_pnl": 0.0
+}
