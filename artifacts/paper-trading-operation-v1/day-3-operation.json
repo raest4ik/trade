@@ -17,21 +17,22 @@
       "ticker": "SBER"
     }
   ],
-  "agent_run_id": "paper-operation-18f2640993fb27c4d4208e50",
+  "agent_run_id": "paper-operation-1638d93b29f1319e3f31e08c",
   "agent_tool_calls": [],
-  "code_sha": "3a49398d88cc69a962d7810023737c4dfd387d99",
+  "code_sha": "47cb573fbae66905b719c67b57f10062b5b6fe93",
   "day_transition_applied": true,
   "event_snapshot_sha": "383297c2c8f1349318d728a0107d1fd0d069a9b64c456942bf8fa594551271f9",
   "market_snapshot_sha": "bd41a3391c11fad783d19696ac08f9d41bd40684f537291d2ae05e5d1ce4d0a4",
   "mode": "PAPER_EXECUTE",
   "operation_as_of": "2026-09-11T12:00:00Z",
-  "operation_id": "paper-operation-18f2640993fb27c4d4208e50",
+  "operation_id": "paper-operation-1638d93b29f1319e3f31e08c",
+  "operation_slot_id": "2026-09-11:EOD",
   "paper_execution_status": "SUCCESS",
   "paper_order_ids": [
-    "paper-order-8a003ce2a2cfc6674c10"
+    "paper-order-1e7c0aef73e02d5667fe"
   ],
   "paper_trade_ids": [
-    "paper-trade-df0da32af3d45d16be2c"
+    "paper-trade-b191abfd5ad55b3d371a"
   ],
   "policy_version": "paper-trading-operation-policy-v1",
   "portfolio_after": {
@@ -123,13 +124,13 @@
   },
   "risk_decisions": [
     {
-      "agent_run_id": "paper-operation-18f2640993fb27c4d4208e50",
+      "agent_run_id": "paper-operation-1638d93b29f1319e3f31e08c",
       "agent_target_weight": 0.05,
       "approved_target_weight": 0.0500339,
       "decision_as_of": "2026-09-11T12:00:00Z",
-      "decision_id": "risk-decision-8a003ce2a2cfc6674c10",
+      "decision_id": "risk-decision-1e7c0aef73e02d5667fe",
       "proposal_action": "SELL",
-      "proposal_id": "proposal-5bda9b405d39c26377fe",
+      "proposal_id": "proposal-085d609ef22697c31481",
       "reason_codes": [
         "OK"
       ],
@@ -137,7 +138,7 @@
       "ticker": "SBER"
     }
   ],
-  "risk_plan_id": "risk-plan-a6e57a7e155b7c0e9142",
+  "risk_plan_id": "risk-plan-a2202db483c10035accd",
   "safety": {
     "BACKTEST_PERFORMED": false,
     "LIVE_OUTCOMES_READ": 0,

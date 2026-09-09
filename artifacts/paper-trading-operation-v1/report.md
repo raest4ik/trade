@@ -1,6 +1,6 @@
 # Paper Trading Operation V1 audit
 
-- ARTIFACT_SHA: f65cbfe5a84cf5eacd842bef2a1b8d964b0dea2980205bfef50ec5fc9562061b
+- ARTIFACT_SHA: 135c309df830524f6e485cbf346eb76880284ca79c904b0cc824804a02efd3b3
 - PAPER_TRADING_OPERATION_READY: YES
 - operation policy: paper-trading-operation-policy-v1
 - operation runs: 4
