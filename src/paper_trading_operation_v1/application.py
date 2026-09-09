@@ -194,6 +194,7 @@ def run_paper_operation(
     )
     operation_contract_sha = build_operation_contract_sha(
         model_id=model.model_id,
+        market_adapter_id=str(context.market_context.get("market_adapter_id") or "unspecified"),
         universe_sha=universe_sha,
         policy_version=operation_policy.policy_version,
         code_sha=code_sha,
@@ -511,6 +512,7 @@ def build_operation_id(
 def build_operation_contract_sha(
     *,
     model_id: str,
+    market_adapter_id: str = "unspecified",
     universe_sha: str,
     policy_version: str,
     code_sha: str,
@@ -518,6 +520,7 @@ def build_operation_contract_sha(
     return sha256_payload(
         {
             "agent_model_id": model_id,
+            "market_adapter_id": market_adapter_id,
             "prompt_version": PROMPT_VERSION,
             "universe_sha": universe_sha,
             "policy_version": policy_version,
@@ -642,6 +645,10 @@ def _run_from_agent_and_risk(
         operation_slot_id=operation_slot_id,
         operation_contract_sha=operation_contract_sha,
         universe_sha=universe_sha,
+        research_status_sha=sha256_payload(context.research_status),
+        market_adapter_id=_optional_text(context.market_context.get("market_adapter_id")),
+        market_source=_optional_text(context.market_context.get("market_source")),
+        market_audit=_market_audit(context.market_context),
         operation_as_of=operation_as_of,
         mode=mode,
         status=PaperOperationStatus.STARTED,
@@ -700,6 +707,10 @@ def _base_run(
         operation_slot_id=operation_slot_id,
         operation_contract_sha=operation_contract_sha,
         universe_sha=universe_sha,
+        research_status_sha=sha256_payload(context.research_status),
+        market_adapter_id=_optional_text(context.market_context.get("market_adapter_id")),
+        market_source=_optional_text(context.market_context.get("market_source")),
+        market_audit=_market_audit(context.market_context),
         operation_as_of=operation_as_of,
         mode=mode,
         status=status,
@@ -863,6 +874,27 @@ def _parse_time(value: object) -> datetime | None:
 
 def _number(value: object) -> float | None:
     return float(value) if isinstance(value, int | float) else None
+
+
+def _optional_text(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _market_audit(market_context: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "market_fetch_started_at",
+        "market_fetch_completed_at",
+        "quote_count",
+        "fresh_quote_count",
+        "stale_quote_count",
+        "missing_quote_count",
+        "invalid_quote_count",
+        "future_quote_count",
+        "effective_max_age_seconds",
+        "source_payload_sha",
+        "quotes",
+    )
+    return {key: market_context[key] for key in keys if key in market_context}
 
 
 def _risk_data_degraded(decisions: Sequence[dict[str, Any]]) -> bool:

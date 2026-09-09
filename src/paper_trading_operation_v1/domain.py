@@ -14,6 +14,10 @@ def _dict_list() -> list[dict[str, Any]]:
     return []
 
 
+def _dict() -> dict[str, Any]:
+    return {}
+
+
 class PaperOperationMode(StrEnum):
     DRY_RUN = "DRY_RUN"
     PAPER_EXECUTE = "PAPER_EXECUTE"
@@ -112,6 +116,10 @@ class PaperOperationRun(BaseModel):
     operation_slot_id: str | None = None
     operation_contract_sha: str | None = None
     universe_sha: str | None = None
+    research_status_sha: str | None = None
+    market_adapter_id: str | None = None
+    market_source: str | None = None
+    market_audit: dict[str, Any] = Field(default_factory=_dict)
     operation_as_of: datetime
     mode: PaperOperationMode
     status: PaperOperationStatus

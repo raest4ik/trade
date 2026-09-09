@@ -25,6 +25,7 @@ DEFAULT_AI_MAX_RETRIES = 3
 DEFAULT_AI_MAX_CONCURRENCY = 2
 DEFAULT_AI_MAX_OUTPUT_TOKENS = 4096
 DEFAULT_AI_REASONING_EFFORT = "low"
+DEFAULT_MARKET_CONTEXT_MAX_AGE_SECONDS = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,7 @@ class Settings:
     ai_max_concurrency: int = DEFAULT_AI_MAX_CONCURRENCY
     ai_max_output_tokens: int = DEFAULT_AI_MAX_OUTPUT_TOKENS
     ai_reasoning_effort: str | None = DEFAULT_AI_REASONING_EFFORT
+    market_context_max_age_seconds: float = DEFAULT_MARKET_CONTEXT_MAX_AGE_SECONDS
 
     @property
     def sync_database_url(self) -> str:
@@ -99,6 +101,12 @@ def get_settings() -> Settings:
             os.getenv("AI_MAX_OUTPUT_TOKENS", str(DEFAULT_AI_MAX_OUTPUT_TOKENS))
         ),
         ai_reasoning_effort=os.getenv("AI_REASONING_EFFORT", DEFAULT_AI_REASONING_EFFORT) or None,
+        market_context_max_age_seconds=float(
+            os.getenv(
+                "MARKET_CONTEXT_MAX_AGE_SECONDS",
+                str(DEFAULT_MARKET_CONTEXT_MAX_AGE_SECONDS),
+            )
+        ),
     )
 
 
