@@ -68,5 +68,30 @@ services:
       timeout: 10s
       retries: 3
 
+  paper-operation:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile
+    profiles:
+      - paper
+    environment:
+      APP_NAME: trade-ai-paper-operation-v1
+      ENVIRONMENT: docker
+      FREE_SOURCES_ONLY: "true"
+      PAPER_EXECUTION_ENABLED: "true"
+      REAL_EXECUTION_ENABLED: "false"
+      PAPER_OPERATION_SCHEDULE_ENABLED: ${PAPER_OPERATION_SCHEDULE_ENABLED:-false}
+      PAPER_OPERATION_TIMEZONE: ${PAPER_OPERATION_TIMEZONE:-Europe/Moscow}
+      PAPER_OPERATION_SESSION: ${PAPER_OPERATION_SESSION:-EOD}
+    command:
+      - python
+      - -m
+      - apps.cli.paper_operation
+      - run
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+      - ./state:/app/state
+    restart: "no"
+
 volumes:
   postgres-data:
