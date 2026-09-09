@@ -258,6 +258,40 @@ def test_ollama_agent_model_never_registers_broker_tools() -> None:
     assert "subprocess" not in source
 
 
+def test_ollama_payload_exposes_only_registered_read_only_tool_schemas() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert payload["format"]["properties"]["proposals"]
+        assert [tool["function"]["name"] for tool in payload["tools"]] == ["get_market_context"]
+        assert payload["tools"][0]["function"]["parameters"]["type"] == "object"
+        return httpx.Response(200, json=_ollama_body(json.dumps(_proposal_output())))
+
+    request = _agent_request().model_copy(
+        update={
+            "safety_policy": {
+                "registered_tools": [
+                    {
+                        "name": "get_market_context",
+                        "arguments_schema": {
+                            "type": "object",
+                            "properties": {"ticker": {"type": "string"}},
+                        },
+                    },
+                    {
+                        "name": "buy",
+                        "arguments_schema": {"type": "object"},
+                    },
+                ],
+                "forbidden_tools": ["buy"],
+            }
+        }
+    )
+
+    response = _ollama_model(handler).complete(request)
+
+    assert response.final_output is not None
+
+
 def test_ollama_agent_model_rejects_arbitrary_remote_host() -> None:
     with pytest.raises(ValueError, match="localhost"):
         OllamaAgentModel(

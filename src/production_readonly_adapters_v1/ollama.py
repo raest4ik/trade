@@ -7,7 +7,12 @@ from typing import Any, cast
 import httpx
 from pydantic import ValidationError
 
-from src.ai_trading_agent_v1.domain import AgentModelRequest, AgentModelResponse, ToolCallRequest
+from src.ai_trading_agent_v1.domain import (
+    AgentModelRequest,
+    AgentModelResponse,
+    StructuredAgentOutput,
+    ToolCallRequest,
+)
 from src.production_readonly_adapters_v1.domain import AGENT_ADAPTER_ID
 
 MAX_RESPONSE_BYTES = 1_000_000
@@ -117,10 +122,10 @@ class OllamaAgentModel:
             "safety_policy": request.safety_policy,
             "response_contract": {
                 "tool_calls": [{"name": "read_only_tool", "arguments": {}}],
-                "final_output": "JSON string matching the supplied trading proposal contract",
+                "final_output_schema": StructuredAgentOutput.model_json_schema(),
             },
         }
-        return {
+        payload: dict[str, Any] = {
             "model": self._model,
             "messages": [
                 {"role": "system", "content": request.system_prompt},
@@ -128,7 +133,7 @@ class OllamaAgentModel:
             ],
             "stream": False,
             "think": self._think,
-            "format": {"type": "object"},
+            "format": StructuredAgentOutput.model_json_schema(),
             "options": {
                 "temperature": 0,
                 "seed": self._random_seed,
@@ -136,6 +141,10 @@ class OllamaAgentModel:
                 "num_predict": self._max_output_tokens,
             },
         }
+        tools = _read_only_tools(request.safety_policy)
+        if tools:
+            payload["tools"] = tools
+        return payload
 
     def _post_with_retries(self, payload: dict[str, Any]) -> httpx.Response:
         for attempt in range(self._max_retries + 1):
@@ -190,3 +199,30 @@ def _agent_response(message: dict[str, Any]) -> AgentModelResponse:
 
 def _optional_int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _read_only_tools(safety_policy: dict[str, Any]) -> list[dict[str, Any]]:
+    registered = safety_policy.get("registered_tools")
+    if not isinstance(registered, list):
+        return []
+    forbidden = {str(name) for name in safety_policy.get("forbidden_tools", [])}
+    tools: list[dict[str, Any]] = []
+    for item in cast("list[object]", registered):
+        if not isinstance(item, dict):
+            continue
+        tool = cast("dict[str, Any]", item)
+        name = tool.get("name")
+        parameters = tool.get("arguments_schema")
+        if not isinstance(name, str) or not isinstance(parameters, dict) or name in forbidden:
+            continue
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": "Read-only deterministic operation context.",
+                    "parameters": parameters,
+                },
+            }
+        )
+    return tools
