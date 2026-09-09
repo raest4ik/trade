@@ -16,7 +16,8 @@ REAL_POSITIONS_CHANGED=0
 
 The default `run` mode is `DRY_RUN`. A paper ledger mutation requires both the
 explicit `--execute-paper` flag and `PAPER_EXECUTION_ENABLED=true` in the operation
-policy. Real execution remains disabled in both modes.
+policy. `PAPER_EXECUTION_ENABLED` defaults to `false`. Real execution remains disabled
+in both modes.
 
 ## Commands
 
@@ -64,8 +65,14 @@ before durable paper fills, then writes `COMPLETED` only after replay verificati
 
 ## Recovery
 
-If a process stops after a fill but before final audit, rerun the same operation slot
-and `operation_as_of`. The operation finds the `PREPARED` record, verifies existing
+Each operation has a canonical slot such as `2026-09-09:EOD`. Wall-clock seconds are
+preserved in `operation_as_of` as the PIT cutoff but are excluded from `operation_id`,
+so another invocation of the same date/session/model/prompt/universe contract is a
+duplicate. An intentional same-day rerun requires an explicit distinct slot such as
+`--operation-slot EOD_RETRY_1`.
+
+If a process stops after a fill but before final audit, rerun the same operation slot.
+The operation finds the `PREPARED` record, verifies existing
 idempotency keys, reconstructs paper order and trade IDs from the durable portfolio
 ledger, and appends `RECOVERED`. It does not delete or roll back a durable fill and
 does not create a duplicate fill.

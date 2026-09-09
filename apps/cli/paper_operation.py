@@ -158,7 +158,7 @@ def _policy_from_env() -> PaperOperationPolicy:
         operation_schedule_enabled=_boolean("PAPER_OPERATION_SCHEDULE_ENABLED", False),
         operation_timezone=os.getenv("PAPER_OPERATION_TIMEZONE", "Europe/Moscow"),
         operation_session=os.getenv("PAPER_OPERATION_SESSION", "EOD"),
-        paper_execution_enabled=_boolean("PAPER_EXECUTION_ENABLED", True),
+        paper_execution_enabled=_boolean("PAPER_EXECUTION_ENABLED", False),
         real_execution_enabled=_boolean("REAL_EXECUTION_ENABLED", False),
     )
 

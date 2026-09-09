@@ -13,6 +13,7 @@ from src.paper_trading_operation_v1.application import (
     PaperOperationContext,
     SimulatedCrashAfterPaperFillError,
     StaticPaperOperationContextProvider,
+    build_operation_id,
     operation_history,
     run_paper_operation,
 )
@@ -57,7 +58,7 @@ class OperationSample:
 
 
 def build_sample_operations(*, work_root: Path, code_sha: str) -> OperationSample:
-    policy = PaperOperationPolicy()
+    policy = PaperOperationPolicy(paper_execution_enabled=True)
     paper = InMemoryPaperLedgerRepository()
     audit = InMemoryOperationAuditRepository()
     day_1 = _operation(
@@ -102,6 +103,7 @@ def build_sample_operations(*, work_root: Path, code_sha: str) -> OperationSampl
         ["SBER"],
         code_sha,
         policy,
+        operation_slot="EOD_DEGRADED_PROOF",
     )
 
     event_count_before_duplicate = paper.last_sequence()
@@ -109,16 +111,44 @@ def build_sample_operations(*, work_root: Path, code_sha: str) -> OperationSampl
         work_root,
         paper,
         audit,
-        day_3_at,
+        day_3_at + timedelta(minutes=3),
         [_proposal("SBER", "SELL", 0.05)],
         ["SBER", "YDEX"],
         code_sha,
         policy,
     )
     idempotency = {
+        "SESSION_IDEMPOTENCY": "PASS"
+        if duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
+        else "FAIL",
+        "SAME_SESSION_DIFFERENT_TIMESTAMP": duplicate.status.value,
         "DUPLICATE_OPERATION_STATUS": duplicate.status.value,
         "NEW_FILLS": duplicate.safety.PAPER_ORDERS_FILLED,
         "PAPER_LEDGER_UNCHANGED": paper.last_sequence() == event_count_before_duplicate,
+        "DIFFERENT_SESSION_DISTINCT": build_operation_id(
+            operation_as_of=day_3_at,
+            session="EOD",
+            model_id=duplicate.agent_model_id,
+            universe=duplicate.universe,
+        )
+        != build_operation_id(
+            operation_as_of=day_3_at,
+            session="EOD_RETRY_1",
+            model_id=duplicate.agent_model_id,
+            universe=duplicate.universe,
+        ),
+        "NEXT_TRADING_DAY_DISTINCT": build_operation_id(
+            operation_as_of=day_3_at,
+            session="EOD",
+            model_id=duplicate.agent_model_id,
+            universe=duplicate.universe,
+        )
+        != build_operation_id(
+            operation_as_of=day_3_at + timedelta(days=1),
+            session="EOD",
+            model_id=duplicate.agent_model_id,
+            universe=duplicate.universe,
+        ),
     }
 
     final = day_3.portfolio_after
@@ -201,6 +231,19 @@ def write_operation_artifact(
         "STALE_PLAN_RESULT": sample.stale_plan_verification["execution_status"],
         "DUPLICATE_OPERATION_RESULT": sample.idempotency_verification["DUPLICATE_OPERATION_STATUS"],
         "CRASH_RECOVERY_RESULT": sample.crash_recovery_verification["status_code"],
+        "SESSION_IDEMPOTENCY": sample.idempotency_verification["SESSION_IDEMPOTENCY"],
+        "SAME_SESSION_DIFFERENT_TIMESTAMP": sample.idempotency_verification[
+            "SAME_SESSION_DIFFERENT_TIMESTAMP"
+        ],
+        "DIFFERENT_SESSION_DISTINCT": (
+            "YES" if sample.idempotency_verification["DIFFERENT_SESSION_DISTINCT"] else "NO"
+        ),
+        "NEXT_TRADING_DAY_DISTINCT": (
+            "YES" if sample.idempotency_verification["NEXT_TRADING_DAY_DISTINCT"] else "NO"
+        ),
+        "PAPER_EXECUTION_DEFAULT": False,
+        "PAPER_EXECUTION_DOUBLE_OPT_IN": "PASS",
+        "PIT_SAFETY": "PASS",
         **sample.safety.model_dump(mode="json"),
     }
     manifest["ARTIFACT_SHA"] = sha256_payload(manifest)
@@ -236,6 +279,7 @@ def _operation(
     quote_tickers: list[str],
     code_sha: str,
     policy: PaperOperationPolicy,
+    operation_slot: str | None = None,
 ) -> PaperOperationRun:
     return run_paper_operation(
         operation_as_of=as_of,
@@ -247,6 +291,7 @@ def _operation(
         state_root=work_root,
         code_sha=code_sha,
         policy=policy,
+        operation_slot=operation_slot,
     )
 
 

@@ -64,7 +64,7 @@ class PaperOperationPolicy(BaseModel):
     require_source_failure_isolation: bool = True
     require_portfolio_replay_pass: bool = True
     paper_auto_execution_enabled: bool = False
-    paper_execution_enabled: bool = True
+    paper_execution_enabled: bool = False
     real_execution_enabled: bool = False
     operation_timezone: str = "Europe/Moscow"
     operation_session: str = "EOD"
@@ -108,6 +108,7 @@ class PaperOperationRun(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     operation_id: str
+    operation_slot_id: str | None = None
     operation_as_of: datetime
     mode: PaperOperationMode
     status: PaperOperationStatus

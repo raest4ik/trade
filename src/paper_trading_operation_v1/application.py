@@ -179,9 +179,15 @@ def run_paper_operation(
             research_status={"research_status_as_of": as_of.isoformat()},
         )
     universe = context.universe[: operation_policy.max_operation_universe]
+    session = operation_slot or operation_policy.operation_session
+    operation_slot_id = build_operation_slot_id(
+        operation_as_of=as_of,
+        session=session,
+        timezone_name=operation_policy.operation_timezone,
+    )
     operation_id = build_operation_id(
         operation_as_of=as_of,
-        session=operation_slot or operation_policy.operation_session,
+        session=session,
         model_id=model.model_id,
         universe=universe,
         timezone_name=operation_policy.operation_timezone,
@@ -233,6 +239,7 @@ def run_paper_operation(
         if preflight_reasons:
             blocked = _base_run(
                 operation_id=operation_id,
+                operation_slot_id=operation_slot_id,
                 operation_as_of=as_of,
                 mode=mode,
                 status=PaperOperationStatus.BLOCKED,
@@ -288,6 +295,7 @@ def run_paper_operation(
             )
             blocked = _base_run(
                 operation_id=operation_id,
+                operation_slot_id=operation_slot_id,
                 operation_as_of=as_of,
                 mode=mode,
                 status=PaperOperationStatus.BLOCKED,
@@ -313,6 +321,7 @@ def run_paper_operation(
         )
         prepared_run = _run_from_agent_and_risk(
             operation_id=operation_id,
+            operation_slot_id=operation_slot_id,
             operation_as_of=as_of,
             mode=mode,
             code_sha=code_sha,
@@ -477,15 +486,28 @@ def build_operation_id(
     universe: Sequence[dict[str, Any]],
     timezone_name: str = "Europe/Moscow",
 ) -> str:
+    operation_slot_id = build_operation_slot_id(
+        operation_as_of=operation_as_of,
+        session=session,
+        timezone_name=timezone_name,
+    )
     contract = {
-        "operation_date": operation_as_of.astimezone(ZoneInfo(timezone_name)).date().isoformat(),
-        "operation_as_of": _utc(operation_as_of).isoformat(),
-        "session": session,
+        "operation_slot_id": operation_slot_id,
         "agent_model_id": model_id,
         "prompt_version": PROMPT_VERSION,
         "universe_sha": sha256_payload(list(universe)),
     }
     return f"paper-operation-{sha256_payload(contract)[:24]}"
+
+
+def build_operation_slot_id(
+    *,
+    operation_as_of: datetime,
+    session: str,
+    timezone_name: str = "Europe/Moscow",
+) -> str:
+    trading_date = operation_as_of.astimezone(ZoneInfo(timezone_name)).date().isoformat()
+    return f"{trading_date}:{session}"
 
 
 def market_quotes_from_context(
@@ -576,6 +598,7 @@ def _finish_execution(
 def _run_from_agent_and_risk(
     *,
     operation_id: str,
+    operation_slot_id: str,
     operation_as_of: datetime,
     mode: PaperOperationMode,
     code_sha: str,
@@ -588,6 +611,7 @@ def _run_from_agent_and_risk(
 ) -> PaperOperationRun:
     return PaperOperationRun(
         operation_id=operation_id,
+        operation_slot_id=operation_slot_id,
         operation_as_of=operation_as_of,
         mode=mode,
         status=PaperOperationStatus.STARTED,
@@ -623,6 +647,7 @@ def _run_from_agent_and_risk(
 def _base_run(
     *,
     operation_id: str,
+    operation_slot_id: str,
     operation_as_of: datetime,
     mode: PaperOperationMode,
     status: PaperOperationStatus,
@@ -640,6 +665,7 @@ def _base_run(
     state_sha = portfolio_state_sha(portfolio)
     return PaperOperationRun(
         operation_id=operation_id,
+        operation_slot_id=operation_slot_id,
         operation_as_of=operation_as_of,
         mode=mode,
         status=status,

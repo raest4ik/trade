@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from apps.cli.paper_operation import _policy_from_env  # pyright: ignore[reportPrivateUsage]
 from src.ai_trading_agent_v1.application import (
     AgentDataContext,
     AgentRunConfig,
@@ -20,6 +21,7 @@ from src.paper_trading_operation_v1.application import (
     PaperOperationContext,
     SimulatedCrashAfterPaperFillError,
     StaticPaperOperationContextProvider,
+    build_operation_id,
     run_paper_operation,
 )
 from src.paper_trading_operation_v1.domain import (
@@ -174,6 +176,8 @@ def _run(
     audit: OperationAuditRepository,
     mode: PaperOperationMode = PaperOperationMode.PAPER_EXECUTE,
     model: FakeAgentModel | None = None,
+    policy: PaperOperationPolicy | None = None,
+    operation_slot: str | None = None,
     simulate_crash_after_fill: bool = False,
 ) -> PaperOperationRun:
     return run_paper_operation(
@@ -185,6 +189,8 @@ def _run(
         audit_repository=audit,
         state_root=tmp_path / "operation-state",
         code_sha="a" * 40,
+        policy=policy or PaperOperationPolicy(paper_execution_enabled=True),
+        operation_slot=operation_slot,
         simulate_crash_after_fill=simulate_crash_after_fill,
     )
 
@@ -316,6 +322,7 @@ def test_missing_held_mark_blocks_buy(tmp_path: Path) -> None:
         context=_context(NOW, "SBER", "YDEX"),
         paper=paper,
         audit=audit,
+        operation_slot="EOD_MARK_COMPLETENESS_PROOF",
     )
     later = NOW + timedelta(minutes=1)
     degraded = _run(
@@ -408,6 +415,121 @@ def test_duplicate_operation_no_new_fill(tmp_path: Path) -> None:
     assert duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
     assert duplicate.safety.PAPER_ORDERS_FILLED == 0
     assert len(paper.events()) == count
+
+
+def test_same_session_different_wall_clock_is_already_processed(tmp_path: Path) -> None:
+    paper = InMemoryPaperLedgerRepository()
+    audit = InMemoryOperationAuditRepository()
+    first_at = datetime(2026, 9, 9, 15, 0, 1, tzinfo=UTC)
+    second_at = datetime(2026, 9, 9, 15, 3, 44, tzinfo=UTC)
+    first = _run(
+        tmp_path,
+        as_of=first_at,
+        proposals=(_proposal("SBER", "BUY", 0.10),),
+        context=_context(first_at, "SBER", "YDEX"),
+        paper=paper,
+        audit=audit,
+    )
+    event_count = len(paper.events())
+    duplicate = _run(
+        tmp_path,
+        as_of=second_at,
+        proposals=(_proposal("SBER", "BUY", 0.20),),
+        context=_context(second_at, "SBER", "YDEX"),
+        paper=paper,
+        audit=audit,
+    )
+
+    assert first.status == PaperOperationStatus.SUCCESS
+    assert first.operation_slot_id == "2026-09-09:EOD"
+    assert duplicate.operation_id == first.operation_id
+    assert duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
+    assert duplicate.safety.PAPER_ORDERS_FILLED == 0
+    assert duplicate.safety.PAPER_PORTFOLIO_MUTATIONS == 0
+    assert len(paper.events()) == event_count
+
+
+def test_same_date_different_operation_slot_is_distinct() -> None:
+    assert build_operation_id(
+        operation_as_of=NOW,
+        session="EOD",
+        model_id="fake-operation-agent-v1",
+        universe=_universe(),
+    ) != build_operation_id(
+        operation_as_of=NOW,
+        session="EOD_RETRY_1",
+        model_id="fake-operation-agent-v1",
+        universe=_universe(),
+    )
+
+
+def test_next_moex_date_is_distinct_operation() -> None:
+    assert build_operation_id(
+        operation_as_of=NOW,
+        session="EOD",
+        model_id="fake-operation-agent-v1",
+        universe=_universe(),
+    ) != build_operation_id(
+        operation_as_of=NOW + timedelta(days=1),
+        session="EOD",
+        model_id="fake-operation-agent-v1",
+        universe=_universe(),
+    )
+
+
+def test_paper_execution_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PAPER_EXECUTION_ENABLED", raising=False)
+
+    assert PaperOperationPolicy().paper_execution_enabled is False
+    assert _policy_from_env().paper_execution_enabled is False
+
+
+def test_execute_flag_without_env_gate_is_blocked(tmp_path: Path) -> None:
+    paper = InMemoryPaperLedgerRepository()
+    run = _run(
+        tmp_path,
+        as_of=NOW,
+        proposals=(_proposal("SBER", "BUY", 0.10),),
+        context=_context(NOW, "SBER", "YDEX"),
+        paper=paper,
+        audit=InMemoryOperationAuditRepository(),
+        policy=PaperOperationPolicy(),
+    )
+
+    assert run.status == PaperOperationStatus.BLOCKED
+    assert run.status_code == "PAPER_EXECUTION_DISABLED"
+    assert run.safety.PAPER_ORDERS_FILLED == 0
+    assert paper.events() == []
+
+
+def test_execute_requires_both_explicit_gates(tmp_path: Path) -> None:
+    dry_paper = InMemoryPaperLedgerRepository()
+    enabled = PaperOperationPolicy(paper_execution_enabled=True)
+    dry = _run(
+        tmp_path / "dry",
+        as_of=NOW,
+        proposals=(_proposal("SBER", "BUY", 0.10),),
+        context=_context(NOW, "SBER", "YDEX"),
+        paper=dry_paper,
+        audit=InMemoryOperationAuditRepository(),
+        mode=PaperOperationMode.DRY_RUN,
+        policy=enabled,
+    )
+    execute_paper = InMemoryPaperLedgerRepository()
+    executed = _run(
+        tmp_path / "execute",
+        as_of=NOW,
+        proposals=(_proposal("SBER", "BUY", 0.10),),
+        context=_context(NOW, "SBER", "YDEX"),
+        paper=execute_paper,
+        audit=InMemoryOperationAuditRepository(),
+        policy=enabled,
+    )
+
+    assert dry.paper_execution_status == "SKIPPED_DRY_RUN"
+    assert dry_paper.events() == []
+    assert executed.status == PaperOperationStatus.SUCCESS
+    assert executed.safety.PAPER_ORDERS_FILLED == 1
 
 
 def test_agent_model_unavailable_is_blocked_without_traceback(tmp_path: Path) -> None:
@@ -538,9 +660,9 @@ def test_fill_committed_before_audit_recovers_without_duplicate(tmp_path: Path) 
 
     recovered = _run(
         tmp_path,
-        as_of=NOW,
+        as_of=NOW + timedelta(minutes=3),
         proposals=(),
-        context=_context(NOW, "SBER", "YDEX"),
+        context=_context(NOW + timedelta(minutes=3), "SBER", "YDEX"),
         paper=paper,
         audit=audit,
         model=model,
@@ -676,6 +798,12 @@ def test_deterministic_operation_artifact_covers_acceptance(tmp_path: Path) -> N
     assert first["STALE_PLAN_RESULT"] == "STALE_RISK_PLAN"
     assert first["DUPLICATE_OPERATION_RESULT"] == "ALREADY_PROCESSED"
     assert first["CRASH_RECOVERY_RESULT"] == "RECOVERED_AFTER_COMMITTED_FILL"
+    assert first["SESSION_IDEMPOTENCY"] == "PASS"
+    assert first["SAME_SESSION_DIFFERENT_TIMESTAMP"] == "ALREADY_PROCESSED"
+    assert first["DIFFERENT_SESSION_DISTINCT"] == "YES"
+    assert first["NEXT_TRADING_DAY_DISTINCT"] == "YES"
+    assert first["PAPER_EXECUTION_DEFAULT"] is False
+    assert first["PAPER_EXECUTION_DOUBLE_OPT_IN"] == "PASS"
     assert first["REAL_BROKER_MUTATIONS"] == 0
     assert first["REAL_ORDERS_SENT"] == 0
     assert first["ARTIFACT_SHA"] == second["ARTIFACT_SHA"]
