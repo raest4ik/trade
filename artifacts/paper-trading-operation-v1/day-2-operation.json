@@ -32,22 +32,23 @@
       "ticker": "YDEX"
     }
   ],
-  "agent_run_id": "paper-operation-4be0dfb089b27c7e274c3141",
+  "agent_run_id": "paper-operation-23bfc5cafbb340a6315cd078",
   "agent_tool_calls": [],
-  "code_sha": "47cb573fbae66905b719c67b57f10062b5b6fe93",
+  "code_sha": "861feb145ee1b19e9bed5aee039a975d232fc771",
   "day_transition_applied": true,
   "event_snapshot_sha": "9cfa865ef73ce84763233bbff0c1a7cb29ab7599207b287f2f1123230dfbadd7",
   "market_snapshot_sha": "994b5b3fc2e50a2b6b4e5a061fd5e6578a87846e17b35490f0ceea2fc138af1b",
   "mode": "PAPER_EXECUTE",
   "operation_as_of": "2026-09-10T12:00:00Z",
-  "operation_id": "paper-operation-4be0dfb089b27c7e274c3141",
+  "operation_contract_sha": "e214b42a9888458096d23b87a97a0d346536995ad958f2b10fc9835550909071",
+  "operation_id": "paper-operation-23bfc5cafbb340a6315cd078",
   "operation_slot_id": "2026-09-10:EOD",
   "paper_execution_status": "SUCCESS",
   "paper_order_ids": [
-    "paper-order-b3718e402704748f3616"
+    "paper-order-23fb0995f81c4576f70e"
   ],
   "paper_trade_ids": [
-    "paper-trade-1c72302355af3689f634"
+    "paper-trade-09b2a465f1679583a48c"
   ],
   "policy_version": "paper-trading-operation-policy-v1",
   "portfolio_after": {
@@ -129,13 +130,13 @@
   },
   "risk_decisions": [
     {
-      "agent_run_id": "paper-operation-4be0dfb089b27c7e274c3141",
+      "agent_run_id": "paper-operation-23bfc5cafbb340a6315cd078",
       "agent_target_weight": 0.1,
       "approved_target_weight": 0.09903435,
       "decision_as_of": "2026-09-10T12:00:00Z",
-      "decision_id": "risk-decision-47ef87b9d063841fcd7b",
+      "decision_id": "risk-decision-beff83434ecd57d3b543",
       "proposal_action": "HOLD",
-      "proposal_id": "proposal-1012573b3d31ed5a4111",
+      "proposal_id": "proposal-b4a2f296a38a367b85f9",
       "reason_codes": [
         "OK"
       ],
@@ -143,13 +144,13 @@
       "ticker": "SBER"
     },
     {
-      "agent_run_id": "paper-operation-4be0dfb089b27c7e274c3141",
+      "agent_run_id": "paper-operation-23bfc5cafbb340a6315cd078",
       "agent_target_weight": 0.2,
       "approved_target_weight": 0.09958454,
       "decision_as_of": "2026-09-10T12:00:00Z",
-      "decision_id": "risk-decision-b3718e402704748f3616",
+      "decision_id": "risk-decision-23fb0995f81c4576f70e",
       "proposal_action": "BUY",
-      "proposal_id": "proposal-c44edabbb15e66d1fc00",
+      "proposal_id": "proposal-b4ecee531beaac4152a2",
       "reason_codes": [
         "POSITION_LIMIT",
         "SINGLE_ORDER_LIMIT"
@@ -158,7 +159,7 @@
       "ticker": "YDEX"
     }
   ],
-  "risk_plan_id": "risk-plan-e6cffabf1b6b35b0dbca",
+  "risk_plan_id": "risk-plan-2de0552630b19d6cb670",
   "safety": {
     "BACKTEST_PERFORMED": false,
     "LIVE_OUTCOMES_READ": 0,
@@ -264,5 +265,6 @@
       "supported": true,
       "ticker": "YDEX"
     }
-  ]
+  ],
+  "universe_sha": "a3a051a6ebec6de6af536dabb57cf8a598c8205d1edee23d6d808cf664299538"
 }

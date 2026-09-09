@@ -1,7 +1,7 @@
 [
   {
     "as_of": "2026-09-09T12:00:00+00:00",
-    "operation_id": "paper-operation-418cda15170e8bb94036dd12",
+    "operation_id": "paper-operation-c9b3cb5d1666daeb95747d59",
     "paper_fills": 1,
     "portfolio_equity_after": 999653.1534,
     "proposal_count": 1,
@@ -10,7 +10,7 @@
   },
   {
     "as_of": "2026-09-10T12:00:00+00:00",
-    "operation_id": "paper-operation-4be0dfb089b27c7e274c3141",
+    "operation_id": "paper-operation-23bfc5cafbb340a6315cd078",
     "paper_fills": 1,
     "portfolio_equity_after": 999322.507,
     "proposal_count": 2,
@@ -19,7 +19,7 @@
   },
   {
     "as_of": "2026-09-11T12:00:00+00:00",
-    "operation_id": "paper-operation-1638d93b29f1319e3f31e08c",
+    "operation_id": "paper-operation-6573411c9910e6e40c48b830",
     "paper_fills": 1,
     "portfolio_equity_after": 999151.1785,
     "proposal_count": 1,
@@ -28,7 +28,7 @@
   },
   {
     "as_of": "2026-09-11T12:01:00+00:00",
-    "operation_id": "paper-operation-4c292af034d5c5ce431cd6d3",
+    "operation_id": "paper-operation-6a5bc988f5cd698dd9066438",
     "paper_fills": 0,
     "portfolio_equity_after": 999151.1785,
     "proposal_count": 1,

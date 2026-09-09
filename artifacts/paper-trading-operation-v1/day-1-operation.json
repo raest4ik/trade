@@ -17,22 +17,23 @@
       "ticker": "SBER"
     }
   ],
-  "agent_run_id": "paper-operation-418cda15170e8bb94036dd12",
+  "agent_run_id": "paper-operation-c9b3cb5d1666daeb95747d59",
   "agent_tool_calls": [],
-  "code_sha": "47cb573fbae66905b719c67b57f10062b5b6fe93",
+  "code_sha": "861feb145ee1b19e9bed5aee039a975d232fc771",
   "day_transition_applied": false,
   "event_snapshot_sha": "2445b585cd803d183a270d688d4bef42948debcc8a0eef0ca7d991c41be5513f",
   "market_snapshot_sha": "3535bb3e7611cf16d0288bdb967934a638d690da03d38634955434eadab41200",
   "mode": "PAPER_EXECUTE",
   "operation_as_of": "2026-09-09T12:00:00Z",
-  "operation_id": "paper-operation-418cda15170e8bb94036dd12",
+  "operation_contract_sha": "e214b42a9888458096d23b87a97a0d346536995ad958f2b10fc9835550909071",
+  "operation_id": "paper-operation-c9b3cb5d1666daeb95747d59",
   "operation_slot_id": "2026-09-09:EOD",
   "paper_execution_status": "SUCCESS",
   "paper_order_ids": [
-    "paper-order-73f507592c258d00f046"
+    "paper-order-0da93bb04f729ffc8867"
   ],
   "paper_trade_ids": [
-    "paper-trade-7ec793227fcea0b4c2f3"
+    "paper-trade-80428cc901de9ac97238"
   ],
   "policy_version": "paper-trading-operation-policy-v1",
   "portfolio_after": {
@@ -93,13 +94,13 @@
   },
   "risk_decisions": [
     {
-      "agent_run_id": "paper-operation-418cda15170e8bb94036dd12",
+      "agent_run_id": "paper-operation-c9b3cb5d1666daeb95747d59",
       "agent_target_weight": 0.1,
       "approved_target_weight": 0.099,
       "decision_as_of": "2026-09-09T12:00:00Z",
-      "decision_id": "risk-decision-73f507592c258d00f046",
+      "decision_id": "risk-decision-0da93bb04f729ffc8867",
       "proposal_action": "BUY",
-      "proposal_id": "proposal-2fb373cf96cffa9c669d",
+      "proposal_id": "proposal-2944f809f1ca64e9176c",
       "reason_codes": [
         "OK"
       ],
@@ -107,7 +108,7 @@
       "ticker": "SBER"
     }
   ],
-  "risk_plan_id": "risk-plan-1cfc7b697f1f34a12168",
+  "risk_plan_id": "risk-plan-1df87cdfe2f8e00376a4",
   "safety": {
     "BACKTEST_PERFORMED": false,
     "LIVE_OUTCOMES_READ": 0,
@@ -213,5 +214,6 @@
       "supported": true,
       "ticker": "YDEX"
     }
-  ]
+  ],
+  "universe_sha": "a3a051a6ebec6de6af536dabb57cf8a598c8205d1edee23d6d808cf664299538"
 }
