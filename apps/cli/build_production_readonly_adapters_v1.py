@@ -13,7 +13,7 @@ def run(args: argparse.Namespace) -> int:
         output_root=Path(args.output_root),
         work_root=Path(args.work_root),
         base_main_sha=args.base_main_sha,
-        head_sha=git_sha(),
+        head_sha=args.head_sha or git_sha(),
     )
     print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
     return 0
@@ -22,6 +22,7 @@ def run(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=ARTIFACT_VERSION)
     parser.add_argument("--base-main-sha", required=True)
+    parser.add_argument("--head-sha", default=None)
     parser.add_argument("--output-root", default=f"artifacts/{ARTIFACT_VERSION}")
     parser.add_argument("--work-root", default=f".tmp/{ARTIFACT_VERSION}-work")
     return parser

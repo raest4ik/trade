@@ -1,0 +1,12 @@
+{
+  "allowed_tools": [
+    "get_market_context",
+    "get_portfolio_snapshot",
+    "get_recent_events",
+    "get_research_status"
+  ],
+  "model": "qwen-fixture:1b",
+  "request_sha": "caee22654d7997afbdb60632607ac480234c1f2589446c772d53c3d63fa18489",
+  "stream": false,
+  "think": false
+}

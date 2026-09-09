@@ -85,8 +85,11 @@ Rebuild the committed mocked artifact without live network access:
 
 ```powershell
 uv run python -m apps.cli.build_production_readonly_adapters_v1 `
-  --base-main-sha <sha>
+  --base-main-sha <base-sha> `
+  --head-sha <implementation-sha>
 ```
 
-The builder refuses to overwrite a non-empty artifact directory. Rebuilding into two
-empty directories with the same base and code SHAs produces byte-identical files.
+The builder refuses to overwrite a non-empty artifact directory. The explicit
+implementation SHA avoids substituting the later evidence-commit SHA. Rebuilding into
+two empty directories with the same base and implementation SHAs produces
+byte-identical files.

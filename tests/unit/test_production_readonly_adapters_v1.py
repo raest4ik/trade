@@ -53,7 +53,10 @@ HttpHandler = Callable[[httpx.Request], httpx.Response]
 def test_market_smoke_dispatch_does_not_require_state_arguments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(paper_operation_cli, "_market_smoke", lambda tickers: len(tickers) - 2)
+    def smoke_result(tickers: list[str]) -> int:
+        return len(tickers) - 2
+
+    monkeypatch.setattr(paper_operation_cli, "_market_smoke", smoke_result)
     args = paper_operation_cli.build_parser().parse_args(["market-smoke", "SBER", "YDEX"])
 
     assert paper_operation_cli.run(args) == 0

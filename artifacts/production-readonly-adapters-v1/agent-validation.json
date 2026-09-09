@@ -1,0 +1,6 @@
+{
+  "AGENT_DECISION_STATUS": "VALID",
+  "agent_model_id": "ollama:qwen-fixture:1b",
+  "proposal_count": 1,
+  "reasoning_persisted": false
+}

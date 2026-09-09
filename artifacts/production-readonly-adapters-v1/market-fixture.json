@@ -1,0 +1,74 @@
+{
+  "SBER": {
+    "marketdata": {
+      "columns": [
+        "SECID",
+        "BOARDID",
+        "LAST",
+        "BID",
+        "OFFER",
+        "SYSTIME"
+      ],
+      "data": [
+        [
+          "SBER",
+          "TQBR",
+          100.0,
+          99.9,
+          100.1,
+          "2026-09-09 15:00:00"
+        ]
+      ]
+    },
+    "securities": {
+      "columns": [
+        "SECID",
+        "BOARDID",
+        "LOTSIZE"
+      ],
+      "data": [
+        [
+          "SBER",
+          "TQBR",
+          10
+        ]
+      ]
+    }
+  },
+  "YDEX": {
+    "marketdata": {
+      "columns": [
+        "SECID",
+        "BOARDID",
+        "LAST",
+        "BID",
+        "OFFER",
+        "SYSTIME"
+      ],
+      "data": [
+        [
+          "YDEX",
+          "TQBR",
+          110.0,
+          109.9,
+          110.1,
+          "2026-09-09 15:00:00"
+        ]
+      ]
+    },
+    "securities": {
+      "columns": [
+        "SECID",
+        "BOARDID",
+        "LOTSIZE"
+      ],
+      "data": [
+        [
+          "YDEX",
+          "TQBR",
+          1
+        ]
+      ]
+    }
+  }
+}

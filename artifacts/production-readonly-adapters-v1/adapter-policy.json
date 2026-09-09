@@ -1,0 +1,8 @@
+{
+  "effective_max_age_seconds": 300,
+  "market_max_age_seconds": 300,
+  "paper_execution_default": false,
+  "policy_version": "production-readonly-adapters-policy-v1",
+  "real_execution_ready": false,
+  "risk_max_age_seconds": 1800.0
+}
