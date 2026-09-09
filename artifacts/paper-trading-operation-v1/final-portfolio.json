@@ -1,0 +1,35 @@
+{
+  "as_of": "2026-09-11T12:00:00Z",
+  "cash": 849601.1785,
+  "daily_pnl": -171.3285,
+  "drawdown": 0.00084882,
+  "equity": 999151.1785,
+  "peak_equity": 1000000.0,
+  "portfolio_id": "paper-portfolio-v1",
+  "positions": [
+    {
+      "average_cost": 100.3504,
+      "last_price": 100.0,
+      "mark_as_of": "2026-09-11T12:00:00Z",
+      "market_value": 50000.0,
+      "quantity": 500,
+      "ticker": "SBER",
+      "unrealized_pnl": -175.2,
+      "weight": 0.05004248
+    },
+    {
+      "average_cost": 110.3654,
+      "last_price": 110.0,
+      "mark_as_of": "2026-09-11T12:00:00Z",
+      "market_value": 99550.0,
+      "quantity": 905,
+      "ticker": "YDEX",
+      "unrealized_pnl": -330.687,
+      "weight": 0.09963457
+    }
+  ],
+  "realized_pnl": -343.0245,
+  "start_of_day_equity": 999322.507,
+  "turnover_today": 0.04888622,
+  "unrealized_pnl": -505.887
+}

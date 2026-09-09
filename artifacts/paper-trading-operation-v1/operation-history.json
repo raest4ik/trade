@@ -1,0 +1,38 @@
+[
+  {
+    "as_of": "2026-09-09T12:00:00+00:00",
+    "operation_id": "paper-operation-eca65fc0c3cf5a3184581a34",
+    "paper_fills": 1,
+    "portfolio_equity_after": 999653.1534,
+    "proposal_count": 1,
+    "risk_approved_count": 1,
+    "status": "SUCCESS"
+  },
+  {
+    "as_of": "2026-09-10T12:00:00+00:00",
+    "operation_id": "paper-operation-bef9973665cde9fe8f7a5f46",
+    "paper_fills": 1,
+    "portfolio_equity_after": 999322.507,
+    "proposal_count": 2,
+    "risk_approved_count": 1,
+    "status": "SUCCESS"
+  },
+  {
+    "as_of": "2026-09-11T12:00:00+00:00",
+    "operation_id": "paper-operation-18f2640993fb27c4d4208e50",
+    "paper_fills": 1,
+    "portfolio_equity_after": 999151.1785,
+    "proposal_count": 1,
+    "risk_approved_count": 1,
+    "status": "SUCCESS"
+  },
+  {
+    "as_of": "2026-09-11T12:01:00+00:00",
+    "operation_id": "paper-operation-4df70d2c3a016364bd2cd0d5",
+    "paper_fills": 0,
+    "portfolio_equity_after": 999151.1785,
+    "proposal_count": 1,
+    "risk_approved_count": 0,
+    "status": "DEGRADED"
+  }
+]

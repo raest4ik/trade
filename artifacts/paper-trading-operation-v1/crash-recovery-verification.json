@@ -1,0 +1,8 @@
+{
+  "RECOVERED_WITHOUT_DUPLICATE_FILL": true,
+  "new_fills_during_recovery": 0,
+  "paper_ledger_unchanged_during_recovery": true,
+  "simulated_crash_observed": true,
+  "status": "SUCCESS",
+  "status_code": "RECOVERED_AFTER_COMMITTED_FILL"
+}

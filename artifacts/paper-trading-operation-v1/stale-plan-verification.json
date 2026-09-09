@@ -1,0 +1,6 @@
+{
+  "STALE_PLAN_NO_FILL": true,
+  "execution_status": "STALE_RISK_PLAN",
+  "paper_orders_filled": 0,
+  "status_code": "PORTFOLIO_STATE_MISMATCH"
+}
