@@ -1,0 +1,6 @@
+{
+  "REPLAY_VERIFIED": true,
+  "expected_sha": "ec1ddce44dfae624c51c84dcfa2dd24e8d269db807fbceaa8c0e06a8a5716f36",
+  "paper_ledger_event_count": 6,
+  "replayed_sha": "ec1ddce44dfae624c51c84dcfa2dd24e8d269db807fbceaa8c0e06a8a5716f36"
+}

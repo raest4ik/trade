@@ -1,0 +1,17 @@
+{
+  "lock_stale_after": "PT2H",
+  "max_agent_steps": 6,
+  "max_operation_universe": 10,
+  "max_tool_calls": 12,
+  "operation_schedule_enabled": false,
+  "operation_session": "EOD",
+  "operation_timezone": "Europe/Moscow",
+  "paper_auto_execution_enabled": false,
+  "paper_execution_enabled": true,
+  "policy_version": "paper-trading-operation-policy-v1",
+  "real_execution_enabled": false,
+  "require_operational_burnin_pass": true,
+  "require_portfolio_replay_pass": true,
+  "require_research_ready": true,
+  "require_source_failure_isolation": true
+}
