@@ -1,0 +1,185 @@
+{
+  "agent_run_id": "paper-multi-run-2",
+  "agent_run_sha": "9a8f7072585f1ea2acb1fb29e7f072e4ce06b10d1505787e070c383c1c3bdadb",
+  "decision_as_of": "2026-09-08T12:01:00Z",
+  "decisions": [
+    {
+      "agent_run_id": "paper-multi-run-2",
+      "agent_target_weight": 0.15,
+      "approved_target_weight": 0.1490517,
+      "decision_as_of": "2026-09-08T12:01:00Z",
+      "decision_id": "risk-decision-e3e5769116ee98c7706e",
+      "proposal_action": "BUY",
+      "proposal_id": "proposal-69ab13918b1624771eeb",
+      "reason_codes": [
+        "OK"
+      ],
+      "risk_decision": "APPROVE",
+      "ticker": "SBER"
+    },
+    {
+      "agent_run_id": "paper-multi-run-2",
+      "agent_target_weight": 0.2,
+      "approved_target_weight": 0.09959504,
+      "decision_as_of": "2026-09-08T12:01:00Z",
+      "decision_id": "risk-decision-7060899220ed3992ff50",
+      "proposal_action": "BUY",
+      "proposal_id": "proposal-99413438087a63c3ff10",
+      "reason_codes": [
+        "POSITION_LIMIT",
+        "TURNOVER_LIMIT",
+        "SINGLE_ORDER_LIMIT"
+      ],
+      "risk_decision": "REDUCE",
+      "ticker": "YDEX"
+    },
+    {
+      "agent_run_id": "paper-multi-run-2",
+      "agent_target_weight": 0.05,
+      "approved_target_weight": 0.0,
+      "decision_as_of": "2026-09-08T12:01:00Z",
+      "decision_id": "risk-decision-d4b32931efd4c50d9cda",
+      "proposal_action": "HOLD",
+      "proposal_id": "proposal-3d7608ae6240ac0a2feb",
+      "reason_codes": [
+        "OK"
+      ],
+      "risk_decision": "NO_ACTION",
+      "ticker": "GAZP"
+    },
+    {
+      "agent_run_id": "paper-multi-run-2",
+      "agent_target_weight": 0.1,
+      "approved_target_weight": 0.0,
+      "decision_as_of": "2026-09-08T12:01:00Z",
+      "decision_id": "risk-decision-dd0cae2993838e5d42c3",
+      "proposal_action": "BUY",
+      "proposal_id": "proposal-386d16ba9bb7b2644742",
+      "reason_codes": [
+        "STALE_DATA"
+      ],
+      "risk_decision": "REJECT",
+      "ticker": "LKOH"
+    }
+  ],
+  "initial_portfolio": {
+    "as_of": "2026-09-08T12:01:00Z",
+    "cash": 900653.1534,
+    "daily_pnl": -346.8466,
+    "drawdown": 0.00034685,
+    "equity": 999653.1534,
+    "peak_equity": 1000000.0,
+    "portfolio_id": "paper-portfolio-v1",
+    "positions": [
+      {
+        "average_cost": 100.3504,
+        "last_price": 100.0,
+        "mark_as_of": "2026-09-08T12:01:00Z",
+        "market_value": 99000.0,
+        "quantity": 990,
+        "ticker": "SBER",
+        "unrealized_pnl": -346.896,
+        "weight": 0.09903435
+      }
+    ],
+    "realized_pnl": 0.0,
+    "start_of_day_equity": 1000000.0,
+    "turnover_today": 0.0992972,
+    "unrealized_pnl": -346.896
+  },
+  "ledger_event_count": 2,
+  "market_snapshot": [
+    {
+      "as_of": "2026-09-08T12:01:00Z",
+      "ask": 100.2,
+      "bid": 99.8,
+      "last_price": 100.0,
+      "lot_size": 10,
+      "supported": true,
+      "ticker": "SBER"
+    },
+    {
+      "as_of": "2026-09-08T12:01:00Z",
+      "ask": 110.7,
+      "bid": 110.3,
+      "last_price": 110.5,
+      "lot_size": 1,
+      "supported": true,
+      "ticker": "YDEX"
+    },
+    {
+      "as_of": "2026-09-08T12:01:00Z",
+      "ask": 103.7,
+      "bid": 103.3,
+      "last_price": 103.5,
+      "lot_size": 10,
+      "supported": true,
+      "ticker": "GAZP"
+    },
+    {
+      "as_of": "2026-09-08T10:01:00Z",
+      "ask": 7101.0,
+      "bid": 7099.0,
+      "last_price": 7100.0,
+      "lot_size": 1,
+      "supported": true,
+      "ticker": "LKOH"
+    }
+  ],
+  "market_snapshot_sha": "acbb9182a9dd1c8f221cd1fb0657c23bb5ef2033d20a2e77c01285e5b186b562",
+  "max_risk_plan_age": "PT5M",
+  "max_stale_market_age": "PT30M",
+  "paper_orders": [
+    {
+      "commission": 25.0751,
+      "commission_bps": 5,
+      "created_at": "2026-09-08T12:01:00Z",
+      "executed_at": null,
+      "execution_price": 100.3002,
+      "gross_notional": 50150.1,
+      "idempotency_key": "paper-multi-run-2:proposal-69ab13918b1624771eeb",
+      "lot_size": 10,
+      "net_cash_effect": -50175.1751,
+      "paper_order_id": "paper-order-e3e5769116ee98c7706e",
+      "planned_price": 100.2,
+      "price_source": "ASK_PLUS_SLIPPAGE",
+      "proposal_id": "proposal-69ab13918b1624771eeb",
+      "quantity": 500,
+      "run_id": "paper-multi-run-2",
+      "side": "BUY",
+      "slippage_bps": 10,
+      "status": "PLANNED",
+      "ticker": "SBER"
+    },
+    {
+      "commission": 49.9202,
+      "commission_bps": 5,
+      "created_at": "2026-09-08T12:01:00Z",
+      "executed_at": null,
+      "execution_price": 110.8107,
+      "gross_notional": 99840.4407,
+      "idempotency_key": "paper-multi-run-2:proposal-99413438087a63c3ff10",
+      "lot_size": 1,
+      "net_cash_effect": -99890.3609,
+      "paper_order_id": "paper-order-7060899220ed3992ff50",
+      "planned_price": 110.7,
+      "price_source": "ASK_PLUS_SLIPPAGE",
+      "proposal_id": "proposal-99413438087a63c3ff10",
+      "quantity": 901,
+      "run_id": "paper-multi-run-2",
+      "side": "BUY",
+      "slippage_bps": 10,
+      "status": "PLANNED",
+      "ticker": "YDEX"
+    }
+  ],
+  "plan_id": "risk-plan-efe4cab5a257616fe7fe",
+  "policy_version": "paper-risk-policy-v1",
+  "portfolio_as_of": "2026-09-08T12:01:00Z",
+  "portfolio_id": "paper-portfolio-v1",
+  "portfolio_mark_status": "COMPLETE",
+  "portfolio_state_sha": "174ceb37afb642feb45db8830f02db478ad5bef1bdfdae90544f4b5030c3402e",
+  "position_mark_statuses": {
+    "SBER": "FRESH"
+  }
+}

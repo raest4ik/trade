@@ -1,0 +1,7 @@
+{
+  "MULTI_RUN_PORTFOLIO_STATE": "PASS",
+  "PORTFOLIO_RESET_BETWEEN_RUNS": false,
+  "run_2_bought_sber_delta_only": true,
+  "run_2_started_from_run_1": true,
+  "run_3_saw_existing_sber": true
+}
