@@ -15,6 +15,8 @@ from src.production_readonly_adapters_v1.domain import (
     FreshMarketSnapshot,
     MarketQuoteAudit,
     MarketQuoteStatus,
+    RawMarketQuote,
+    RawMarketSnapshot,
 )
 
 MAX_RESPONSE_BYTES = 1_000_000
@@ -71,13 +73,19 @@ class MoexIssFreshMarketAdapter:
         universe: Sequence[dict[str, Any]],
         operation_as_of: datetime,
     ) -> FreshMarketSnapshot:
-        if operation_as_of.tzinfo is None or operation_as_of.utcoffset() is None:
-            raise ValueError("operation_as_of must be timezone-aware")
+        raw = self.fetch_raw(universe=universe)
+        return self.validate_snapshot(raw, decision_as_of=operation_as_of)
+
+    def fetch_raw(
+        self,
+        *,
+        universe: Sequence[dict[str, Any]],
+    ) -> RawMarketSnapshot:
         tickers = [str(row.get("ticker", "")).strip().upper() for row in universe]
         if not all(tickers) or len(set(tickers)) != len(tickers):
             raise MarketResponseInvalidError("MISSING_OR_DUPLICATE_TICKER")
-        started = self._clock()
-        quote_rows: list[dict[str, Any]] = []
+        started = _aware_utc(self._clock(), "market_fetch_started_at")
+        quote_rows: list[RawMarketQuote] = []
         audits: list[MarketQuoteAudit] = []
         payloads: list[dict[str, Any]] = []
         for instrument in universe:
@@ -89,24 +97,38 @@ class MoexIssFreshMarketAdapter:
             if board != "TQBR":
                 audits.append(_invalid(ticker, board, "WRONG_BOARD"))
                 continue
+            fetched_at: datetime | None = None
             try:
                 payload = self._request(ticker, board)
-                fetched_at = self._clock()
+                fetched_at = _aware_utc(self._clock(), "fetched_at")
                 payloads.append({"ticker": ticker, "payload": payload})
-                quote, audit = _parse_quote(
+                quote = _parse_raw_quote(
                     payload,
                     expected_ticker=ticker,
                     expected_board=board,
-                    operation_as_of=operation_as_of.astimezone(UTC),
-                    max_age_seconds=self._max_age_seconds,
                     fetched_at=fetched_at,
                 )
                 quote_rows.append(quote)
-                audits.append(audit)
             except MarketTimestampUnavailableError as exc:
-                audits.append(_invalid(ticker, board, str(exc), status=MarketQuoteStatus.MISSING))
+                audits.append(
+                    _invalid(
+                        ticker,
+                        board,
+                        str(exc),
+                        status=MarketQuoteStatus.MISSING,
+                        fetched_at=fetched_at,
+                    )
+                )
             except MarketQuoteMissingError as exc:
-                audits.append(_invalid(ticker, board, str(exc), status=MarketQuoteStatus.MISSING))
+                audits.append(
+                    _invalid(
+                        ticker,
+                        board,
+                        str(exc),
+                        status=MarketQuoteStatus.MISSING,
+                        fetched_at=fetched_at,
+                    )
+                )
             except (
                 KeyError,
                 TypeError,
@@ -114,16 +136,79 @@ class MoexIssFreshMarketAdapter:
                 InvalidOperation,
                 MarketResponseInvalidError,
             ) as exc:
-                audits.append(_invalid(ticker, board, str(exc)))
-        completed = self._clock()
-        return FreshMarketSnapshot(
+                audits.append(_invalid(ticker, board, str(exc), fetched_at=fetched_at))
+        completed = _aware_utc(self._clock(), "market_fetch_completed_at")
+        if completed < started:
+            raise FreshMarketAdapterError("LOCAL_CLOCK_MOVED_BACKWARD_DURING_MARKET_FETCH")
+        return RawMarketSnapshot(
             market_fetch_started_at=started,
             market_fetch_completed_at=completed,
-            operation_as_of=operation_as_of,
-            effective_max_age_seconds=self._max_age_seconds,
-            quotes=quote_rows,
-            quote_audit=audits,
+            quotes=tuple(quote_rows),
+            quote_audit=tuple(audits),
             source_payload_sha=sha256_payload(payloads),
+        )
+
+    def validate_snapshot(
+        self,
+        snapshot: RawMarketSnapshot,
+        *,
+        decision_as_of: datetime,
+    ) -> FreshMarketSnapshot:
+        cutoff = _aware_utc(decision_as_of, "decision_as_of")
+        quotes: list[dict[str, Any]] = []
+        audits = list(snapshot.quote_audit)
+        source_times: list[datetime] = []
+        for raw_quote in snapshot.quotes:
+            market_as_of = raw_quote.market_data_as_of
+            source_times.append(market_as_of)
+            age = (cutoff - market_as_of).total_seconds()
+            status = (
+                MarketQuoteStatus.FUTURE
+                if age < 0
+                else MarketQuoteStatus.STALE
+                if age > self._max_age_seconds
+                else MarketQuoteStatus.FRESH
+            )
+            book_reason = raw_quote.book_quality_reason
+            quote = raw_quote.model_dump(mode="json", exclude={"book_quality_reason"})
+            quote.update({"status": status.value, "age_seconds": age})
+            if book_reason is None:
+                quotes.append(quote)
+            audits.append(
+                MarketQuoteAudit(
+                    ticker=raw_quote.ticker,
+                    board=raw_quote.board,
+                    market_data_as_of=market_as_of,
+                    fetched_at=raw_quote.fetched_at,
+                    age_seconds=age,
+                    status=MarketQuoteStatus.INVALID if book_reason else status,
+                    timestamp_status=status,
+                    book_status="INVALID" if book_reason else "VALID",
+                    book_reason=None if book_reason is None else str(book_reason),
+                    payload_sha=raw_quote.source_payload_sha,
+                    reason=(
+                        str(book_reason)
+                        if book_reason is not None
+                        else "MARKET_SOURCE_CLOCK_SKEW"
+                        if status == MarketQuoteStatus.FUTURE
+                        else None
+                    ),
+                )
+            )
+        max_source_time = max(source_times, default=None)
+        clock_delta = (
+            None if max_source_time is None else (max_source_time - cutoff).total_seconds()
+        )
+        return FreshMarketSnapshot(
+            market_fetch_started_at=snapshot.market_fetch_started_at,
+            market_fetch_completed_at=snapshot.market_fetch_completed_at,
+            operation_as_of=cutoff,
+            max_market_source_time=max_source_time,
+            market_source_clock_delta_seconds=clock_delta,
+            effective_max_age_seconds=self._max_age_seconds,
+            quotes=quotes,
+            quote_audit=audits,
+            source_payload_sha=snapshot.source_payload_sha,
         )
 
     def _request(self, ticker: str, board: str) -> dict[str, Any]:
@@ -175,15 +260,13 @@ class MoexIssFreshMarketAdapter:
             return client.get(url, params=params)
 
 
-def _parse_quote(
+def _parse_raw_quote(
     payload: dict[str, Any],
     *,
     expected_ticker: str,
     expected_board: str,
-    operation_as_of: datetime,
-    max_age_seconds: float,
     fetched_at: datetime,
-) -> tuple[dict[str, Any], MarketQuoteAudit]:
+) -> RawMarketQuote:
     security = _one_row(payload, "securities")
     market = _one_row(payload, "marketdata")
     ticker = _required_string(market.get("SECID"))
@@ -196,42 +279,26 @@ def _parse_quote(
     last = _positive_decimal(market.get("LAST"), "INVALID_LAST_PRICE")
     bid = _optional_positive_decimal(market.get("BID"), "INVALID_BID")
     ask = _optional_positive_decimal(market.get("OFFER"), "INVALID_ASK")
-    if bid is not None and ask is not None and bid > ask:
-        raise MarketResponseInvalidError("BID_ABOVE_ASK")
+    book_quality_reason = (
+        "BID_ABOVE_ASK" if bid is not None and ask is not None and bid > ask else None
+    )
     source_time = market.get("SYSTIME")
     if not isinstance(source_time, str) or not source_time.strip():
         raise MarketTimestampUnavailableError("MARKET_TIMESTAMP_UNAVAILABLE")
     market_as_of = _source_timestamp(source_time)
-    age = (operation_as_of - market_as_of).total_seconds()
-    status = (
-        MarketQuoteStatus.FUTURE
-        if age < 0
-        else MarketQuoteStatus.STALE
-        if age > max_age_seconds
-        else MarketQuoteStatus.FRESH
-    )
     payload_sha = sha256_payload({"securities": security, "marketdata": market})
-    quote = {
-        "ticker": ticker,
-        "board": board,
-        "last_price": float(last),
-        "bid": None if bid is None else float(bid),
-        "ask": None if ask is None else float(ask),
-        "lot_size": lot_size,
-        "market_data_as_of": market_as_of.isoformat(),
-        "source": MARKET_SOURCE,
-        "fetched_at": fetched_at.isoformat(),
-        "source_payload_sha": payload_sha,
-        "status": status.value,
-        "age_seconds": age,
-    }
-    return quote, MarketQuoteAudit(
+    return RawMarketQuote(
         ticker=ticker,
         board=board,
+        last_price=float(last),
+        bid=None if bid is None else float(bid),
+        ask=None if ask is None else float(ask),
+        lot_size=lot_size,
         market_data_as_of=market_as_of,
-        age_seconds=age,
-        status=status,
-        payload_sha=payload_sha,
+        source=MARKET_SOURCE,
+        fetched_at=fetched_at,
+        source_payload_sha=payload_sha,
+        book_quality_reason=book_quality_reason,
     )
 
 
@@ -306,5 +373,18 @@ def _invalid(
     reason: str,
     *,
     status: MarketQuoteStatus = MarketQuoteStatus.INVALID,
+    fetched_at: datetime | None = None,
 ) -> MarketQuoteAudit:
-    return MarketQuoteAudit(ticker=ticker, board=board, status=status, reason=reason)
+    return MarketQuoteAudit(
+        ticker=ticker,
+        board=board,
+        fetched_at=fetched_at,
+        status=status,
+        reason=reason,
+    )
+
+
+def _aware_utc(value: datetime, field: str) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field} must be timezone-aware")
+    return value.astimezone(UTC)

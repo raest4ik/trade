@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, runtime_checkable
 from zoneinfo import ZoneInfo
 
 from src.ai_trading_agent_v1.application import (
@@ -85,6 +85,24 @@ class PaperOperationContextProvider(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedPaperOperationContext:
+    cycle_started_at: datetime
+    decision_as_of: datetime
+    context: PaperOperationContext
+
+
+@runtime_checkable
+class DecisionCutoffContextProvider(Protocol):
+    def load_after_market_fetch(
+        self,
+        *,
+        cycle_started_at: datetime,
+        portfolio: PaperPortfolio,
+        policy: PaperOperationPolicy,
+    ) -> PreparedPaperOperationContext: ...
+
+
+@dataclass(frozen=True, slots=True)
 class StaticPaperOperationContextProvider:
     context: PaperOperationContext
 
@@ -156,7 +174,8 @@ def run_paper_operation(
 ) -> PaperOperationRun:
     operation_policy = policy or PaperOperationPolicy()
     risk = risk_policy or RiskPolicy()
-    as_of = _utc(operation_as_of)
+    cycle_started_at = _utc(operation_as_of)
+    as_of = cycle_started_at
     ledger_failure: str | None = None
     try:
         raw_portfolio = _replay_or_initial(paper_repository, as_of)
@@ -165,11 +184,22 @@ def run_paper_operation(
         ledger_failure = "PAPER_LEDGER_INTEGRITY_FAILED"
     context_failure: str | None = None
     try:
-        context = context_provider.load(
-            operation_as_of=as_of,
-            portfolio=raw_portfolio,
-            policy=operation_policy,
-        )
+        if isinstance(context_provider, DecisionCutoffContextProvider):
+            prepared_context = context_provider.load_after_market_fetch(
+                cycle_started_at=cycle_started_at,
+                portfolio=raw_portfolio,
+                policy=operation_policy,
+            )
+            as_of = _utc(prepared_context.decision_as_of)
+            if as_of < cycle_started_at:
+                raise ValueError("DECISION_CUTOFF_BEFORE_CYCLE_START")
+            context = prepared_context.context
+        else:
+            context = context_provider.load(
+                operation_as_of=as_of,
+                portfolio=raw_portfolio,
+                policy=operation_policy,
+            )
     except Exception as exc:
         context_failure = f"CONTEXT_UNAVAILABLE:{type(exc).__name__}"
         context = PaperOperationContext(
@@ -481,6 +511,8 @@ def pit_failures(
         reasons.append("FUTURE_RESEARCH_STATUS")
     if any(quote.as_of > operation_as_of for quote in context.market_quotes):
         reasons.append("FUTURE_MARKET_QUOTE")
+    if int(context.market_context.get("future_quote_count", 0)) > 0:
+        reasons.append("FUTURE_MARKET_QUOTE")
     events = cast("list[dict[str, Any]]", context.event_context.get("events", []))
     for event in events:
         published = _parse_time(event.get("published_at"))
@@ -650,6 +682,8 @@ def _run_from_agent_and_risk(
         market_source=_optional_text(context.market_context.get("market_source")),
         market_audit=_market_audit(context.market_context),
         operation_as_of=operation_as_of,
+        cycle_started_at=_context_time(context, "cycle_started_at") or operation_as_of,
+        decision_as_of=operation_as_of,
         mode=mode,
         status=PaperOperationStatus.STARTED,
         status_code="PREPARED",
@@ -712,6 +746,8 @@ def _base_run(
         market_source=_optional_text(context.market_context.get("market_source")),
         market_audit=_market_audit(context.market_context),
         operation_as_of=operation_as_of,
+        cycle_started_at=_context_time(context, "cycle_started_at") or operation_as_of,
+        decision_as_of=operation_as_of,
         mode=mode,
         status=status,
         status_code=status_code,
@@ -880,10 +916,17 @@ def _optional_text(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+def _context_time(context: PaperOperationContext, key: str) -> datetime | None:
+    return _parse_time(context.market_context.get(key))
+
+
 def _market_audit(market_context: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "market_fetch_started_at",
         "market_fetch_completed_at",
+        "decision_as_of",
+        "max_market_source_time",
+        "market_source_clock_delta_seconds",
         "quote_count",
         "fresh_quote_count",
         "stale_quote_count",

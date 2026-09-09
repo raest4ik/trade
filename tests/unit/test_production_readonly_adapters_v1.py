@@ -17,7 +17,8 @@ from src.ai_trading_agent_v1.application import (
 )
 from src.ai_trading_agent_v1.domain import AgentDecisionStatus, AgentModelRequest
 from src.free_live_issuer_accumulation.domain import sha256_payload
-from src.paper_trading_operation_v1.application import run_paper_operation
+from src.paper_trading_operation_v1 import application as paper_operation_application
+from src.paper_trading_operation_v1.application import build_operation_id, run_paper_operation
 from src.paper_trading_operation_v1.domain import (
     PaperOperationMode,
     PaperOperationPolicy,
@@ -107,6 +108,7 @@ def _market_adapter(
     *,
     max_age_seconds: float = 300,
     fetched_at: datetime = NOW + timedelta(seconds=2),
+    clock: Callable[[], datetime] | None = None,
 ) -> MoexIssFreshMarketAdapter:
     return MoexIssFreshMarketAdapter(
         base_url="https://iss.moex.com/iss",
@@ -115,7 +117,7 @@ def _market_adapter(
         user_agent="tests",
         max_age_seconds=max_age_seconds,
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
-        clock=lambda: fetched_at,
+        clock=clock or (lambda: fetched_at),
     )
 
 
@@ -313,8 +315,13 @@ def test_market_timestamp_comes_from_source_not_local_now() -> None:
         fetched_at=fetched,
     ).fetch(universe=[_instrument("SBER")], operation_as_of=NOW)
 
-    assert snapshot.quotes[0]["market_data_as_of"] == NOW.isoformat()
-    assert snapshot.quotes[0]["fetched_at"] == fetched.isoformat()
+    assert (
+        datetime.fromisoformat(snapshot.quotes[0]["market_data_as_of"].replace("Z", "+00:00"))
+        == NOW
+    )
+    assert (
+        datetime.fromisoformat(snapshot.quotes[0]["fetched_at"].replace("Z", "+00:00")) == fetched
+    )
 
 
 def test_future_market_quote_blocked() -> None:
@@ -331,6 +338,19 @@ def test_stale_market_quote_degraded_or_blocked() -> None:
     ).fetch(universe=[_instrument("SBER")], operation_as_of=NOW)
 
     assert snapshot.quote_audit[0].status == MarketQuoteStatus.STALE
+
+
+def test_crossed_book_is_invalid_independently_of_timestamp_readiness() -> None:
+    snapshot = _market_adapter(
+        lambda _request: httpx.Response(200, json=_moex_payload(bid=101, ask=100))
+    ).fetch(universe=[_instrument("SBER")], operation_as_of=NOW)
+
+    audit = snapshot.quote_audit[0]
+    assert audit.status == MarketQuoteStatus.INVALID
+    assert audit.timestamp_status == MarketQuoteStatus.FRESH
+    assert audit.book_status == "INVALID"
+    assert audit.book_reason == "BID_ABOVE_ASK"
+    assert snapshot.quotes == []
 
 
 @pytest.mark.parametrize(
@@ -403,7 +423,7 @@ def test_missing_held_quote_preserves_incomplete_mark(monkeypatch: pytest.Monkey
 
     provider = ProductionPaperOperationContextProvider(
         agent_config=AgentRunConfig(output_root=Path("unused"), code_sha="a" * 40),
-        market_adapter=_market_adapter(handler),
+        market_adapter=_market_adapter(handler, fetched_at=NOW),
         risk_policy=RiskPolicy(),
         configured_max_age_seconds=300,
         universe_loader=_fixture_universe,
@@ -457,6 +477,192 @@ def _fixture_research(*_args: Any) -> dict[str, Any]:
         "seal": {"sealed_epoch_verified": True, "violations": 0},
         "ML_V2_DATASET_STATUS": "BLOCKED_INSUFFICIENT_ISSUER_DIVERSITY",
     }
+
+
+def _sequence_clock(*values: datetime) -> Callable[[], datetime]:
+    iterator = iter(values)
+    return lambda: next(iterator)
+
+
+def _cutoff_provider(
+    *,
+    event_loader: Callable[..., dict[str, Any]] = _fixture_events,
+    research_loader: Callable[..., dict[str, Any]] = _fixture_research,
+) -> ProductionPaperOperationContextProvider:
+    source_times = {"SBER": "2026-09-09 15:00:02", "YDEX": "2026-09-09 15:00:06"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        ticker = request.url.path.split("/")[-1].removesuffix(".json")
+        return httpx.Response(200, json=_moex_payload(ticker, systime=source_times[ticker]))
+
+    return ProductionPaperOperationContextProvider(
+        agent_config=AgentRunConfig(output_root=Path("unused"), code_sha="a" * 40),
+        market_adapter=_market_adapter(
+            handler,
+            clock=_sequence_clock(
+                NOW,
+                NOW + timedelta(seconds=3),
+                NOW + timedelta(seconds=7),
+                NOW + timedelta(seconds=8),
+            ),
+        ),
+        risk_policy=RiskPolicy(),
+        configured_max_age_seconds=300,
+        universe_loader=lambda _config: [_instrument("SBER"), _instrument("YDEX")],
+        event_loader=event_loader,
+        research_loader=research_loader,
+    )
+
+
+def test_decision_cutoff_is_frozen_after_market_fetch() -> None:
+    prepared = _cutoff_provider().load_after_market_fetch(
+        cycle_started_at=NOW,
+        portfolio=initial_paper_portfolio(NOW),
+        policy=PaperOperationPolicy(),
+    )
+
+    expected = NOW + timedelta(seconds=8)
+    assert prepared.decision_as_of == expected
+    assert prepared.context.market_context["cycle_started_at"] == NOW.isoformat()
+    assert prepared.context.market_context["decision_as_of"] == expected.isoformat()
+    assert prepared.context.market_context["fresh_quote_count"] == 2
+
+
+def test_market_source_time_between_cycle_start_and_fetch_end_is_not_future() -> None:
+    prepared = _cutoff_provider().load_after_market_fetch(
+        cycle_started_at=NOW,
+        portfolio=initial_paper_portfolio(NOW),
+        policy=PaperOperationPolicy(),
+    )
+
+    assert {row["status"] for row in prepared.context.market_context["quotes"]} == {"FRESH"}
+    assert prepared.context.market_context["future_quote_count"] == 0
+
+
+def test_market_source_time_after_fetch_end_is_future() -> None:
+    adapter = _market_adapter(
+        lambda _request: httpx.Response(
+            200,
+            json=_moex_payload(systime="2026-09-09 15:00:09"),
+        ),
+        clock=_sequence_clock(NOW, NOW + timedelta(seconds=3), NOW + timedelta(seconds=8)),
+    )
+    raw = adapter.fetch_raw(universe=[_instrument("SBER")])
+    snapshot = adapter.validate_snapshot(raw, decision_as_of=raw.market_fetch_completed_at)
+
+    assert snapshot.quote_audit[0].status == MarketQuoteStatus.FUTURE
+    assert snapshot.quote_audit[0].reason == "MARKET_SOURCE_CLOCK_SKEW"
+    assert snapshot.market_source_clock_delta_seconds == 1
+
+
+def test_events_loaded_using_final_decision_as_of() -> None:
+    observed: list[datetime] = []
+
+    def events(*args: Any) -> dict[str, Any]:
+        cutoff = args[2]
+        assert isinstance(cutoff, datetime)
+        observed.append(cutoff)
+        return {"events_as_of": cutoff.isoformat(), "events": []}
+
+    prepared = _cutoff_provider(event_loader=events).load_after_market_fetch(
+        cycle_started_at=NOW,
+        portfolio=initial_paper_portfolio(NOW),
+        policy=PaperOperationPolicy(),
+    )
+
+    assert observed == [prepared.decision_as_of]
+
+
+def test_research_loaded_using_final_decision_as_of() -> None:
+    observed: list[datetime] = []
+
+    def research(*args: Any) -> dict[str, Any]:
+        cutoff = args[2]
+        assert isinstance(cutoff, datetime)
+        observed.append(cutoff)
+        return {**_fixture_research(), "research_status_as_of": cutoff.isoformat()}
+
+    prepared = _cutoff_provider(research_loader=research).load_after_market_fetch(
+        cycle_started_at=NOW,
+        portfolio=initial_paper_portfolio(NOW),
+        policy=PaperOperationPolicy(),
+    )
+
+    assert observed == [prepared.decision_as_of]
+
+
+def _run_cutoff_operation(
+    tmp_path: Path,
+) -> tuple[Any, list[dict[str, Any]]]:
+    decision_as_of = NOW + timedelta(seconds=8)
+    captured: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json=_ollama_body(json.dumps(_proposal_output(decision_as_of))),
+        )
+
+    run = run_paper_operation(
+        operation_as_of=NOW,
+        mode=PaperOperationMode.DRY_RUN,
+        model=_ollama_model(handler),
+        context_provider=_cutoff_provider(),
+        paper_repository=InMemoryPaperLedgerRepository(),
+        audit_repository=InMemoryOperationAuditRepository(),
+        state_root=tmp_path / "operation",
+        code_sha="a" * 40,
+    )
+    return run, captured
+
+
+def test_agent_uses_same_final_decision_as_of(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    decision_as_of = NOW + timedelta(seconds=8)
+    observed: list[datetime] = []
+    original = paper_operation_application.run_read_only_research_agent_v1
+
+    def record_context(**kwargs: Any) -> Any:
+        context = kwargs["deterministic_context"]
+        assert isinstance(context, AgentDataContext)
+        observed.append(context.as_of)
+        return original(**kwargs)
+
+    monkeypatch.setattr(
+        paper_operation_application,
+        "run_read_only_research_agent_v1",
+        record_context,
+    )
+    run, _requests = _run_cutoff_operation(tmp_path)
+
+    assert run.status == PaperOperationStatus.SUCCESS
+    assert run.operation_as_of == decision_as_of
+    assert run.decision_as_of == decision_as_of
+    assert observed == [decision_as_of]
+
+
+def test_risk_uses_same_final_decision_as_of(tmp_path: Path) -> None:
+    run, _requests = _run_cutoff_operation(tmp_path)
+    decision_as_of = NOW + timedelta(seconds=8)
+
+    assert run.risk_decisions
+    assert {
+        datetime.fromisoformat(str(row["decision_as_of"]).replace("Z", "+00:00"))
+        for row in run.risk_decisions
+    } == {decision_as_of}
+
+
+def test_operation_idempotency_not_changed_by_decision_cutoff_seconds() -> None:
+    first = build_operation_id(operation_as_of=NOW, session="EOD")
+    second = build_operation_id(
+        operation_as_of=NOW + timedelta(seconds=8),
+        session="EOD",
+    )
+
+    assert first == second
 
 
 def _production_provider(
@@ -575,7 +781,7 @@ def test_future_market_data_zero_model_calls(
     provider = ProductionPaperOperationContextProvider(
         agent_config=AgentRunConfig(output_root=tmp_path / "unused", code_sha="a" * 40),
         market_adapter=_market_adapter(
-            lambda _request: httpx.Response(200, json=_moex_payload(systime="2026-09-09 15:00:01"))
+            lambda _request: httpx.Response(200, json=_moex_payload(systime="2026-09-09 15:00:03"))
         ),
         risk_policy=RiskPolicy(),
         configured_max_age_seconds=300,
@@ -823,9 +1029,24 @@ def test_adapter_artifact_rebuilds_byte_for_byte(tmp_path: Path) -> None:
         "safety.json",
     }
     assert first_manifest == second_manifest
-    assert first_manifest["PRODUCTION_DRY_RUN_READY"] == "YES"
+    assert first_manifest["DETERMINISTIC_PRODUCTION_ADAPTER_PROOF"] == "PASS"
+    assert first_manifest["PRODUCTION_DRY_RUN_READY"] == "NO"
+    assert first_manifest["LIVE_PRODUCTION_DRY_RUN"] == "NOT_RUN"
     assert first_manifest["PIT_SAFETY"] == "PASS"
     assert {path.name for path in first.iterdir()} == expected
     assert {path.name: path.read_bytes() for path in first.iterdir()} == {
         path.name: path.read_bytes() for path in second.iterdir()
     }
+
+
+def test_mocked_proof_does_not_set_live_dry_run_ready(tmp_path: Path) -> None:
+    manifest = build_adapter_artifact(
+        output_root=tmp_path / "artifact",
+        work_root=tmp_path / "work",
+        base_main_sha="a" * 40,
+        head_sha="b" * 40,
+    )
+
+    assert manifest["DETERMINISTIC_PRODUCTION_ADAPTER_PROOF"] == "PASS"
+    assert manifest["LIVE_PRODUCTION_DRY_RUN"] == "NOT_RUN"
+    assert manifest["PRODUCTION_DRY_RUN_READY"] == "NO"

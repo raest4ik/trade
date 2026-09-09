@@ -139,7 +139,13 @@ def _health(state_root: Path, paper: JsonlPaperLedgerRepository) -> dict[str, ob
     try:
         events = paper.events()
         portfolio = replay_portfolio(events) if events else initial_paper_portfolio(as_of)
-        context = provider.load(operation_as_of=as_of, portfolio=portfolio, policy=policy)
+        prepared = provider.load_after_market_fetch(
+            cycle_started_at=as_of,
+            portfolio=portfolio,
+            policy=policy,
+        )
+        as_of = prepared.decision_as_of
+        context = prepared.context
         reasons.extend(
             preflight_failures(
                 operation_as_of=as_of,
@@ -181,7 +187,6 @@ def _model_smoke() -> int:
 def _market_smoke(tickers: list[str]) -> int:
     settings = get_settings()
     risk_policy = RiskPolicy()
-    as_of = datetime.now(UTC)
     config = AgentRunConfig(
         output_root=Path("state/paper-operation-v1/market-smoke"), code_sha=git_sha()
     )
@@ -189,9 +194,11 @@ def _market_smoke(tickers: list[str]) -> int:
     requested = [ticker.strip().upper() for ticker in tickers]
     try:
         universe = [canonical[ticker] for ticker in requested]
-        snapshot = create_fresh_market_adapter(settings, risk_policy).fetch(
-            universe=universe,
-            operation_as_of=as_of,
+        adapter = create_fresh_market_adapter(settings, risk_policy)
+        raw_snapshot = adapter.fetch_raw(universe=universe)
+        snapshot = adapter.validate_snapshot(
+            raw_snapshot,
+            decision_as_of=raw_snapshot.market_fetch_completed_at,
         )
         audit = snapshot.audit_payload()
         quote_audit = audit.pop("quotes")

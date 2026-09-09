@@ -21,6 +21,22 @@ operation universe with sorted canonical candidates. A held position is never dr
 because of universe truncation. Missing, stale, invalid, or future held marks remain
 visible to Risk V1 and prevent exposure-increasing decisions.
 
+The live provider has a two-phase time contract:
+
+```text
+cycle_started_at
+  -> restore portfolio and select universe
+  -> fetch immutable raw MOEX quotes
+  -> decision_as_of = market_fetch_completed_at
+  -> validate market timestamps and quality
+  -> load events and research at decision_as_of
+  -> preflight -> Agent -> Risk -> DRY_RUN
+```
+
+`decision_as_of` is the single PIT cutoff used by Agent, Risk, portfolio marks,
+events, research, operation audit, and the trading-date/session operation identity.
+Exact cutoff seconds do not enter `operation_id`, preserving session idempotency.
+
 ## Market Contract
 
 `MoexIssFreshMarketAdapter` accepts only `https://iss.moex.com` and canonical `TQBR`
@@ -33,6 +49,11 @@ The effective freshness threshold is the smaller of
 `MARKET_CONTEXT_MAX_AGE_SECONDS` and `RiskPolicy.max_stale_market_age`. Missing or
 invalid source timestamps and prices are not synthesized. Bid and ask remain null when
 the source omits them.
+
+Transport/timestamp readiness and book quality are audited separately. A crossed
+`bid > ask` remains `BID_ABOVE_ASK`, is excluded from downstream market quotes, and is
+never repaired or used for a fill. A source timestamp after fetch completion remains
+`MARKET_SOURCE_CLOCK_SKEW`/`FUTURE` with its signed delta and blocks before Agent.
 
 ## Model Contract
 
@@ -93,3 +114,8 @@ The builder refuses to overwrite a non-empty artifact directory. The explicit
 implementation SHA avoids substituting the later evidence-commit SHA. Rebuilding into
 two empty directories with the same base and implementation SHAs produces
 byte-identical files.
+
+The mocked artifact proves deterministic adapter, PIT, context, Agent, Risk, and
+dry-run behavior with `DETERMINISTIC_PRODUCTION_ADAPTER_PROOF=PASS`. It intentionally
+keeps `LIVE_PRODUCTION_DRY_RUN=NOT_RUN` and `PRODUCTION_DRY_RUN_READY=NO`; only a real
+live MOEX + Ollama end-to-end run may promote the latter status.

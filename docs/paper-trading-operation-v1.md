@@ -48,6 +48,8 @@ portfolio mutation.
 The production provider is described in
 `docs/production-readonly-adapters-v1.md`. The universe is deterministic, canonical,
 supported, and limited to ten instruments.
+For that provider the CLI timestamp starts the acquisition cycle; the final operation
+cutoff is frozen at market-fetch completion before events, research, Agent, or Risk run.
 Held instruments are selected first. Market context is requested for both candidates
 and held positions. Missing or stale held marks remain visible to Risk V1 and prevent
 exposure-increasing BUY decisions.
