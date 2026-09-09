@@ -4,8 +4,8 @@ Deterministic mocked proof; no live network, broker, outcomes, or paper mutation
 
 - ARTIFACT_VERSION=production-readonly-adapters-v1
 - BASE_MAIN_SHA=ba417b33337584bf44583356493d2304c9ddce1d
-- HEAD_SHA=ab7722cbf5212b58d0f0f2384befec4d99ef86b4
-- ARTIFACT_CODE_SHA=ab7722cbf5212b58d0f0f2384befec4d99ef86b4
+- HEAD_SHA=a80ff32b6d5b6b3532cc6082aa5b2b3173fcbb9a
+- ARTIFACT_CODE_SHA=a80ff32b6d5b6b3532cc6082aa5b2b3173fcbb9a
 - DETERMINISTIC_PRODUCTION_ADAPTER_PROOF=PASS
 - PRODUCTION_AGENT_ADAPTER_READY=YES
 - FRESH_PIT_MARKET_ADAPTER_READY=YES
@@ -39,4 +39,4 @@ Deterministic mocked proof; no live network, broker, outcomes, or paper mutation
 - BACKTEST_PERFORMED=False
 - OLD_FUTURE_HOLDOUT_OPENED=False
 - PAID_SOURCE_CALLS=0
-- ARTIFACT_SHA=9ad21fc220c14f408f69e9b0e2c5f8471f49319349949fae85d63c8c07d31d7e
+- ARTIFACT_SHA=788c5e7c537fd0bd6ca599da862cedb44c698ccf19a8060d55ce361b5d25ed3e

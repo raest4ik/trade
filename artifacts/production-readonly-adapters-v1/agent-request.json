@@ -6,7 +6,7 @@
     "get_research_status"
   ],
   "model": "qwen-fixture:1b",
-  "request_sha": "caee22654d7997afbdb60632607ac480234c1f2589446c772d53c3d63fa18489",
+  "request_sha": "b5030fce036277729feda0165c1092ffa0eb28139677345c38ff6c0387895aeb",
   "stream": false,
   "think": false
 }

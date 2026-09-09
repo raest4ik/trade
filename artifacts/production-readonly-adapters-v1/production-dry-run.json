@@ -19,7 +19,7 @@
   ],
   "agent_run_id": "paper-operation-c9b3cb5d1666daeb95747d59",
   "agent_tool_calls": [],
-  "code_sha": "ab7722cbf5212b58d0f0f2384befec4d99ef86b4",
+  "code_sha": "a80ff32b6d5b6b3532cc6082aa5b2b3173fcbb9a",
   "cycle_started_at": "2026-09-09T12:00:00Z",
   "day_transition_applied": false,
   "decision_as_of": "2026-09-09T12:00:00Z",
@@ -78,7 +78,7 @@
   "market_source": "MOEX_ISS_PUBLIC",
   "mode": "DRY_RUN",
   "operation_as_of": "2026-09-09T12:00:00Z",
-  "operation_contract_sha": "f598f5d570f012caf21d45d08c99b06bf9835fb2d48e7de18fa552b553309180",
+  "operation_contract_sha": "fcf934b1d72cacb2e31a7810648bc5c6d7bcabb73908835a0553f034324d663d",
   "operation_id": "paper-operation-c9b3cb5d1666daeb95747d59",
   "operation_slot_id": "2026-09-09:EOD",
   "paper_execution_status": "SKIPPED_DRY_RUN",
@@ -149,7 +149,7 @@
       "ticker": "SBER"
     }
   ],
-  "risk_plan_id": "risk-plan-8cadc6a41fd510ac9916",
+  "risk_plan_id": "risk-plan-696ea1213c9886b6a4c6",
   "safety": {
     "BACKTEST_PERFORMED": false,
     "LIVE_OUTCOMES_READ": 0,
