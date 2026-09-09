@@ -19,39 +19,56 @@
   ],
   "agent_run_id": "paper-operation-c9b3cb5d1666daeb95747d59",
   "agent_tool_calls": [],
-  "code_sha": "c9043089cb2c857611a35bbd6b0de0505ae8d905",
+  "code_sha": "ab7722cbf5212b58d0f0f2384befec4d99ef86b4",
+  "cycle_started_at": "2026-09-09T12:00:00Z",
   "day_transition_applied": false,
+  "decision_as_of": "2026-09-09T12:00:00Z",
   "event_snapshot_sha": "2445b585cd803d183a270d688d4bef42948debcc8a0eef0ca7d991c41be5513f",
   "market_adapter_id": "moex-iss-fresh-market-v1",
   "market_audit": {
+    "decision_as_of": "2026-09-09T12:00:00+00:00",
     "effective_max_age_seconds": 300.0,
     "fresh_quote_count": 2,
     "future_quote_count": 0,
     "invalid_quote_count": 0,
     "market_fetch_completed_at": "2026-09-09T12:00:00+00:00",
     "market_fetch_started_at": "2026-09-09T12:00:00+00:00",
+    "market_source_clock_delta_seconds": 0.0,
+    "max_market_source_time": "2026-09-09T12:00:00+00:00",
     "missing_quote_count": 0,
     "quote_count": 2,
     "quotes": [
       {
+        "age_at_decision_seconds": 0.0,
         "age_seconds": 0.0,
         "board": "TQBR",
+        "book_reason": null,
+        "book_status": "VALID",
+        "fetched_at": "2026-09-09T12:00:00Z",
         "market_data_as_of": "2026-09-09T12:00:00Z",
         "payload_sha": "7c238863a04872a4babb7fe1e35a9c81a6d0f3a84aa5e8619fa8e43c45f6d483",
         "reason": null,
         "source": "MOEX_ISS_PUBLIC",
+        "source_time": "2026-09-09T12:00:00Z",
         "status": "FRESH",
-        "ticker": "SBER"
+        "ticker": "SBER",
+        "timestamp_status": "FRESH"
       },
       {
+        "age_at_decision_seconds": 0.0,
         "age_seconds": 0.0,
         "board": "TQBR",
+        "book_reason": null,
+        "book_status": "VALID",
+        "fetched_at": "2026-09-09T12:00:00Z",
         "market_data_as_of": "2026-09-09T12:00:00Z",
         "payload_sha": "bc463077e03b2f97f1b096c7a61c36da08088b206bc8ca4ae5e812efd6cfbcee",
         "reason": null,
         "source": "MOEX_ISS_PUBLIC",
+        "source_time": "2026-09-09T12:00:00Z",
         "status": "FRESH",
-        "ticker": "YDEX"
+        "ticker": "YDEX",
+        "timestamp_status": "FRESH"
       }
     ],
     "source_payload_sha": "a04ea1084fbcf02f408edecfbbb51114fa967337f19bc9c0be8002f870a9548b",
@@ -61,7 +78,7 @@
   "market_source": "MOEX_ISS_PUBLIC",
   "mode": "DRY_RUN",
   "operation_as_of": "2026-09-09T12:00:00Z",
-  "operation_contract_sha": "7331849b0d7328525ffb3c2b2c46bb4c9ec1fdaf94fe3e9cd24ce355504d45e4",
+  "operation_contract_sha": "f598f5d570f012caf21d45d08c99b06bf9835fb2d48e7de18fa552b553309180",
   "operation_id": "paper-operation-c9b3cb5d1666daeb95747d59",
   "operation_slot_id": "2026-09-09:EOD",
   "paper_execution_status": "SKIPPED_DRY_RUN",
@@ -132,7 +149,7 @@
       "ticker": "SBER"
     }
   ],
-  "risk_plan_id": "risk-plan-fa53202defc435e6c3ce",
+  "risk_plan_id": "risk-plan-8cadc6a41fd510ac9916",
   "safety": {
     "BACKTEST_PERFORMED": false,
     "LIVE_OUTCOMES_READ": 0,
