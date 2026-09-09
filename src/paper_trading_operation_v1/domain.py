@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 OPERATION_POLICY_VERSION = "paper-trading-operation-policy-v1"
+OPERATION_ID_NAMESPACE = "paper-trading-operation-slot-v1"
 
 
 def _dict_list() -> list[dict[str, Any]]:
@@ -109,6 +110,8 @@ class PaperOperationRun(BaseModel):
 
     operation_id: str
     operation_slot_id: str | None = None
+    operation_contract_sha: str | None = None
+    universe_sha: str | None = None
     operation_as_of: datetime
     mode: PaperOperationMode
     status: PaperOperationStatus

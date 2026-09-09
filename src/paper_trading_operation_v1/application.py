@@ -21,6 +21,7 @@ from src.ai_trading_agent_v1.application import (
 from src.ai_trading_agent_v1.domain import AgentDecisionStatus
 from src.free_live_issuer_accumulation.domain import sha256_payload
 from src.paper_trading_operation_v1.domain import (
+    OPERATION_ID_NAMESPACE,
     OperationAuditEvent,
     OperationAuditRecordType,
     PaperOperationMode,
@@ -179,6 +180,7 @@ def run_paper_operation(
             research_status={"research_status_as_of": as_of.isoformat()},
         )
     universe = context.universe[: operation_policy.max_operation_universe]
+    universe_sha = sha256_payload(universe)
     session = operation_slot or operation_policy.operation_session
     operation_slot_id = build_operation_slot_id(
         operation_as_of=as_of,
@@ -188,9 +190,13 @@ def run_paper_operation(
     operation_id = build_operation_id(
         operation_as_of=as_of,
         session=session,
-        model_id=model.model_id,
-        universe=universe,
         timezone_name=operation_policy.operation_timezone,
+    )
+    operation_contract_sha = build_operation_contract_sha(
+        model_id=model.model_id,
+        universe_sha=universe_sha,
+        policy_version=operation_policy.policy_version,
+        code_sha=code_sha,
     )
     lock_path = state_root / "operation.lock"
     with operation_lock(
@@ -240,6 +246,8 @@ def run_paper_operation(
             blocked = _base_run(
                 operation_id=operation_id,
                 operation_slot_id=operation_slot_id,
+                operation_contract_sha=operation_contract_sha,
+                universe_sha=universe_sha,
                 operation_as_of=as_of,
                 mode=mode,
                 status=PaperOperationStatus.BLOCKED,
@@ -296,6 +304,8 @@ def run_paper_operation(
             blocked = _base_run(
                 operation_id=operation_id,
                 operation_slot_id=operation_slot_id,
+                operation_contract_sha=operation_contract_sha,
+                universe_sha=universe_sha,
                 operation_as_of=as_of,
                 mode=mode,
                 status=PaperOperationStatus.BLOCKED,
@@ -322,6 +332,8 @@ def run_paper_operation(
         prepared_run = _run_from_agent_and_risk(
             operation_id=operation_id,
             operation_slot_id=operation_slot_id,
+            operation_contract_sha=operation_contract_sha,
+            universe_sha=universe_sha,
             operation_as_of=as_of,
             mode=mode,
             code_sha=code_sha,
@@ -482,8 +494,6 @@ def build_operation_id(
     *,
     operation_as_of: datetime,
     session: str,
-    model_id: str,
-    universe: Sequence[dict[str, Any]],
     timezone_name: str = "Europe/Moscow",
 ) -> str:
     operation_slot_id = build_operation_slot_id(
@@ -492,12 +502,28 @@ def build_operation_id(
         timezone_name=timezone_name,
     )
     contract = {
+        "namespace": OPERATION_ID_NAMESPACE,
         "operation_slot_id": operation_slot_id,
-        "agent_model_id": model_id,
-        "prompt_version": PROMPT_VERSION,
-        "universe_sha": sha256_payload(list(universe)),
     }
     return f"paper-operation-{sha256_payload(contract)[:24]}"
+
+
+def build_operation_contract_sha(
+    *,
+    model_id: str,
+    universe_sha: str,
+    policy_version: str,
+    code_sha: str,
+) -> str:
+    return sha256_payload(
+        {
+            "agent_model_id": model_id,
+            "prompt_version": PROMPT_VERSION,
+            "universe_sha": universe_sha,
+            "policy_version": policy_version,
+            "code_sha": code_sha,
+        }
+    )
 
 
 def build_operation_slot_id(
@@ -599,6 +625,8 @@ def _run_from_agent_and_risk(
     *,
     operation_id: str,
     operation_slot_id: str,
+    operation_contract_sha: str,
+    universe_sha: str,
     operation_as_of: datetime,
     mode: PaperOperationMode,
     code_sha: str,
@@ -612,6 +640,8 @@ def _run_from_agent_and_risk(
     return PaperOperationRun(
         operation_id=operation_id,
         operation_slot_id=operation_slot_id,
+        operation_contract_sha=operation_contract_sha,
+        universe_sha=universe_sha,
         operation_as_of=operation_as_of,
         mode=mode,
         status=PaperOperationStatus.STARTED,
@@ -648,6 +678,8 @@ def _base_run(
     *,
     operation_id: str,
     operation_slot_id: str,
+    operation_contract_sha: str,
+    universe_sha: str,
     operation_as_of: datetime,
     mode: PaperOperationMode,
     status: PaperOperationStatus,
@@ -666,6 +698,8 @@ def _base_run(
     return PaperOperationRun(
         operation_id=operation_id,
         operation_slot_id=operation_slot_id,
+        operation_contract_sha=operation_contract_sha,
+        universe_sha=universe_sha,
         operation_as_of=operation_as_of,
         mode=mode,
         status=status,

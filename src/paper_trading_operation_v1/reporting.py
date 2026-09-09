@@ -13,6 +13,7 @@ from src.paper_trading_operation_v1.application import (
     PaperOperationContext,
     SimulatedCrashAfterPaperFillError,
     StaticPaperOperationContextProvider,
+    build_operation_contract_sha,
     build_operation_id,
     operation_history,
     run_paper_operation,
@@ -116,11 +117,35 @@ def build_sample_operations(*, work_root: Path, code_sha: str) -> OperationSampl
         ["SBER", "YDEX"],
         code_sha,
         policy,
+        universe_override=list(reversed(_universe())),
+    )
+    reordered_universe_sha = sha256_payload(list(reversed(_universe())))
+    reordered_contract_sha = build_operation_contract_sha(
+        model_id=duplicate.agent_model_id,
+        universe_sha=reordered_universe_sha,
+        policy_version=policy.policy_version,
+        code_sha=code_sha,
+    )
+    slot_duplicate_proven = (
+        duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
+        and duplicate.safety.PAPER_RISK_PLANS == 0
+        and duplicate.safety.PAPER_ORDERS_FILLED == 0
+        and paper.last_sequence() == event_count_before_duplicate
+        and reordered_universe_sha != day_3.universe_sha
+        and reordered_contract_sha != day_3.operation_contract_sha
     )
     idempotency = {
-        "SESSION_IDEMPOTENCY": "PASS"
-        if duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
-        else "FAIL",
+        "SESSION_IDEMPOTENCY": "PASS" if slot_duplicate_proven else "FAIL",
+        "PRODUCTION_PROVIDER_SESSION_IDEMPOTENCY": ("PASS" if slot_duplicate_proven else "FAIL"),
+        "HELD_POSITION_UNIVERSE_REORDER_RETRY": duplicate.status.value,
+        "TRUNCATED_UNIVERSE_CHANGE_RETRY": (
+            "ALREADY_PROCESSED" if slot_duplicate_proven else "NOT_PROVEN"
+        ),
+        "CONTRACT_CHANGE_SAME_SLOT": (
+            "ALREADY_PROCESSED" if slot_duplicate_proven else "NOT_PROVEN"
+        ),
+        "attempted_universe_sha": reordered_universe_sha,
+        "attempted_operation_contract_sha": reordered_contract_sha,
         "SAME_SESSION_DIFFERENT_TIMESTAMP": duplicate.status.value,
         "DUPLICATE_OPERATION_STATUS": duplicate.status.value,
         "NEW_FILLS": duplicate.safety.PAPER_ORDERS_FILLED,
@@ -128,26 +153,18 @@ def build_sample_operations(*, work_root: Path, code_sha: str) -> OperationSampl
         "DIFFERENT_SESSION_DISTINCT": build_operation_id(
             operation_as_of=day_3_at,
             session="EOD",
-            model_id=duplicate.agent_model_id,
-            universe=duplicate.universe,
         )
         != build_operation_id(
             operation_as_of=day_3_at,
             session="EOD_RETRY_1",
-            model_id=duplicate.agent_model_id,
-            universe=duplicate.universe,
         ),
         "NEXT_TRADING_DAY_DISTINCT": build_operation_id(
             operation_as_of=day_3_at,
             session="EOD",
-            model_id=duplicate.agent_model_id,
-            universe=duplicate.universe,
         )
         != build_operation_id(
             operation_as_of=day_3_at + timedelta(days=1),
             session="EOD",
-            model_id=duplicate.agent_model_id,
-            universe=duplicate.universe,
         ),
     }
 
@@ -232,6 +249,16 @@ def write_operation_artifact(
         "DUPLICATE_OPERATION_RESULT": sample.idempotency_verification["DUPLICATE_OPERATION_STATUS"],
         "CRASH_RECOVERY_RESULT": sample.crash_recovery_verification["status_code"],
         "SESSION_IDEMPOTENCY": sample.idempotency_verification["SESSION_IDEMPOTENCY"],
+        "PRODUCTION_PROVIDER_SESSION_IDEMPOTENCY": sample.idempotency_verification[
+            "PRODUCTION_PROVIDER_SESSION_IDEMPOTENCY"
+        ],
+        "HELD_POSITION_UNIVERSE_REORDER_RETRY": sample.idempotency_verification[
+            "HELD_POSITION_UNIVERSE_REORDER_RETRY"
+        ],
+        "TRUNCATED_UNIVERSE_CHANGE_RETRY": sample.idempotency_verification[
+            "TRUNCATED_UNIVERSE_CHANGE_RETRY"
+        ],
+        "CONTRACT_CHANGE_SAME_SLOT": sample.idempotency_verification["CONTRACT_CHANGE_SAME_SLOT"],
         "SAME_SESSION_DIFFERENT_TIMESTAMP": sample.idempotency_verification[
             "SAME_SESSION_DIFFERENT_TIMESTAMP"
         ],
@@ -280,12 +307,22 @@ def _operation(
     code_sha: str,
     policy: PaperOperationPolicy,
     operation_slot: str | None = None,
+    universe_override: list[dict[str, Any]] | None = None,
 ) -> PaperOperationRun:
+    context = _context(as_of, quote_tickers)
+    if universe_override is not None:
+        context = PaperOperationContext(
+            universe=universe_override,
+            market_quotes=context.market_quotes,
+            market_context=context.market_context,
+            event_context=context.event_context,
+            research_status=context.research_status,
+        )
     return run_paper_operation(
         operation_as_of=as_of,
         mode=PaperOperationMode.PAPER_EXECUTE,
         model=_model(as_of, proposals),
-        context_provider=StaticPaperOperationContextProvider(_context(as_of, quote_tickers)),
+        context_provider=StaticPaperOperationContextProvider(context),
         paper_repository=paper,
         audit_repository=audit,
         state_root=work_root,

@@ -17,10 +17,12 @@ from src.ai_trading_agent_v1.application import (
     build_read_only_tool_registry,
 )
 from src.ai_trading_agent_v1.domain import AgentModelResponse
+from src.free_live_issuer_accumulation.domain import sha256_payload
 from src.paper_trading_operation_v1.application import (
     PaperOperationContext,
     SimulatedCrashAfterPaperFillError,
     StaticPaperOperationContextProvider,
+    build_operation_contract_sha,
     build_operation_id,
     run_paper_operation,
 )
@@ -81,7 +83,11 @@ def _universe() -> list[dict[str, Any]]:
 
 
 def _quote(ticker: str, as_of: datetime, *, price: float | None = None) -> MarketQuote:
-    value = price if price is not None else {"SBER": 100.0, "YDEX": 110.0}[ticker]
+    value = (
+        price
+        if price is not None
+        else {"GAZP": 160.0, "ROSN": 520.0, "SBER": 100.0, "YDEX": 110.0}[ticker]
+    )
     return MarketQuote(
         ticker=ticker,
         as_of=as_of,
@@ -164,6 +170,51 @@ def _model(as_of: datetime, *proposals: dict[str, Any]) -> FakeAgentModel:
         [AgentModelResponse(final_output=json.dumps(output))],
         model_id="fake-operation-agent-v1",
     )
+
+
+class PortfolioPriorityContextProvider:
+    def __init__(self) -> None:
+        self.loaded_universes: list[list[str]] = []
+        self.canonical = [
+            {
+                "ticker": ticker,
+                "legal_issuer": issuer,
+                "instrument_uid": f"UID-{ticker}",
+                "figi": f"FIGI-{ticker}",
+                "board": "TQBR",
+                "instrument_type": "INSTRUMENT_TYPE_SHARE",
+                "active": True,
+                "supported": True,
+                "market_data_compatible": True,
+                "feature_compatible": True,
+                "lot_size": 10 if ticker == "SBER" else 1,
+            }
+            for ticker, issuer in (
+                ("GAZP", "Gazprom"),
+                ("ROSN", "Rosneft"),
+                ("SBER", "Sberbank"),
+                ("YDEX", "Yandex"),
+            )
+        ]
+
+    def load(
+        self,
+        *,
+        operation_as_of: datetime,
+        portfolio: Any,
+        policy: PaperOperationPolicy,
+    ) -> PaperOperationContext:
+        by_ticker = {str(row["ticker"]): row for row in self.canonical}
+        held = [position.ticker for position in portfolio.positions]
+        selected = list(dict.fromkeys([*held, *by_ticker]))[: policy.max_operation_universe]
+        self.loaded_universes.append(selected)
+        quotes = [_quote(ticker, operation_as_of) for ticker in selected]
+        context = _context(operation_as_of, *selected)
+        return replace(
+            context,
+            universe=[by_ticker[ticker] for ticker in selected],
+            market_quotes=quotes,
+        )
 
 
 def _run(
@@ -273,6 +324,15 @@ def test_operation_audit_written_and_replay_verified(tmp_path: Path) -> None:
     )
 
     assert audit.completed_run(run.operation_id) == run
+    assert run.operation_slot_id == "2026-09-09:EOD"
+    assert run.universe_sha is not None
+    assert run.universe_sha == sha256_payload(run.universe)
+    assert run.operation_contract_sha == build_operation_contract_sha(
+        model_id=run.agent_model_id,
+        universe_sha=run.universe_sha,
+        policy_version=run.policy_version,
+        code_sha=run.code_sha,
+    )
     assert portfolio_state_sha(replay_portfolio(paper.events())) == run.portfolio_after_sha
 
 
@@ -453,13 +513,9 @@ def test_same_date_different_operation_slot_is_distinct() -> None:
     assert build_operation_id(
         operation_as_of=NOW,
         session="EOD",
-        model_id="fake-operation-agent-v1",
-        universe=_universe(),
     ) != build_operation_id(
         operation_as_of=NOW,
         session="EOD_RETRY_1",
-        model_id="fake-operation-agent-v1",
-        universe=_universe(),
     )
 
 
@@ -467,14 +523,146 @@ def test_next_moex_date_is_distinct_operation() -> None:
     assert build_operation_id(
         operation_as_of=NOW,
         session="EOD",
-        model_id="fake-operation-agent-v1",
-        universe=_universe(),
     ) != build_operation_id(
         operation_as_of=NOW + timedelta(days=1),
         session="EOD",
-        model_id="fake-operation-agent-v1",
-        universe=_universe(),
     )
+
+
+def test_production_provider_universe_reorder_cannot_bypass_slot_idempotency(
+    tmp_path: Path,
+) -> None:
+    provider = PortfolioPriorityContextProvider()
+    paper = InMemoryPaperLedgerRepository()
+    audit = InMemoryOperationAuditRepository()
+    first_at = NOW
+    second_at = NOW + timedelta(minutes=3)
+    first_model = _model(first_at, _proposal("SBER", "BUY", 0.10))
+    first = run_paper_operation(
+        operation_as_of=first_at,
+        mode=PaperOperationMode.PAPER_EXECUTE,
+        model=first_model,
+        context_provider=provider,
+        paper_repository=paper,
+        audit_repository=audit,
+        state_root=tmp_path,
+        code_sha="a" * 40,
+        policy=PaperOperationPolicy(paper_execution_enabled=True),
+    )
+    event_count = len(paper.events())
+    second_model = _model(second_at, _proposal("SBER", "BUY", 0.20))
+    duplicate = run_paper_operation(
+        operation_as_of=second_at,
+        mode=PaperOperationMode.PAPER_EXECUTE,
+        model=second_model,
+        context_provider=provider,
+        paper_repository=paper,
+        audit_repository=audit,
+        state_root=tmp_path,
+        code_sha="a" * 40,
+        policy=PaperOperationPolicy(paper_execution_enabled=True),
+    )
+
+    assert first.status == PaperOperationStatus.SUCCESS
+    assert provider.loaded_universes == [
+        ["GAZP", "ROSN", "SBER", "YDEX"],
+        ["SBER", "GAZP", "ROSN", "YDEX"],
+    ]
+    assert first.universe_sha == sha256_payload(
+        [provider.canonical[index] for index in (0, 1, 2, 3)]
+    )
+    assert first.universe_sha != sha256_payload(
+        [provider.canonical[index] for index in (2, 0, 1, 3)]
+    )
+    assert duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
+    assert second_model.requests == []
+    assert duplicate.safety.PAPER_RISK_PLANS == 0
+    assert duplicate.safety.PAPER_ORDERS_FILLED == 0
+    assert len(paper.events()) == event_count
+
+
+def test_truncated_universe_membership_change_cannot_bypass_slot_idempotency(
+    tmp_path: Path,
+) -> None:
+    provider = PortfolioPriorityContextProvider()
+    paper = InMemoryPaperLedgerRepository()
+    audit = InMemoryOperationAuditRepository()
+    first = run_paper_operation(
+        operation_as_of=NOW,
+        mode=PaperOperationMode.PAPER_EXECUTE,
+        model=_model(NOW, _proposal("YDEX", "BUY", 0.10)),
+        context_provider=provider,
+        paper_repository=paper,
+        audit_repository=audit,
+        state_root=tmp_path,
+        code_sha="a" * 40,
+        policy=PaperOperationPolicy(max_operation_universe=4, paper_execution_enabled=True),
+    )
+    event_count = len(paper.events())
+    retry_model = _model(NOW + timedelta(minutes=2), _proposal("GAZP", "BUY", 0.10))
+    duplicate = run_paper_operation(
+        operation_as_of=NOW + timedelta(minutes=2),
+        mode=PaperOperationMode.PAPER_EXECUTE,
+        model=retry_model,
+        context_provider=provider,
+        paper_repository=paper,
+        audit_repository=audit,
+        state_root=tmp_path,
+        code_sha="b" * 40,
+        policy=PaperOperationPolicy(max_operation_universe=3, paper_execution_enabled=True),
+    )
+
+    assert first.status == PaperOperationStatus.SUCCESS
+    assert provider.loaded_universes == [
+        ["GAZP", "ROSN", "SBER", "YDEX"],
+        ["YDEX", "GAZP", "ROSN"],
+    ]
+    assert duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
+    assert retry_model.requests == []
+    assert duplicate.safety.PAPER_ORDERS_FILLED == 0
+    assert len(paper.events()) == event_count
+
+
+def test_contract_change_same_slot_is_already_processed(tmp_path: Path) -> None:
+    paper = InMemoryPaperLedgerRepository()
+    audit = InMemoryOperationAuditRepository()
+    first = _run(
+        tmp_path,
+        as_of=NOW,
+        proposals=(_proposal("SBER", "BUY", 0.10),),
+        context=_context(NOW, "SBER", "YDEX"),
+        paper=paper,
+        audit=audit,
+    )
+    changed_universe = list(reversed(_universe()))
+    changed_context = replace(_context(NOW, "SBER", "YDEX"), universe=changed_universe)
+    changed_model = FakeAgentModel(
+        _model(NOW + timedelta(minutes=1), _proposal("SBER", "BUY", 0.20)).responses,
+        model_id="changed-operation-agent-v2",
+    )
+    changed_contract_sha = build_operation_contract_sha(
+        model_id=changed_model.model_id,
+        universe_sha=sha256_payload(changed_universe),
+        policy_version=PaperOperationPolicy().policy_version,
+        code_sha="b" * 40,
+    )
+    event_count = len(paper.events())
+    duplicate = _run(
+        tmp_path,
+        as_of=NOW + timedelta(minutes=1),
+        proposals=(),
+        context=changed_context,
+        paper=paper,
+        audit=audit,
+        model=changed_model,
+    )
+
+    assert changed_contract_sha != first.operation_contract_sha
+    assert duplicate.operation_id == first.operation_id
+    assert duplicate.status == PaperOperationStatus.ALREADY_PROCESSED
+    assert changed_model.requests == []
+    assert duplicate.safety.PAPER_ORDERS_FILLED == 0
+    assert len(paper.events()) == event_count
 
 
 def test_paper_execution_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -799,6 +987,10 @@ def test_deterministic_operation_artifact_covers_acceptance(tmp_path: Path) -> N
     assert first["DUPLICATE_OPERATION_RESULT"] == "ALREADY_PROCESSED"
     assert first["CRASH_RECOVERY_RESULT"] == "RECOVERED_AFTER_COMMITTED_FILL"
     assert first["SESSION_IDEMPOTENCY"] == "PASS"
+    assert first["PRODUCTION_PROVIDER_SESSION_IDEMPOTENCY"] == "PASS"
+    assert first["HELD_POSITION_UNIVERSE_REORDER_RETRY"] == "ALREADY_PROCESSED"
+    assert first["TRUNCATED_UNIVERSE_CHANGE_RETRY"] == "ALREADY_PROCESSED"
+    assert first["CONTRACT_CHANGE_SAME_SLOT"] == "ALREADY_PROCESSED"
     assert first["SAME_SESSION_DIFFERENT_TIMESTAMP"] == "ALREADY_PROCESSED"
     assert first["DIFFERENT_SESSION_DISTINCT"] == "YES"
     assert first["NEXT_TRADING_DAY_DISTINCT"] == "YES"
