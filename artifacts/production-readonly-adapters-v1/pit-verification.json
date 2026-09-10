@@ -1,0 +1,8 @@
+{
+  "DECISION_CUTOFF_AFTER_MARKET_FETCH": "PASS",
+  "PIT_SAFETY": "PASS",
+  "authoritative_timestamp_field": "SYSTIME",
+  "cycle_started_at": "2026-09-09T12:00:00+00:00",
+  "decision_as_of": "2026-09-09T12:00:00+00:00",
+  "future_quote_count": 0
+}

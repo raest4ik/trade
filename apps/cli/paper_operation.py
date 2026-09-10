@@ -6,11 +6,10 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from src.ai_trading_agent_v1.application import AgentRunConfig, UnconfiguredAgentModel, git_sha
+from src.ai_trading_agent_v1.application import AgentRunConfig, build_allowed_universe, git_sha
 from src.paper_trading_operation_v1.application import (
     DEFAULT_PAPER_STATE_ROOT,
     DEFAULT_STATE_ROOT,
-    ExistingArtifactContextProvider,
     operation_history,
     preflight_failures,
     run_paper_operation,
@@ -24,15 +23,27 @@ from src.paper_trading_operation_v1.repository import (
     JsonlOperationAuditRepository,
     OperationAlreadyRunningError,
 )
+from src.production_readonly_adapters_v1.factory import (
+    create_fresh_market_adapter,
+    create_production_agent_model,
+    create_production_context_provider,
+)
+from src.production_readonly_adapters_v1.ollama import OllamaAgentModel
 from src.risk_engine_paper_v1.application import (
     initial_paper_portfolio,
     portfolio_state_sha,
     replay_portfolio,
 )
+from src.risk_engine_paper_v1.domain import RiskPolicy
 from src.risk_engine_paper_v1.repository import JsonlPaperLedgerRepository
+from src.shared.config.settings import get_settings
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.command == "model-smoke":
+        return _model_smoke()
+    if args.command == "market-smoke":
+        return _market_smoke(args.tickers)
     state_root = Path(args.state_root)
     paper_root = Path(args.paper_state_root)
     audit = JsonlOperationAuditRepository(state_root / "operation-ledger.jsonl")
@@ -53,20 +64,20 @@ def run(args: argparse.Namespace) -> int:
         payload = _health(state_root, paper)
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
         return 0 if payload["status"] == "READY" else 2
-
     as_of = _datetime(args.as_of) if args.as_of else datetime.now(UTC)
     policy = _policy_from_env()
-    model = UnconfiguredAgentModel()
-    provider = ExistingArtifactContextProvider(
-        AgentRunConfig(
-            output_root=state_root / "agent-runs" / "pending",
-            code_sha=git_sha(),
-            created_at=as_of,
-            max_agent_steps=policy.max_agent_steps,
-            max_tool_calls=policy.max_tool_calls,
-            max_tickers_per_run=policy.max_operation_universe,
-        )
+    settings = get_settings()
+    risk_policy = RiskPolicy()
+    agent_config = AgentRunConfig(
+        output_root=state_root / "agent-runs" / "pending",
+        code_sha=git_sha(),
+        created_at=as_of,
+        max_agent_steps=policy.max_agent_steps,
+        max_tool_calls=policy.max_tool_calls,
+        max_tickers_per_run=policy.max_operation_universe,
     )
+    model = create_production_agent_model(settings)
+    provider = create_production_context_provider(settings, agent_config, risk_policy)
     mode = PaperOperationMode.PAPER_EXECUTE if args.execute_paper else PaperOperationMode.DRY_RUN
     try:
         result = run_paper_operation(
@@ -79,6 +90,7 @@ def run(args: argparse.Namespace) -> int:
             state_root=state_root,
             code_sha=git_sha(),
             policy=policy,
+            risk_policy=risk_policy,
             operation_slot=args.operation_slot,
         )
     except OperationAlreadyRunningError:
@@ -115,27 +127,97 @@ def _status(
 def _health(state_root: Path, paper: JsonlPaperLedgerRepository) -> dict[str, object]:
     as_of = datetime.now(UTC)
     policy = _policy_from_env()
-    provider = ExistingArtifactContextProvider(
-        AgentRunConfig(output_root=state_root / "health", code_sha=git_sha(), created_at=as_of)
+    settings = get_settings()
+    risk_policy = RiskPolicy()
+    model = create_production_agent_model(settings)
+    provider = create_production_context_provider(
+        settings,
+        AgentRunConfig(output_root=state_root / "health", code_sha=git_sha(), created_at=as_of),
+        risk_policy,
     )
+    reasons: list[str] = []
     try:
         events = paper.events()
         portfolio = replay_portfolio(events) if events else initial_paper_portfolio(as_of)
-        context = provider.load(operation_as_of=as_of, portfolio=portfolio, policy=policy)
-        reasons = preflight_failures(
-            operation_as_of=as_of,
+        prepared = provider.load_after_market_fetch(
+            cycle_started_at=as_of,
             portfolio=portfolio,
-            context=context,
             policy=policy,
         )
+        as_of = prepared.decision_as_of
+        context = prepared.context
+        reasons.extend(
+            preflight_failures(
+                operation_as_of=as_of,
+                portfolio=portfolio,
+                context=context,
+                policy=policy,
+            )
+        )
     except Exception as exc:
-        reasons = [f"CONTEXT_UNAVAILABLE:{type(exc).__name__}"]
-    reasons.append("AGENT_MODEL_UNAVAILABLE")
+        reasons.append(f"CONTEXT_UNAVAILABLE:{type(exc).__name__}")
+    try:
+        if isinstance(model, OllamaAgentModel):
+            model.smoke()
+        else:
+            reasons.append("AGENT_MODEL_UNAVAILABLE")
+    except Exception as exc:
+        reasons.append(f"AGENT_MODEL_UNAVAILABLE:{type(exc).__name__}")
     return {
         "status": "READY" if not reasons else "BLOCKED",
         "reasons": reasons,
         "REAL_EXECUTION_READY": "NO",
     }
+
+
+def _model_smoke() -> int:
+    model = create_production_agent_model(get_settings())
+    try:
+        if not isinstance(model, OllamaAgentModel):
+            raise RuntimeError("AGENT_MODEL_UNAVAILABLE")
+        payload = model.smoke()
+    except Exception as exc:
+        payload = {"status": "BLOCKED", "reason": type(exc).__name__}
+        print(json.dumps(payload, sort_keys=True))
+        return 2
+    print(json.dumps(payload, sort_keys=True))
+    return 0
+
+
+def _market_smoke(tickers: list[str]) -> int:
+    settings = get_settings()
+    risk_policy = RiskPolicy()
+    config = AgentRunConfig(
+        output_root=Path("state/paper-operation-v1/market-smoke"), code_sha=git_sha()
+    )
+    canonical = {str(row["ticker"]): row for row in build_allowed_universe(config)}
+    requested = [ticker.strip().upper() for ticker in tickers]
+    try:
+        universe = [canonical[ticker] for ticker in requested]
+        adapter = create_fresh_market_adapter(settings, risk_policy)
+        raw_snapshot = adapter.fetch_raw(universe=universe)
+        snapshot = adapter.validate_snapshot(
+            raw_snapshot,
+            decision_as_of=raw_snapshot.market_fetch_completed_at,
+        )
+        audit = snapshot.audit_payload()
+        quote_audit = audit.pop("quotes")
+        pit_valid = audit["future_quote_count"] == 0
+        payload = {
+            "status": "READY",
+            **audit,
+            "PIT_VALID": pit_valid,
+            "quotes": snapshot.quotes,
+            "quote_audit": quote_audit,
+        }
+        ready = audit["fresh_quote_count"] == len(requested) and pit_valid
+        if not ready:
+            payload["status"] = "BLOCKED"
+    except Exception as exc:
+        payload = {"status": "BLOCKED", "reason": type(exc).__name__}
+        ready = False
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    return 0 if ready else 2
 
 
 def _exit_code(status: PaperOperationStatus) -> int:
@@ -179,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     operation.add_argument("--as-of", default=None)
     operation.add_argument("--state-root", default=str(DEFAULT_STATE_ROOT))
     operation.add_argument("--paper-state-root", default=str(DEFAULT_PAPER_STATE_ROOT))
-    for name in ("status", "history", "health"):
+    for name in ("status", "history", "health", "model-smoke"):
         command = subparsers.add_parser(name)
         command.add_argument("--state-root", default=str(DEFAULT_STATE_ROOT))
         command.add_argument("--paper-state-root", default=str(DEFAULT_PAPER_STATE_ROOT))
@@ -187,6 +269,8 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("operation_id")
     inspect.add_argument("--state-root", default=str(DEFAULT_STATE_ROOT))
     inspect.add_argument("--paper-state-root", default=str(DEFAULT_PAPER_STATE_ROOT))
+    market_smoke = subparsers.add_parser("market-smoke")
+    market_smoke.add_argument("tickers", nargs="*", default=["SBER", "YDEX"])
     return parser
 
 

@@ -14,6 +14,10 @@ def _dict_list() -> list[dict[str, Any]]:
     return []
 
 
+def _dict() -> dict[str, Any]:
+    return {}
+
+
 class PaperOperationMode(StrEnum):
     DRY_RUN = "DRY_RUN"
     PAPER_EXECUTE = "PAPER_EXECUTE"
@@ -112,7 +116,13 @@ class PaperOperationRun(BaseModel):
     operation_slot_id: str | None = None
     operation_contract_sha: str | None = None
     universe_sha: str | None = None
+    research_status_sha: str | None = None
+    market_adapter_id: str | None = None
+    market_source: str | None = None
+    market_audit: dict[str, Any] = Field(default_factory=_dict)
     operation_as_of: datetime
+    cycle_started_at: datetime | None = None
+    decision_as_of: datetime | None = None
     mode: PaperOperationMode
     status: PaperOperationStatus
     status_code: str
@@ -146,6 +156,17 @@ class PaperOperationRun(BaseModel):
     def timestamp_is_aware(self) -> PaperOperationRun:
         if self.operation_as_of.tzinfo is None or self.operation_as_of.utcoffset() is None:
             raise ValueError("operation_as_of must be timezone-aware")
+        for value in (self.cycle_started_at, self.decision_as_of):
+            if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+                raise ValueError("operation audit timestamps must be timezone-aware")
+        if self.decision_as_of is not None and self.decision_as_of != self.operation_as_of:
+            raise ValueError("decision_as_of must equal operation_as_of")
+        if (
+            self.cycle_started_at is not None
+            and self.decision_as_of is not None
+            and self.cycle_started_at > self.decision_as_of
+        ):
+            raise ValueError("cycle_started_at must not exceed decision_as_of")
         return self
 
 

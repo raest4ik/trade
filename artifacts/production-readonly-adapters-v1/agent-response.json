@@ -1,0 +1,9 @@
+{
+  "eval_count": 50,
+  "message": {
+    "content": "{\"as_of\": \"2026-09-09T12:00:00+00:00\", \"input_snapshot_as_of\": {\"events_as_of\": \"2026-09-09T12:00:00+00:00\", \"market_data_as_of\": \"2026-09-09T12:00:00+00:00\", \"portfolio_as_of\": \"2026-09-09T12:00:00+00:00\"}, \"proposals\": [{\"action\": \"BUY\", \"agent_confidence\": 0.6, \"data_quality\": \"GOOD\", \"evidence\": [], \"holding_horizon\": \"1-5d\", \"risks\": [\"paper simulation only\"], \"target_weight\": 0.1, \"thesis\": [\"deterministic read-only adapter fixture\"], \"ticker\": \"SBER\"}]}",
+    "role": "assistant"
+  },
+  "model": "qwen-fixture:1b",
+  "prompt_eval_count": 100
+}

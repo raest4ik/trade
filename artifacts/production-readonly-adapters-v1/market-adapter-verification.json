@@ -1,0 +1,51 @@
+{
+  "decision_as_of": "2026-09-09T12:00:00+00:00",
+  "effective_max_age_seconds": 300.0,
+  "fresh_quote_count": 2,
+  "future_quote_count": 0,
+  "invalid_quote_count": 0,
+  "market_adapter_id": "moex-iss-fresh-market-v1",
+  "market_fetch_completed_at": "2026-09-09T12:00:00+00:00",
+  "market_fetch_started_at": "2026-09-09T12:00:00+00:00",
+  "market_source": "MOEX_ISS_PUBLIC",
+  "market_source_clock_delta_seconds": 0.0,
+  "max_market_source_time": "2026-09-09T12:00:00+00:00",
+  "missing_quote_count": 0,
+  "quote_count": 2,
+  "quotes": [
+    {
+      "age_at_decision_seconds": 0.0,
+      "age_seconds": 0.0,
+      "board": "TQBR",
+      "book_reason": null,
+      "book_status": "VALID",
+      "fetched_at": "2026-09-09T12:00:00Z",
+      "market_data_as_of": "2026-09-09T12:00:00Z",
+      "payload_sha": "7c238863a04872a4babb7fe1e35a9c81a6d0f3a84aa5e8619fa8e43c45f6d483",
+      "reason": null,
+      "source": "MOEX_ISS_PUBLIC",
+      "source_time": "2026-09-09T12:00:00Z",
+      "status": "FRESH",
+      "ticker": "SBER",
+      "timestamp_status": "FRESH"
+    },
+    {
+      "age_at_decision_seconds": 0.0,
+      "age_seconds": 0.0,
+      "board": "TQBR",
+      "book_reason": null,
+      "book_status": "VALID",
+      "fetched_at": "2026-09-09T12:00:00Z",
+      "market_data_as_of": "2026-09-09T12:00:00Z",
+      "payload_sha": "bc463077e03b2f97f1b096c7a61c36da08088b206bc8ca4ae5e812efd6cfbcee",
+      "reason": null,
+      "source": "MOEX_ISS_PUBLIC",
+      "source_time": "2026-09-09T12:00:00Z",
+      "status": "FRESH",
+      "ticker": "YDEX",
+      "timestamp_status": "FRESH"
+    }
+  ],
+  "source_payload_sha": "a04ea1084fbcf02f408edecfbbb51114fa967337f19bc9c0be8002f870a9548b",
+  "stale_quote_count": 0
+}

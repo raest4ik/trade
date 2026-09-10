@@ -23,6 +23,8 @@ in both modes.
 
 ```powershell
 uv run python -m apps.cli.paper_operation health
+uv run python -m apps.cli.paper_operation model-smoke
+uv run python -m apps.cli.paper_operation market-smoke SBER YDEX
 uv run python -m apps.cli.paper_operation run
 uv run python -m apps.cli.paper_operation run --execute-paper
 uv run python -m apps.cli.paper_operation status
@@ -43,7 +45,11 @@ verified, the paper ledger replays, PIT inputs contain no future timestamps, and
 execution is disabled. A failed critical gate produces `BLOCKED` without Agent or
 portfolio mutation.
 
-The universe is deterministic, canonical, supported, and limited to ten instruments.
+The production provider is described in
+`docs/production-readonly-adapters-v1.md`. The universe is deterministic, canonical,
+supported, and limited to ten instruments.
+For that provider the CLI timestamp starts the acquisition cycle; the final operation
+cutoff is frozen at market-fetch completion before events, research, Agent, or Risk run.
 Held instruments are selected first. Market context is requested for both candidates
 and held positions. Missing or stale held marks remain visible to Risk V1 and prevent
 exposure-increasing BUY decisions.

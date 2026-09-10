@@ -1,0 +1,71 @@
+{
+  "effective_max_age_seconds": 300.0,
+  "market_adapter_id": "moex-iss-fresh-market-v1",
+  "market_fetch_completed_at": "2026-09-09T12:00:00Z",
+  "market_fetch_started_at": "2026-09-09T12:00:00Z",
+  "market_source": "MOEX_ISS_PUBLIC",
+  "market_source_clock_delta_seconds": 0.0,
+  "max_market_source_time": "2026-09-09T12:00:00Z",
+  "operation_as_of": "2026-09-09T12:00:00Z",
+  "quote_audit": [
+    {
+      "age_seconds": 0.0,
+      "board": "TQBR",
+      "book_reason": null,
+      "book_status": "VALID",
+      "fetched_at": "2026-09-09T12:00:00Z",
+      "market_data_as_of": "2026-09-09T12:00:00Z",
+      "payload_sha": "7c238863a04872a4babb7fe1e35a9c81a6d0f3a84aa5e8619fa8e43c45f6d483",
+      "reason": null,
+      "source": "MOEX_ISS_PUBLIC",
+      "status": "FRESH",
+      "ticker": "SBER",
+      "timestamp_status": "FRESH"
+    },
+    {
+      "age_seconds": 0.0,
+      "board": "TQBR",
+      "book_reason": null,
+      "book_status": "VALID",
+      "fetched_at": "2026-09-09T12:00:00Z",
+      "market_data_as_of": "2026-09-09T12:00:00Z",
+      "payload_sha": "bc463077e03b2f97f1b096c7a61c36da08088b206bc8ca4ae5e812efd6cfbcee",
+      "reason": null,
+      "source": "MOEX_ISS_PUBLIC",
+      "status": "FRESH",
+      "ticker": "YDEX",
+      "timestamp_status": "FRESH"
+    }
+  ],
+  "quotes": [
+    {
+      "age_seconds": 0.0,
+      "ask": 100.1,
+      "bid": 99.9,
+      "board": "TQBR",
+      "fetched_at": "2026-09-09T12:00:00Z",
+      "last_price": 100.0,
+      "lot_size": 10,
+      "market_data_as_of": "2026-09-09T12:00:00Z",
+      "source": "MOEX_ISS_PUBLIC",
+      "source_payload_sha": "7c238863a04872a4babb7fe1e35a9c81a6d0f3a84aa5e8619fa8e43c45f6d483",
+      "status": "FRESH",
+      "ticker": "SBER"
+    },
+    {
+      "age_seconds": 0.0,
+      "ask": 110.1,
+      "bid": 109.9,
+      "board": "TQBR",
+      "fetched_at": "2026-09-09T12:00:00Z",
+      "last_price": 110.0,
+      "lot_size": 1,
+      "market_data_as_of": "2026-09-09T12:00:00Z",
+      "source": "MOEX_ISS_PUBLIC",
+      "source_payload_sha": "bc463077e03b2f97f1b096c7a61c36da08088b206bc8ca4ae5e812efd6cfbcee",
+      "status": "FRESH",
+      "ticker": "YDEX"
+    }
+  ],
+  "source_payload_sha": "a04ea1084fbcf02f408edecfbbb51114fa967337f19bc9c0be8002f870a9548b"
+}
