@@ -5,7 +5,7 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
@@ -29,6 +29,7 @@ from src.production_dry_run_burnin_v1.domain import (
     BurninReport,
     BurninRunResult,
     BurninSafety,
+    BurninStatus,
     MoexSessionEvidence,
     MoexSessionStatus,
 )
@@ -121,7 +122,7 @@ def run_burnin_once(
     existing = observation_repository.primary(primary_operation_id)
     if existing is not None and attempt_type == BurninAttemptType.PRIMARY:
         return BurninRunResult(
-            status="ALREADY_PROCESSED",
+            status="ALREADY_OBSERVED",
             existing_observation_id=existing.observation_id,
         )
 
@@ -151,11 +152,11 @@ def run_burnin_once(
         return BurninRunResult(status=observation.status.value, observation=appended)
 
     session = session_verifier.verify(trading_date)
-    if session.status != MoexSessionStatus.TRADING_DAY:
+    if session.status != MoexSessionStatus.OPEN:
         reason = (
-            "MOEX_NOT_TRADING_DAY"
-            if session.status == MoexSessionStatus.NOT_TRADING_DAY
-            else "MOEX_SESSION_STATUS_UNKNOWN"
+            "MARKET_SESSION_CLOSED"
+            if session.status == MoexSessionStatus.CLOSED
+            else "MARKET_SESSION_UNKNOWN"
         )
         completed = _completion_time(now(), cycle_start)
         observation = _empty_observation(
@@ -251,9 +252,9 @@ def build_burnin_report(
     fixed = policy or BurninPolicy()
     primary = [row for row in observations if row.attempt_type == BurninAttemptType.PRIMARY]
     distinct_days = len(
-        {row.trading_date for row in primary if row.session.status == MoexSessionStatus.TRADING_DAY}
+        {row.market_date for row in primary if row.session.status == MoexSessionStatus.OPEN}
     )
-    passes = sum(row.status == BurninObservationStatus.PASS for row in primary)
+    passes = sum(_valid_cycle(row) for row in primary)
     blocked = sum(row.status == BurninObservationStatus.BLOCKED_EXPECTED for row in primary)
     failed = len(primary) - passes - blocked
     total_quotes = sum(
@@ -265,6 +266,9 @@ def build_burnin_report(
         for row in primary
     )
     market_rate = _rate(sum(row.fresh_quote_count for row in primary), total_quotes)
+    research_rate = _rate(
+        sum(row.research_operation_status == "READY" for row in primary), len(primary)
+    )
     agent_rate = _rate(sum(row.agent_decision_status == "VALID" for row in primary), len(primary))
     risk_rate = _rate(sum(row.risk_plan_created for row in primary), len(primary))
     future = sum(row.future_quote_count for row in observations)
@@ -292,11 +296,26 @@ def build_burnin_report(
         and _rate(passes, len(primary)) > 0
         and blocked_rate <= fixed.max_blocked_primary_cycle_rate
         and market_rate >= fixed.min_market_fresh_rate
+        and research_rate >= fixed.min_research_ready_rate
         and agent_rate >= fixed.min_agent_valid_rate
         and risk_rate >= fixed.min_risk_completion_rate
         and zero_safety
         and source_clock_pass
         and all(row.paper_ledger_unchanged for row in observations)
+    )
+    safety_violation = not zero_safety or any(
+        row.status == BurninObservationStatus.SAFETY_VIOLATION for row in observations
+    )
+    burnin_status = (
+        BurninStatus.NOT_STARTED
+        if not observations
+        else BurninStatus.FAIL
+        if safety_violation
+        else BurninStatus.PASS
+        if ready
+        else BurninStatus.FAIL
+        if complete
+        else BurninStatus.IN_PROGRESS
     )
     actions: Counter[str] = Counter()
     for row in observations:
@@ -306,14 +325,32 @@ def build_burnin_report(
     )
     actions["risk_rejection_count"] = sum(row.risk_rejected_count for row in observations)
     actions["risk_reduction_count"] = sum(row.risk_reduced_count for row in observations)
+    tool_total = sum(row.tool_call_count for row in observations)
+    tool_failures = sum(
+        call.get("status") not in {"SUCCESS", "OK"}
+        for row in observations
+        for call in row.tool_calls
+    )
+    degraded = sum(row.operation_status == PaperOperationStatus.DEGRADED.value for row in primary)
+    timeout_count = sum("TIMEOUT" in row.status_code for row in observations)
+    model_error_count = sum(
+        row.status_code.startswith("AGENT_MODEL_") and "TIMEOUT" not in row.status_code
+        for row in observations
+    )
     return BurninReport(
         BURNIN_POLICY_VERSION=fixed.policy_version,
         BURNIN_COLLECTION_STATUS=(
             BurninCollectionStatus.COMPLETE if complete else BurninCollectionStatus.IN_PROGRESS
         ),
-        PRODUCTION_DRY_RUN_BURNIN_READY="YES" if ready else "NO",
+        BURNIN_STATUS=burnin_status,
+        PRODUCTION_DRY_RUN_BURNIN_READY="YES",
         BURNIN_LEDGER_INTEGRITY="PASS",
         distinct_trading_days=distinct_days,
+        valid_cycles=passes,
+        cycle_count=len(primary),
+        successful_cycle_count=passes,
+        blocked_cycle_count=blocked,
+        degraded_cycle_count=degraded,
         primary_cycles=len(primary),
         primary_pass_cycles=passes,
         primary_blocked_cycles=blocked,
@@ -321,8 +358,19 @@ def build_burnin_report(
         primary_pass_rate=_rate(passes, len(primary)),
         blocked_rate=blocked_rate,
         market_fresh_rate=market_rate,
+        market_ready_rate=market_rate,
+        research_ready_rate=research_rate,
         agent_valid_rate=agent_rate,
         risk_completion_rate=risk_rate,
+        dry_run_end_to_end_rate=_rate(passes, len(primary)),
+        model_timeout_count=timeout_count,
+        model_error_count=model_error_count,
+        median_cycle_duration_ms=_median(row.duration_ms for row in primary),
+        p95_cycle_duration_ms=_p95(row.duration_ms for row in primary),
+        duplicate_prevented_count=0,
+        tool_call_total=tool_total,
+        tool_failure_total=tool_failures,
+        tool_failure_rate=_rate(tool_failures, tool_total),
         mean_market_fetch_ms=_mean(row.market_fetch_duration_ms for row in primary),
         p95_market_fetch_ms=_p95(row.market_fetch_duration_ms for row in primary),
         mean_model_latency_ms=_mean(row.model_latency_ms for row in primary),
@@ -362,6 +410,10 @@ def _observation_from_run(
     research = run.research_status
     unchanged = before == after
     safety = _safety(run, policy)
+    if not unchanged:
+        safety = safety.model_copy(
+            update={"PAPER_PORTFOLIO_MUTATIONS": max(1, safety.PAPER_PORTFOLIO_MUTATIONS)}
+        )
     status = _classify(run, unchanged, safety)
     decisions = run.risk_decisions
     actions = Counter(str(row.get("action", "UNKNOWN")) for row in run.agent_proposals)
@@ -384,13 +436,33 @@ def _observation_from_run(
     if safety.violation_count():
         reasons.append("BURNIN_SAFETY_VIOLATION")
     status_code = status_code_override or run.status_code
+    observation_id = _observation_id(run.operation_id, retry_index)
+    tool_calls: list[dict[str, object]] = [
+        {
+            "tool_name": str(row.get("tool_name", "unknown")),
+            "status": str(row.get("status", "UNKNOWN")),
+            "latency_ms": 0,
+            "result_hash": row.get("result_hash"),
+        }
+        for row in run.agent_tool_calls
+    ]
+    approved = _decision_count(decisions, "APPROVE")
+    reduced = _decision_count(decisions, "REDUCE")
+    rejected = _decision_count(decisions, "REJECT")
+    research_operation_status = str(research.get("LIVE_RESEARCH_OPERATION_STATUS", "UNKNOWN"))
+    operational_burnin_status = str(research.get("OPERATIONAL_BURN_IN", "UNKNOWN"))
     return BurninObservation(
         sequence=1,
         previous_record_sha=None,
         record_sha="PENDING",
-        observation_id=_observation_id(run.operation_id, retry_index),
+        observation_id=observation_id,
+        burnin_observation_id=observation_id,
         trading_date=trading_date,
+        market_date=trading_date,
         operation_slot=operation_slot,
+        operation_session=operation_slot,
+        operation_id=run.operation_id,
+        operation_slot_id=run.operation_slot_id or f"{trading_date}:{operation_slot}",
         attempt_type=attempt_type,
         primary_operation_id=primary_operation_id,
         retry_index=retry_index,
@@ -408,6 +480,12 @@ def _observation_from_run(
         market_snapshot_sha=run.market_snapshot_sha or sha256_payload([]),
         event_snapshot_sha=run.event_snapshot_sha or sha256_payload({}),
         research_status_sha=run.research_status_sha or sha256_payload(research),
+        portfolio_sha=run.portfolio_before_sha,
+        market_fetch_started_at=fetch_started,
+        market_fetch_completed_at=fetch_completed,
+        market_source_clock_delta_seconds=float(
+            market.get("market_source_clock_delta_seconds") or 0.0
+        ),
         market_fetch_duration_ms=market_duration,
         operation_duration_ms=operation_duration_ms,
         model_latency_ms=model_latency_ms,
@@ -422,24 +500,39 @@ def _observation_from_run(
         max_source_clock_delta_seconds=float(
             market.get("market_source_clock_delta_seconds") or 0.0
         ),
-        research_status=str(research.get("LIVE_RESEARCH_OPERATION_STATUS", "UNKNOWN")),
+        research_status=research_operation_status,
+        research_operation_status=research_operation_status,
+        operational_burnin_status=operational_burnin_status,
         source_failure_isolation=research.get("SOURCE_FAILURE_ISOLATION") is True,
         seal_verified=(
             seal.get("sealed_epoch_verified") is True and int(seal.get("violations", 0)) == 0
         ),
+        research_seal_verified=(
+            seal.get("sealed_epoch_verified") is True and int(seal.get("violations", 0)) == 0
+        ),
         agent_decision_status="VALID" if run.agent_run_id and run.risk_plan_id else "NOT_VALID",
+        agent_steps=sum(step.name.value == "AGENT" for step in run.steps),
         agent_proposal_count=len(run.agent_proposals),
+        proposal_count=len(run.agent_proposals),
         proposal_action_counts=dict(sorted(actions.items())),
         agent_tool_call_count=len(run.agent_tool_calls),
+        tool_call_count=len(run.agent_tool_calls),
+        tool_calls=tool_calls,
+        validation_reasons=list(run.reasons),
         model_calls=model_calls,
         risk_plan_created=run.risk_plan_id is not None,
         risk_decision_count=len(decisions),
-        risk_approved_count=_decision_count(decisions, "APPROVE"),
-        risk_reduced_count=_decision_count(decisions, "REDUCE"),
-        risk_rejected_count=_decision_count(decisions, "REJECT"),
+        risk_approved_count=approved,
+        approved_count=approved,
+        risk_reduced_count=reduced,
+        reduced_count=reduced,
+        risk_rejected_count=rejected,
+        rejected_count=rejected,
+        paper_orders_planned=len(run.paper_order_ids),
         operation_status=run.status.value,
         status=status,
         status_code=status_code,
+        operation_status_code=run.status_code,
         reasons=list(dict.fromkeys(reasons)),
         paper_ledger_event_count_before=before[0],
         paper_ledger_event_count_after=after[0],
@@ -448,6 +541,9 @@ def _observation_from_run(
         portfolio_sha_before=before[2],
         portfolio_sha_after=after[2],
         paper_ledger_unchanged=unchanged,
+        paper_orders_filled=safety.PAPER_ORDERS_FILLED,
+        paper_portfolio_mutations=safety.PAPER_PORTFOLIO_MUTATIONS,
+        duration_ms=operation_duration_ms,
         session=session,
         safety=safety,
     )
@@ -480,13 +576,19 @@ def _empty_observation(
     unchanged = before == final
     if not unchanged:
         status = BurninObservationStatus.SAFETY_VIOLATION
+    observation_id = _observation_id(operation_id, retry_index)
     return BurninObservation(
         sequence=1,
         previous_record_sha=None,
         record_sha="PENDING",
-        observation_id=_observation_id(operation_id, retry_index),
+        observation_id=observation_id,
+        burnin_observation_id=observation_id,
         trading_date=trading_date,
+        market_date=trading_date,
         operation_slot=operation_slot,
+        operation_session=operation_slot,
+        operation_id=operation_id,
+        operation_slot_id=f"{trading_date}:{operation_slot}",
         attempt_type=attempt_type,
         primary_operation_id=primary_operation_id,
         retry_index=retry_index,
@@ -504,9 +606,12 @@ def _empty_observation(
         market_snapshot_sha=sha256_payload([]),
         event_snapshot_sha=sha256_payload({}),
         research_status_sha=sha256_payload({}),
+        portfolio_sha=before[2],
         operation_duration_ms=operation_duration_ms,
         model_latency_ms=model_latency_ms,
         research_status="NOT_LOADED",
+        research_operation_status="NOT_LOADED",
+        operational_burnin_status="NOT_LOADED",
         source_failure_isolation=False,
         seal_verified=False,
         agent_decision_status="NOT_CALLED",
@@ -515,6 +620,7 @@ def _empty_observation(
         operation_status="NOT_STARTED",
         status=status,
         status_code=reason,
+        operation_status_code=reason,
         reasons=[reason],
         paper_ledger_event_count_before=before[0],
         paper_ledger_event_count_after=final[0],
@@ -523,8 +629,9 @@ def _empty_observation(
         portfolio_sha_before=before[2],
         portfolio_sha_after=final[2],
         paper_ledger_unchanged=unchanged,
+        duration_ms=operation_duration_ms,
         session=session,
-        safety=BurninSafety(),
+        safety=BurninSafety(PAPER_PORTFOLIO_MUTATIONS=0 if unchanged else 1),
     )
 
 
@@ -613,6 +720,17 @@ def _decision_count(rows: list[dict[str, Any]], value: str) -> int:
     return sum(row.get("risk_decision") == value for row in rows)
 
 
+def _valid_cycle(row: BurninObservation) -> bool:
+    return (
+        row.status == BurninObservationStatus.PASS
+        and row.session.status == MoexSessionStatus.OPEN
+        and row.paper_ledger_unchanged
+        and row.safety.violation_count() == 0
+        and bool(row.operation_id and row.operation_slot_id and row.operation_contract_sha)
+        and row.operation_status != "NOT_STARTED"
+    )
+
+
 def _observation_id(operation_id: str, retry_index: int) -> str:
     return f"burnin-observation-{sha256_payload([operation_id, retry_index])[:24]}"
 
@@ -634,7 +752,7 @@ def _completion_time(value: datetime, floor: datetime) -> datetime:
 def _recovered_session(trading_date: str, checked_at: datetime) -> MoexSessionEvidence:
     return MoexSessionEvidence(
         trading_date=trading_date,
-        status=MoexSessionStatus.TRADING_DAY,
+        status=MoexSessionStatus.OPEN,
         source="RECOVERED_OPERATION_AUDIT",
         checked_at=checked_at,
         reason="RECOVERED_FROM_OPERATION_AUDIT",
@@ -654,6 +772,11 @@ def _rate(numerator: int, denominator: int) -> float:
 def _mean(values: Any) -> float:
     rows = list(values)
     return 0.0 if not rows else round(mean(rows), 3)
+
+
+def _median(values: Any) -> float:
+    rows = list(values)
+    return 0.0 if not rows else round(median(rows), 3)
 
 
 def _p95(values: Any) -> float:

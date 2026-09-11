@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import Protocol
 
@@ -16,6 +17,31 @@ from src.production_dry_run_burnin_v1.domain import (
 
 class BurninLedgerIntegrityError(ValueError):
     pass
+
+
+class BurninAlreadyRunningError(RuntimeError):
+    pass
+
+
+class BurninSingleFlightLock(AbstractContextManager["BurninSingleFlightLock"]):
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._fd: int | None = None
+
+    def __enter__(self) -> BurninSingleFlightLock:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self._fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(self._fd, str(os.getpid()).encode("ascii"))
+        except FileExistsError as exc:
+            raise BurninAlreadyRunningError("BURNIN_ALREADY_RUNNING") from exc
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        if self._fd is not None:
+            os.close(self._fd)
+            self._fd = None
+        self.path.unlink(missing_ok=True)
 
 
 def observation_record_sha(observation: BurninObservation) -> str:
@@ -40,6 +66,7 @@ def chain_observation(
 def validate_observations(observations: list[BurninObservation]) -> None:
     ids: set[str] = set()
     primary_ids: set[str] = set()
+    operation_slots: set[str] = set()
     previous_sha: str | None = None
     for expected, row in enumerate(observations, start=1):
         if row.sequence != expected:
@@ -51,6 +78,9 @@ def validate_observations(observations: list[BurninObservation]) -> None:
         if row.observation_id in ids:
             raise BurninLedgerIntegrityError("DUPLICATE_BURNIN_OBSERVATION_ID")
         ids.add(row.observation_id)
+        if row.operation_slot_id in operation_slots:
+            raise BurninLedgerIntegrityError("DUPLICATE_BURNIN_OPERATION_SLOT")
+        operation_slots.add(row.operation_slot_id)
         if row.attempt_type == BurninAttemptType.PRIMARY:
             if row.primary_operation_id in primary_ids:
                 raise BurninLedgerIntegrityError("DUPLICATE_PRIMARY_BURNIN_OBSERVATION")
@@ -130,4 +160,11 @@ class JsonlBurninObservationRepository(InMemoryBurninObservationRepository):
             stream.write(chained.model_dump_json() + "\n")
             stream.flush()
             os.fsync(stream.fileno())
+        snapshot = self.path.parent / "snapshots" / f"{chained.burnin_observation_id}.json"
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        snapshot.write_text(
+            chained.model_dump_json(indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
         return chained

@@ -44,7 +44,9 @@ from src.production_dry_run_burnin_v1.reporting import (
     build_sample_observation,
 )
 from src.production_dry_run_burnin_v1.repository import (
+    BurninAlreadyRunningError,
     BurninLedgerIntegrityError,
+    BurninSingleFlightLock,
     InMemoryBurninObservationRepository,
     JsonlBurninObservationRepository,
     validate_observations,
@@ -198,7 +200,7 @@ def _runner(
     )
 
 
-def test_burnin_observation_append_only() -> None:
+def test_burnin_observation_append_and_replay() -> None:
     repository = InMemoryBurninObservationRepository()
     first = repository.append(build_sample_observation(NOW, BurninObservationStatus.PASS))
     second = repository.append(
@@ -214,7 +216,7 @@ def test_burnin_hash_chain_valid() -> None:
     validate_observations(repository.observations())
 
 
-def test_burnin_corruption_fails_closed(tmp_path: Path) -> None:
+def test_burnin_hash_chain_detects_corruption(tmp_path: Path) -> None:
     path = tmp_path / "observations.jsonl"
     repository = JsonlBurninObservationRepository(path)
     repository.append(build_sample_observation(NOW, BurninObservationStatus.PASS))
@@ -223,13 +225,44 @@ def test_burnin_corruption_fails_closed(tmp_path: Path) -> None:
         repository.observations()
 
 
-def test_duplicate_primary_observation_not_appended(tmp_path: Path) -> None:
+def test_duplicate_operation_slot_is_not_recorded_twice(tmp_path: Path) -> None:
     repository = InMemoryBurninObservationRepository()
     first = _runner(tmp_path, observations=repository)
     second = _runner(tmp_path, observations=repository)
     assert first.observation is not None
-    assert second.status == "ALREADY_PROCESSED"
+    assert second.status == "ALREADY_OBSERVED"
     assert len(repository.observations()) == 1
+
+
+def test_duplicate_logical_slot_fails_ledger_validation() -> None:
+    first = build_sample_observation(NOW, BurninObservationStatus.PASS)
+    second = first.model_copy(
+        update={
+            "observation_id": "different-observation",
+            "burnin_observation_id": "different-observation",
+            "primary_operation_id": "different-operation",
+        }
+    )
+    repository = InMemoryBurninObservationRepository()
+    repository.append(first)
+    with pytest.raises(BurninLedgerIntegrityError, match="DUPLICATE_BURNIN_OPERATION_SLOT"):
+        repository.append(second)
+
+
+def test_jsonl_append_writes_compact_snapshot(tmp_path: Path) -> None:
+    repository = JsonlBurninObservationRepository(tmp_path / "observations.jsonl")
+    saved = repository.append(build_sample_observation(NOW, BurninObservationStatus.PASS))
+    snapshot = tmp_path / "snapshots" / f"{saved.burnin_observation_id}.json"
+    assert json.loads(snapshot.read_text(encoding="utf-8"))["record_sha"] == saved.record_sha
+
+
+def test_burnin_single_flight_rejects_second_runner(tmp_path: Path) -> None:
+    lock_path = tmp_path / "burnin.lock"
+    with BurninSingleFlightLock(lock_path):
+        with pytest.raises(BurninAlreadyRunningError, match="BURNIN_ALREADY_RUNNING"):
+            with BurninSingleFlightLock(lock_path):
+                pass
+    assert not lock_path.exists()
 
 
 def test_retry_does_not_increment_distinct_trading_days() -> None:
@@ -290,6 +323,13 @@ def test_burnin_runner_cannot_enable_paper_execution(tmp_path: Path) -> None:
 def test_burnin_runner_never_accepts_execute_paper_flag() -> None:
     with pytest.raises(SystemExit):
         build_parser().parse_args(["run-once", "--execute-paper"])
+
+
+def test_production_burnin_cli_exposes_required_commands() -> None:
+    parser = build_parser()
+    for command in ("run", "status", "history", "report", "calendar-status"):
+        args = parser.parse_args([command])
+        assert args.command == command
 
 
 def test_paper_ledger_unchanged_after_successful_burnin(tmp_path: Path) -> None:
@@ -428,14 +468,17 @@ def test_safety_violation_forces_readiness_no() -> None:
             "safety": BurninSafety(PAPER_PORTFOLIO_MUTATIONS=1),
         }
     )
-    assert build_burnin_report(rows).PRODUCTION_DRY_RUN_BURNIN_READY == "NO"
+    report = build_burnin_report(rows)
+    assert report.PRODUCTION_DRY_RUN_BURNIN_READY == "YES"
+    assert report.BURNIN_STATUS.value == "FAIL"
 
 
 def test_minimum_days_required_before_readiness() -> None:
     row = build_sample_observation(NOW, BurninObservationStatus.PASS)
     report = build_burnin_report([row])
     assert report.BURNIN_COLLECTION_STATUS.value == "IN_PROGRESS"
-    assert report.PRODUCTION_DRY_RUN_BURNIN_READY == "NO"
+    assert report.PRODUCTION_DRY_RUN_BURNIN_READY == "YES"
+    assert report.BURNIN_STATUS.value == "IN_PROGRESS"
 
 
 def test_readiness_yes_only_after_all_fixed_thresholds() -> None:
@@ -446,6 +489,7 @@ def test_readiness_yes_only_after_all_fixed_thresholds() -> None:
     report = build_burnin_report(rows)
     assert report.BURNIN_COLLECTION_STATUS.value == "COMPLETE"
     assert report.PRODUCTION_DRY_RUN_BURNIN_READY == "YES"
+    assert report.BURNIN_STATUS.value == "PASS"
 
 
 def test_burnin_uses_final_decision_as_of(tmp_path: Path) -> None:
@@ -484,7 +528,7 @@ def test_unknown_trading_day_blocks_without_model(tmp_path: Path) -> None:
     )
     assert result.observation is not None
     assert result.observation.status == BurninObservationStatus.BLOCKED_EXPECTED
-    assert result.observation.status_code == "MOEX_SESSION_STATUS_UNKNOWN"
+    assert result.observation.status_code == "MARKET_SESSION_UNKNOWN"
     assert model.calls == 0
 
 
@@ -522,6 +566,33 @@ def test_moex_session_verifier_uses_official_daily_candle() -> None:
     assert evidence.evidence_sha is not None
 
 
+def test_weekend_not_treated_as_open() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"weekend must not call MOEX: {request.url}")
+
+    verifier = MoexIssSessionVerifier(
+        base_url="https://iss.moex.com/iss",
+        timeout_seconds=1,
+        user_agent="test",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        clock=lambda: NOW,
+    )
+    evidence = verifier.verify(date(2026, 9, 12))
+    assert evidence.status == MoexSessionStatus.CLOSED
+    assert evidence.reason == "MARKET_SESSION_CLOSED"
+
+
+def test_burnin_status_not_started() -> None:
+    report = build_burnin_report([])
+    assert report.PRODUCTION_DRY_RUN_BURNIN_READY == "YES"
+    assert report.BURNIN_STATUS.value == "NOT_STARTED"
+
+
+def test_mocked_observations_do_not_create_profitability_metrics() -> None:
+    keys = {key.lower() for key in build_burnin_report([]).model_dump()}
+    assert not keys & {"pnl", "returns", "sharpe", "sortino", "alpha", "win_rate"}
+
+
 def test_artifact_rebuilds_byte_for_byte(tmp_path: Path) -> None:
     first = tmp_path / "first"
     second = tmp_path / "second"
@@ -537,8 +608,21 @@ def test_artifact_rebuilds_byte_for_byte(tmp_path: Path) -> None:
         base_main_sha="base",
         head_sha="head",
     )
-    assert manifest["BURNIN_FRAMEWORK_READY"] == "YES"
-    assert manifest["PRODUCTION_DRY_RUN_BURNIN_READY"] == "NO"
+    assert manifest["PRODUCTION_DRY_RUN_BURNIN_READY"] == "YES"
+    assert manifest["BURNIN_STATUS"] == "NOT_STARTED"
+    assert manifest["LIVE_BURNIN_OBSERVATIONS"] == 0
+    assert {path.name for path in first.iterdir()} == {
+        "manifest.json",
+        "burnin-policy.json",
+        "observation-schema.json",
+        "sample-observations.jsonl",
+        "replay-verification.json",
+        "calendar-verification.json",
+        "failure-taxonomy.json",
+        "aggregate-report.json",
+        "safety.json",
+        "report.md",
+    }
     assert {path.name: path.read_bytes() for path in first.iterdir()} == {
         path.name: path.read_bytes() for path in second.iterdir()
     }

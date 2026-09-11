@@ -5,8 +5,9 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-BURNIN_POLICY_VERSION = "production-dry-run-burnin-policy-v1"
+BURNIN_POLICY_VERSION = "production-dry-run-burnin-v1"
 BURNIN_ARTIFACT_VERSION = "production-dry-run-burnin-v1"
+BURNIN_OBSERVATION_SCHEMA_VERSION = "production-dry-run-burnin-observation-v1"
 PRIMARY_OPERATION_SLOT = "BURNIN_EOD"
 
 
@@ -23,14 +24,23 @@ class BurninObservationStatus(StrEnum):
 
 
 class MoexSessionStatus(StrEnum):
-    TRADING_DAY = "TRADING_DAY"
-    NOT_TRADING_DAY = "NOT_TRADING_DAY"
+    OPEN = "OPEN"
+    CLOSED = "CLOSED"
     UNKNOWN = "UNKNOWN"
+    TRADING_DAY = "OPEN"
+    NOT_TRADING_DAY = "CLOSED"
 
 
 class BurninCollectionStatus(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETE = "COMPLETE"
+
+
+class BurninStatus(StrEnum):
+    NOT_STARTED = "NOT_STARTED"
+    IN_PROGRESS = "IN_PROGRESS"
+    PASS = "PASS"
+    FAIL = "FAIL"
 
 
 class BurninPolicy(BaseModel):
@@ -41,6 +51,7 @@ class BurninPolicy(BaseModel):
     min_primary_cycles: int = Field(default=5, ge=1)
     max_blocked_primary_cycle_rate: float = Field(default=0.20, ge=0.0, le=1.0)
     min_market_fresh_rate: float = Field(default=0.95, ge=0.0, le=1.0)
+    min_research_ready_rate: float = Field(default=0.90, ge=0.0, le=1.0)
     min_agent_valid_rate: float = Field(default=0.90, ge=0.0, le=1.0)
     min_risk_completion_rate: float = Field(default=0.90, ge=0.0, le=1.0)
     max_source_clock_skew_seconds: float = Field(default=5.0, ge=0.0)
@@ -115,12 +126,18 @@ class MoexSessionEvidence(BaseModel):
 class BurninObservation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    schema_version: str = BURNIN_OBSERVATION_SCHEMA_VERSION
     sequence: int = Field(ge=1)
     previous_record_sha: str | None
     record_sha: str
     observation_id: str
+    burnin_observation_id: str = ""
     trading_date: str
+    market_date: str = ""
     operation_slot: str
+    operation_session: str = ""
+    operation_id: str = ""
+    operation_slot_id: str = ""
     attempt_type: BurninAttemptType
     primary_operation_id: str
     retry_index: int = Field(default=0, ge=0)
@@ -138,6 +155,10 @@ class BurninObservation(BaseModel):
     market_snapshot_sha: str
     event_snapshot_sha: str
     research_status_sha: str
+    portfolio_sha: str = ""
+    market_fetch_started_at: datetime | None = None
+    market_fetch_completed_at: datetime | None = None
+    market_source_clock_delta_seconds: float = 0.0
     market_fetch_duration_ms: int = Field(default=0, ge=0)
     operation_duration_ms: int = Field(default=0, ge=0)
     model_latency_ms: int = Field(default=0, ge=0)
@@ -151,21 +172,34 @@ class BurninObservation(BaseModel):
     max_market_age_seconds: float = Field(default=0.0, ge=0.0)
     max_source_clock_delta_seconds: float = 0.0
     research_status: str
+    research_operation_status: str = "UNKNOWN"
+    operational_burnin_status: str = "UNKNOWN"
     source_failure_isolation: bool
     seal_verified: bool
+    research_seal_verified: bool = False
     agent_decision_status: str
+    agent_steps: int = Field(default=0, ge=0)
     agent_proposal_count: int = Field(default=0, ge=0)
+    proposal_count: int = Field(default=0, ge=0)
     proposal_action_counts: dict[str, int] = Field(default_factory=dict)
     agent_tool_call_count: int = Field(default=0, ge=0)
+    tool_call_count: int = Field(default=0, ge=0)
+    tool_calls: list[dict[str, object]] = Field(default_factory=lambda: [])
+    validation_reasons: list[str] = Field(default_factory=list)
     model_calls: int = Field(default=0, ge=0)
     risk_plan_created: bool
     risk_decision_count: int = Field(default=0, ge=0)
     risk_approved_count: int = Field(default=0, ge=0)
+    approved_count: int = Field(default=0, ge=0)
     risk_reduced_count: int = Field(default=0, ge=0)
+    reduced_count: int = Field(default=0, ge=0)
     risk_rejected_count: int = Field(default=0, ge=0)
+    rejected_count: int = Field(default=0, ge=0)
+    paper_orders_planned: int = Field(default=0, ge=0)
     operation_status: str
     status: BurninObservationStatus
     status_code: str
+    operation_status_code: str = ""
     reasons: list[str] = Field(default_factory=list)
     paper_ledger_event_count_before: int = Field(ge=0)
     paper_ledger_event_count_after: int = Field(ge=0)
@@ -174,6 +208,9 @@ class BurninObservation(BaseModel):
     portfolio_sha_before: str
     portfolio_sha_after: str
     paper_ledger_unchanged: bool
+    paper_orders_filled: int = Field(default=0, ge=0)
+    paper_portfolio_mutations: int = Field(default=0, ge=0)
+    duration_ms: int = Field(default=0, ge=0)
     session: MoexSessionEvidence
     safety: BurninSafety
 
@@ -204,9 +241,15 @@ class BurninReport(BaseModel):
 
     BURNIN_POLICY_VERSION: str
     BURNIN_COLLECTION_STATUS: BurninCollectionStatus
+    BURNIN_STATUS: BurninStatus
     PRODUCTION_DRY_RUN_BURNIN_READY: str
     BURNIN_LEDGER_INTEGRITY: str
     distinct_trading_days: int
+    valid_cycles: int
+    cycle_count: int
+    successful_cycle_count: int
+    blocked_cycle_count: int
+    degraded_cycle_count: int
     primary_cycles: int
     primary_pass_cycles: int
     primary_blocked_cycles: int
@@ -214,8 +257,19 @@ class BurninReport(BaseModel):
     primary_pass_rate: float
     blocked_rate: float
     market_fresh_rate: float
+    market_ready_rate: float
+    research_ready_rate: float
     agent_valid_rate: float
     risk_completion_rate: float
+    dry_run_end_to_end_rate: float
+    model_timeout_count: int
+    model_error_count: int
+    median_cycle_duration_ms: float
+    p95_cycle_duration_ms: float
+    duplicate_prevented_count: int
+    tool_call_total: int
+    tool_failure_total: int
+    tool_failure_rate: float
     mean_market_fetch_ms: float
     p95_market_fetch_ms: float
     mean_model_latency_ms: float

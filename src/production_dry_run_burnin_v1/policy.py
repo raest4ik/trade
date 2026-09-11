@@ -41,6 +41,14 @@ class MoexIssSessionVerifier:
 
     def verify(self, trading_date: date) -> MoexSessionEvidence:
         checked_at = self._clock().astimezone(UTC)
+        if trading_date.weekday() >= 5:
+            return MoexSessionEvidence(
+                trading_date=trading_date.isoformat(),
+                status=MoexSessionStatus.CLOSED,
+                source="MOEX_WEEKEND_RULE",
+                checked_at=checked_at,
+                reason="MARKET_SESSION_CLOSED",
+            )
         try:
             payload = self._request(trading_date)
             table = cast("dict[str, Any]", payload["candles"])
@@ -53,7 +61,7 @@ class MoexIssSessionVerifier:
             if matched:
                 return MoexSessionEvidence(
                     trading_date=trading_date.isoformat(),
-                    status=MoexSessionStatus.TRADING_DAY,
+                    status=MoexSessionStatus.OPEN,
                     source=MOEX_SESSION_SOURCE,
                     checked_at=checked_at,
                     evidence_sha=sha256_payload(payload),
