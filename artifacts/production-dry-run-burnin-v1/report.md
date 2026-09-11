@@ -1,11 +1,11 @@
 # Production dry-run burn-in V1
 
-Burn-in proves operational reliability only. It does not prove profitability or alpha.
+This artifact proves that the observation infrastructure is ready; fixture results are not live burn-in evidence.
 
-- framework ready: YES
-- ledger integrity: PASS
-- collection status: IN_PROGRESS
-- production burn-in ready: NO
-- fixture primary cycles: 2
+- infrastructure ready: YES
+- actual burn-in status: NOT_STARTED
+- live observations included: 0
 - paper execution enabled: false
 - real execution enabled: false
+- scheduling enabled: false
+- profitability evaluated: false

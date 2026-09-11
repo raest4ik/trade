@@ -1,7 +1,0 @@
-{
-  "BURNIN_LEDGER_INTEGRITY": "PASS",
-  "duplicate_observation_ids": 0,
-  "duplicate_primary_operation_ids": 0,
-  "last_record_sha": "6a92d058dcafdcded89318934dc8f9eb132ddf676e7e8afc2db575a25b8e362d",
-  "record_count": 2
-}

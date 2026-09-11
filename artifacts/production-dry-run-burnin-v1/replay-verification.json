@@ -1,0 +1,8 @@
+{
+  "BURNIN_IDEMPOTENCY": "PASS",
+  "BURNIN_LEDGER_REPLAY": "PASS",
+  "duplicate_observation_ids": 0,
+  "duplicate_operation_slots": 0,
+  "fixture_record_count": 2,
+  "last_record_sha": "d88e0366e6a8565c90cfafef459d5c7aefd4b31c8c890fe9a4536aa898b832a8"
+}
