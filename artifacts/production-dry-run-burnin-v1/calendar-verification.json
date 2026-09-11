@@ -1,0 +1,7 @@
+{
+  "BURNIN_CALENDAR_GATE": "PASS",
+  "authoritative_open_proof_required": true,
+  "unverified_status": "UNKNOWN",
+  "weekday_implies_open": false,
+  "weekend_status": "CLOSED"
+}

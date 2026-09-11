@@ -1,0 +1,695 @@
+{
+  "$defs": {
+    "BurninAttemptType": {
+      "enum": [
+        "PRIMARY",
+        "RETRY"
+      ],
+      "title": "BurninAttemptType",
+      "type": "string"
+    },
+    "BurninObservationStatus": {
+      "enum": [
+        "PASS",
+        "BLOCKED_EXPECTED",
+        "FAIL",
+        "SAFETY_VIOLATION"
+      ],
+      "title": "BurninObservationStatus",
+      "type": "string"
+    },
+    "BurninSafety": {
+      "additionalProperties": false,
+      "properties": {
+        "BACKTEST_PERFORMED": {
+          "default": false,
+          "title": "Backtest Performed",
+          "type": "boolean"
+        },
+        "LIVE_OUTCOMES_READ": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Live Outcomes Read",
+          "type": "integer"
+        },
+        "LIVE_POST_EVENT_PRICE_READS": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Live Post Event Price Reads",
+          "type": "integer"
+        },
+        "LIVE_TARGETS_COMPUTED": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Live Targets Computed",
+          "type": "integer"
+        },
+        "MODEL_TRAINING_PERFORMED": {
+          "default": false,
+          "title": "Model Training Performed",
+          "type": "boolean"
+        },
+        "OLD_FUTURE_HOLDOUT_OPENED": {
+          "default": false,
+          "title": "Old Future Holdout Opened",
+          "type": "boolean"
+        },
+        "PAID_SOURCE_CALLS": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Paid Source Calls",
+          "type": "integer"
+        },
+        "PAPER_EXECUTION_ENABLED": {
+          "default": false,
+          "title": "Paper Execution Enabled",
+          "type": "boolean"
+        },
+        "PAPER_OPERATION_SCHEDULE_ENABLED": {
+          "default": false,
+          "title": "Paper Operation Schedule Enabled",
+          "type": "boolean"
+        },
+        "PAPER_ORDERS_FILLED": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Paper Orders Filled",
+          "type": "integer"
+        },
+        "PAPER_PORTFOLIO_MUTATIONS": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Paper Portfolio Mutations",
+          "type": "integer"
+        },
+        "REAL_BROKER_MUTATIONS": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Real Broker Mutations",
+          "type": "integer"
+        },
+        "REAL_EXECUTION_ENABLED": {
+          "default": false,
+          "title": "Real Execution Enabled",
+          "type": "boolean"
+        },
+        "REAL_ORDERS_CANCELLED": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Real Orders Cancelled",
+          "type": "integer"
+        },
+        "REAL_ORDERS_SENT": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Real Orders Sent",
+          "type": "integer"
+        },
+        "REAL_POSITIONS_CHANGED": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Real Positions Changed",
+          "type": "integer"
+        }
+      },
+      "title": "BurninSafety",
+      "type": "object"
+    },
+    "MoexSessionEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "checked_at": {
+          "format": "date-time",
+          "title": "Checked At",
+          "type": "string"
+        },
+        "evidence_sha": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Sha"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/MoexSessionStatus"
+        },
+        "trading_date": {
+          "title": "Trading Date",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trading_date",
+        "status",
+        "source",
+        "checked_at"
+      ],
+      "title": "MoexSessionEvidence",
+      "type": "object"
+    },
+    "MoexSessionStatus": {
+      "enum": [
+        "OPEN",
+        "CLOSED",
+        "UNKNOWN",
+        "OPEN",
+        "CLOSED"
+      ],
+      "title": "MoexSessionStatus",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "agent_decision_status": {
+      "title": "Agent Decision Status",
+      "type": "string"
+    },
+    "agent_model_id": {
+      "title": "Agent Model Id",
+      "type": "string"
+    },
+    "agent_proposal_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Agent Proposal Count",
+      "type": "integer"
+    },
+    "agent_steps": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Agent Steps",
+      "type": "integer"
+    },
+    "agent_tool_call_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Agent Tool Call Count",
+      "type": "integer"
+    },
+    "approved_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Approved Count",
+      "type": "integer"
+    },
+    "attempt_type": {
+      "$ref": "#/$defs/BurninAttemptType"
+    },
+    "burnin_observation_id": {
+      "default": "",
+      "title": "Burnin Observation Id",
+      "type": "string"
+    },
+    "code_sha": {
+      "title": "Code Sha",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "cycle_started_at": {
+      "format": "date-time",
+      "title": "Cycle Started At",
+      "type": "string"
+    },
+    "decision_as_of": {
+      "format": "date-time",
+      "title": "Decision As Of",
+      "type": "string"
+    },
+    "duration_ms": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Duration Ms",
+      "type": "integer"
+    },
+    "event_snapshot_sha": {
+      "title": "Event Snapshot Sha",
+      "type": "string"
+    },
+    "fresh_quote_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Fresh Quote Count",
+      "type": "integer"
+    },
+    "future_quote_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Future Quote Count",
+      "type": "integer"
+    },
+    "invalid_quote_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Invalid Quote Count",
+      "type": "integer"
+    },
+    "market_adapter_id": {
+      "title": "Market Adapter Id",
+      "type": "string"
+    },
+    "market_date": {
+      "default": "",
+      "title": "Market Date",
+      "type": "string"
+    },
+    "market_fetch_completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Market Fetch Completed At"
+    },
+    "market_fetch_duration_ms": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Market Fetch Duration Ms",
+      "type": "integer"
+    },
+    "market_fetch_started_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Market Fetch Started At"
+    },
+    "market_quote_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Market Quote Count",
+      "type": "integer"
+    },
+    "market_snapshot_sha": {
+      "title": "Market Snapshot Sha",
+      "type": "string"
+    },
+    "market_source_clock_delta_seconds": {
+      "default": 0.0,
+      "title": "Market Source Clock Delta Seconds",
+      "type": "number"
+    },
+    "max_market_age_seconds": {
+      "default": 0.0,
+      "minimum": 0.0,
+      "title": "Max Market Age Seconds",
+      "type": "number"
+    },
+    "max_source_clock_delta_seconds": {
+      "default": 0.0,
+      "title": "Max Source Clock Delta Seconds",
+      "type": "number"
+    },
+    "missing_quote_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Missing Quote Count",
+      "type": "integer"
+    },
+    "model_calls": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Model Calls",
+      "type": "integer"
+    },
+    "model_latency_ms": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Model Latency Ms",
+      "type": "integer"
+    },
+    "observation_id": {
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "operation_contract_sha": {
+      "title": "Operation Contract Sha",
+      "type": "string"
+    },
+    "operation_duration_ms": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Operation Duration Ms",
+      "type": "integer"
+    },
+    "operation_id": {
+      "default": "",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "operation_session": {
+      "default": "",
+      "title": "Operation Session",
+      "type": "string"
+    },
+    "operation_slot": {
+      "title": "Operation Slot",
+      "type": "string"
+    },
+    "operation_slot_id": {
+      "default": "",
+      "title": "Operation Slot Id",
+      "type": "string"
+    },
+    "operation_status": {
+      "title": "Operation Status",
+      "type": "string"
+    },
+    "operation_status_code": {
+      "default": "",
+      "title": "Operation Status Code",
+      "type": "string"
+    },
+    "operational_burnin_status": {
+      "default": "UNKNOWN",
+      "title": "Operational Burnin Status",
+      "type": "string"
+    },
+    "paper_ledger_event_count_after": {
+      "minimum": 0,
+      "title": "Paper Ledger Event Count After",
+      "type": "integer"
+    },
+    "paper_ledger_event_count_before": {
+      "minimum": 0,
+      "title": "Paper Ledger Event Count Before",
+      "type": "integer"
+    },
+    "paper_ledger_sha_after": {
+      "title": "Paper Ledger Sha After",
+      "type": "string"
+    },
+    "paper_ledger_sha_before": {
+      "title": "Paper Ledger Sha Before",
+      "type": "string"
+    },
+    "paper_ledger_unchanged": {
+      "title": "Paper Ledger Unchanged",
+      "type": "boolean"
+    },
+    "paper_orders_filled": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Paper Orders Filled",
+      "type": "integer"
+    },
+    "paper_orders_planned": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Paper Orders Planned",
+      "type": "integer"
+    },
+    "paper_portfolio_mutations": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Paper Portfolio Mutations",
+      "type": "integer"
+    },
+    "policy_version": {
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "portfolio_sha": {
+      "default": "",
+      "title": "Portfolio Sha",
+      "type": "string"
+    },
+    "portfolio_sha_after": {
+      "title": "Portfolio Sha After",
+      "type": "string"
+    },
+    "portfolio_sha_before": {
+      "title": "Portfolio Sha Before",
+      "type": "string"
+    },
+    "previous_record_sha": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Previous Record Sha"
+    },
+    "primary_operation_id": {
+      "title": "Primary Operation Id",
+      "type": "string"
+    },
+    "prompt_version": {
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "proposal_action_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Proposal Action Counts",
+      "type": "object"
+    },
+    "proposal_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Proposal Count",
+      "type": "integer"
+    },
+    "reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "record_sha": {
+      "title": "Record Sha",
+      "type": "string"
+    },
+    "reduced_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Reduced Count",
+      "type": "integer"
+    },
+    "rejected_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Rejected Count",
+      "type": "integer"
+    },
+    "research_operation_status": {
+      "default": "UNKNOWN",
+      "title": "Research Operation Status",
+      "type": "string"
+    },
+    "research_seal_verified": {
+      "default": false,
+      "title": "Research Seal Verified",
+      "type": "boolean"
+    },
+    "research_status": {
+      "title": "Research Status",
+      "type": "string"
+    },
+    "research_status_sha": {
+      "title": "Research Status Sha",
+      "type": "string"
+    },
+    "retry_index": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Retry Index",
+      "type": "integer"
+    },
+    "retry_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retry Reason"
+    },
+    "risk_approved_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Risk Approved Count",
+      "type": "integer"
+    },
+    "risk_decision_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Risk Decision Count",
+      "type": "integer"
+    },
+    "risk_plan_created": {
+      "title": "Risk Plan Created",
+      "type": "boolean"
+    },
+    "risk_reduced_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Risk Reduced Count",
+      "type": "integer"
+    },
+    "risk_rejected_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Risk Rejected Count",
+      "type": "integer"
+    },
+    "safety": {
+      "$ref": "#/$defs/BurninSafety"
+    },
+    "schema_version": {
+      "default": "production-dry-run-burnin-observation-v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "seal_verified": {
+      "title": "Seal Verified",
+      "type": "boolean"
+    },
+    "sequence": {
+      "minimum": 1,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "session": {
+      "$ref": "#/$defs/MoexSessionEvidence"
+    },
+    "source_failure_isolation": {
+      "title": "Source Failure Isolation",
+      "type": "boolean"
+    },
+    "stale_quote_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Stale Quote Count",
+      "type": "integer"
+    },
+    "status": {
+      "$ref": "#/$defs/BurninObservationStatus"
+    },
+    "status_code": {
+      "title": "Status Code",
+      "type": "string"
+    },
+    "tool_call_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Tool Call Count",
+      "type": "integer"
+    },
+    "tool_calls": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Tool Calls",
+      "type": "array"
+    },
+    "trading_date": {
+      "title": "Trading Date",
+      "type": "string"
+    },
+    "universe_count": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Universe Count",
+      "type": "integer"
+    },
+    "universe_sha": {
+      "title": "Universe Sha",
+      "type": "string"
+    },
+    "validation_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Validation Reasons",
+      "type": "array"
+    }
+  },
+  "required": [
+    "sequence",
+    "previous_record_sha",
+    "record_sha",
+    "observation_id",
+    "trading_date",
+    "operation_slot",
+    "attempt_type",
+    "primary_operation_id",
+    "cycle_started_at",
+    "decision_as_of",
+    "completed_at",
+    "code_sha",
+    "policy_version",
+    "prompt_version",
+    "agent_model_id",
+    "market_adapter_id",
+    "universe_sha",
+    "operation_contract_sha",
+    "market_snapshot_sha",
+    "event_snapshot_sha",
+    "research_status_sha",
+    "research_status",
+    "source_failure_isolation",
+    "seal_verified",
+    "agent_decision_status",
+    "risk_plan_created",
+    "operation_status",
+    "status",
+    "status_code",
+    "paper_ledger_event_count_before",
+    "paper_ledger_event_count_after",
+    "paper_ledger_sha_before",
+    "paper_ledger_sha_after",
+    "portfolio_sha_before",
+    "portfolio_sha_after",
+    "paper_ledger_unchanged",
+    "session",
+    "safety"
+  ],
+  "title": "BurninObservation",
+  "type": "object"
+}
