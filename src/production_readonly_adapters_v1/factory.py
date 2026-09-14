@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.ai_trading_agent_v1.application import AgentRunConfig, UnconfiguredAgentModel
+from src.current_moex_tradability_v1.moex import CurrentMoexTradabilityResolver
 from src.production_readonly_adapters_v1.context import ProductionPaperOperationContextProvider
 from src.production_readonly_adapters_v1.moex import MoexIssFreshMarketAdapter
 from src.production_readonly_adapters_v1.ollama import OllamaAgentModel
@@ -40,6 +41,17 @@ def create_fresh_market_adapter(
     )
 
 
+def create_current_tradability_resolver(
+    settings: Settings,
+) -> CurrentMoexTradabilityResolver:
+    return CurrentMoexTradabilityResolver(
+        base_url=settings.moex_iss_base_url,
+        timeout_seconds=settings.moex_http_timeout_seconds,
+        max_retries=settings.moex_http_max_retries,
+        user_agent=settings.moex_http_user_agent,
+    )
+
+
 def create_production_context_provider(
     settings: Settings,
     agent_config: AgentRunConfig,
@@ -50,4 +62,5 @@ def create_production_context_provider(
         market_adapter=create_fresh_market_adapter(settings, risk_policy),
         risk_policy=risk_policy,
         configured_max_age_seconds=settings.market_context_max_age_seconds,
+        tradability_resolver=create_current_tradability_resolver(settings),
     )

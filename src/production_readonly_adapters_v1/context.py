@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Protocol
@@ -11,6 +11,11 @@ from src.ai_trading_agent_v1.application import (
     recent_event_context,
     research_status,
 )
+from src.current_moex_tradability_v1.domain import (
+    CandidateClassification,
+    CurrentUniverseResolution,
+)
+from src.free_live_issuer_accumulation.domain import sha256_payload
 from src.paper_trading_operation_v1.application import (
     PaperOperationContext,
     PreparedPaperOperationContext,
@@ -40,6 +45,10 @@ class FreshMarketAdapter(Protocol):
     ) -> FreshMarketSnapshot: ...
 
 
+class CurrentTradabilityResolver(Protocol):
+    def resolve(self, canonical: Sequence[dict[str, Any]]) -> CurrentUniverseResolution: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ProductionPaperOperationContextProvider:
     agent_config: AgentRunConfig
@@ -49,6 +58,7 @@ class ProductionPaperOperationContextProvider:
     universe_loader: Callable[[AgentRunConfig], list[dict[str, Any]]] = build_allowed_universe
     event_loader: Callable[..., dict[str, Any]] = recent_event_context
     research_loader: Callable[..., dict[str, Any]] = research_status
+    tradability_resolver: CurrentTradabilityResolver | None = None
 
     def load(
         self,
@@ -57,7 +67,7 @@ class ProductionPaperOperationContextProvider:
         portfolio: PaperPortfolio,
         policy: PaperOperationPolicy,
     ) -> PaperOperationContext:
-        universe, selected = self._selected_universe(portfolio, policy)
+        universe, selected, eligibility = self._selected_universe(portfolio, policy)
         snapshot = self.market_adapter.fetch(
             universe=universe,
             operation_as_of=operation_as_of,
@@ -68,6 +78,7 @@ class ProductionPaperOperationContextProvider:
             universe=universe,
             selected=selected,
             snapshot=snapshot,
+            eligibility=eligibility,
         )
 
     def load_after_market_fetch(
@@ -77,7 +88,7 @@ class ProductionPaperOperationContextProvider:
         portfolio: PaperPortfolio,
         policy: PaperOperationPolicy,
     ) -> PreparedPaperOperationContext:
-        universe, selected = self._selected_universe(portfolio, policy)
+        universe, selected, eligibility = self._selected_universe(portfolio, policy)
         raw_snapshot = self.market_adapter.fetch_raw(universe=universe)
         decision_as_of = raw_snapshot.market_fetch_completed_at
         if decision_as_of < cycle_started_at:
@@ -92,6 +103,7 @@ class ProductionPaperOperationContextProvider:
             universe=universe,
             selected=selected,
             snapshot=snapshot,
+            eligibility=eligibility,
         )
         return PreparedPaperOperationContext(
             cycle_started_at=cycle_started_at,
@@ -103,17 +115,66 @@ class ProductionPaperOperationContextProvider:
         self,
         portfolio: PaperPortfolio,
         policy: PaperOperationPolicy,
-    ) -> tuple[list[dict[str, Any]], list[str]]:
+    ) -> tuple[list[dict[str, Any]], list[str], dict[str, object]]:
         canonical = self.universe_loader(self.agent_config)
         by_ticker = {str(row["ticker"]).upper(): row for row in canonical}
         held = [position.ticker.upper() for position in portfolio.positions]
-        missing_held = [ticker for ticker in held if ticker not in by_ticker]
-        if missing_held:
-            raise ValueError(f"HELD_POSITION_OUTSIDE_CANONICAL_UNIVERSE:{missing_held[0]}")
-        candidates = [ticker for ticker in sorted(by_ticker) if ticker not in held]
+        for ticker in held:
+            by_ticker.setdefault(
+                ticker,
+                {
+                    "ticker": ticker,
+                    "board": "TQBR",
+                    "canonical_status": "HELD_OUTSIDE_CANONICAL",
+                    "supported": True,
+                    "market_data_compatible": True,
+                    "feature_compatible": False,
+                },
+            )
+        canonical_sha = sha256_payload(canonical)
+        if self.tradability_resolver is None:
+            eligible = set(by_ticker) - set(held)
+            classifications: dict[str, CandidateClassification] = {}
+            eligibility: dict[str, object] = {
+                "current_eligibility_policy_version": "TEST_OR_LEGACY_BYPASS",
+                "canonical_universe_sha": canonical_sha,
+                "eligible_count": len(eligible),
+                "ineligible_count": 0,
+                "unknown_count": 0,
+                "rejected_candidates": [],
+            }
+        else:
+            resolution = self.tradability_resolver.resolve(canonical)
+            classifications = resolution.by_ticker()
+            eligible = {
+                ticker
+                for ticker, classification in classifications.items()
+                if classification.candidate_eligible
+            }
+            eligibility = {
+                **resolution.audit_payload(),
+                "canonical_universe_sha": canonical_sha,
+                "eligible_universe_sha": sha256_payload(sorted(eligible)),
+            }
+        candidates = [
+            ticker for ticker in sorted(by_ticker) if ticker not in held and ticker in eligible
+        ]
         remaining = max(policy.max_operation_universe - len(held), 0)
         selected = [*held, *candidates[:remaining]]
-        return [by_ticker[ticker] for ticker in selected], selected
+        selected_rows: list[dict[str, Any]] = []
+        for ticker in selected:
+            row = dict(by_ticker[ticker])
+            classification = classifications.get(ticker)
+            if classification is not None:
+                row["current_tradability_status"] = classification.current_moex_status.value
+                row["current_tradability_reason"] = classification.reason
+            elif ticker in held:
+                row["current_tradability_status"] = "UNKNOWN"
+                row["current_tradability_reason"] = "HELD_POSITION_VISIBILITY_OVERRIDE"
+            selected_rows.append(row)
+        eligibility["selected_tickers"] = selected
+        eligibility["selected_universe_sha"] = sha256_payload(selected_rows)
+        return selected_rows, selected, eligibility
 
     def _context(
         self,
@@ -123,6 +184,7 @@ class ProductionPaperOperationContextProvider:
         universe: list[dict[str, Any]],
         selected: list[str],
         snapshot: FreshMarketSnapshot,
+        eligibility: dict[str, object],
     ) -> PaperOperationContext:
         effective_age = min(
             self.configured_max_age_seconds,
@@ -132,10 +194,21 @@ class ProductionPaperOperationContextProvider:
             raise ValueError("MARKET_CONTEXT_MAX_AGE_INVALID")
         if snapshot.effective_max_age_seconds > effective_age:
             raise ValueError("MARKET_ADAPTER_FRESHNESS_POLICY_TOO_WEAK")
+        for field in (
+            "current_eligibility_fetched_at",
+            "current_eligibility_source_time",
+        ):
+            eligibility_time = eligibility.get(field)
+            if (
+                isinstance(eligibility_time, str)
+                and datetime.fromisoformat(eligibility_time) > decision_as_of
+            ):
+                raise ValueError("CURRENT_UNIVERSE_SNAPSHOT_AFTER_DECISION_CUTOFF")
         market_context = {
             "as_of": decision_as_of.isoformat(),
             "cycle_started_at": cycle_started_at.isoformat(),
             **snapshot.audit_payload(),
+            **eligibility,
             "by_ticker": {str(row["ticker"]): row for row in snapshot.quotes},
         }
         quotes = [

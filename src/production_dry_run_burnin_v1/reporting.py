@@ -166,6 +166,7 @@ def build_sample_observation(
         record_sha="PENDING",
         observation_id=f"fixture-observation-{day}",
         burnin_observation_id=f"fixture-observation-{day}",
+        burnin_epoch=BurninPolicy().burnin_epoch,
         trading_date=day,
         market_date=day,
         operation_slot="BURNIN_EOD",

@@ -6,7 +6,8 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from src.ai_trading_agent_v1.application import AgentRunConfig, git_sha
+from src.ai_trading_agent_v1.application import AgentRunConfig, build_allowed_universe, git_sha
+from src.free_live_issuer_accumulation.domain import sha256_payload
 from src.paper_trading_operation_v1.application import DEFAULT_PAPER_STATE_ROOT
 from src.paper_trading_operation_v1.domain import PaperOperationPolicy
 from src.paper_trading_operation_v1.repository import JsonlOperationAuditRepository
@@ -25,6 +26,7 @@ from src.production_dry_run_burnin_v1.repository import (
     validate_observations,
 )
 from src.production_readonly_adapters_v1.factory import (
+    create_current_tradability_resolver,
     create_production_agent_model,
     create_production_context_provider,
 )
@@ -34,6 +36,31 @@ from src.shared.config.settings import get_settings
 
 
 def run(args: argparse.Namespace) -> int:
+    if args.command == "universe-status":
+        settings = get_settings()
+        config = AgentRunConfig(output_root=Path("unused"), code_sha=git_sha())
+        resolution = create_current_tradability_resolver(settings).resolve(
+            build_allowed_universe(config)
+        )
+        selected = sorted(
+            row.ticker for row in resolution.classifications if row.candidate_eligible
+        )[: args.max_universe]
+        print(
+            json.dumps(
+                {
+                    **resolution.audit_payload(),
+                    "selected_tickers": selected,
+                    "selected_universe_sha": sha256_payload(selected),
+                    "classifications": [
+                        row.model_dump(mode="json") for row in resolution.classifications
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.command == "calendar-status":
         settings = get_settings()
         requested = date.fromisoformat(args.date) if args.date else datetime.now(UTC).date()
@@ -69,6 +96,7 @@ def run(args: argparse.Namespace) -> int:
                 "operation_session": row.operation_session,
                 "status": row.status.value,
                 "operation_status_code": row.operation_status_code,
+                "burnin_epoch": row.burnin_epoch,
             }
             for row in observations.observations()
         ]
@@ -77,21 +105,27 @@ def run(args: argparse.Namespace) -> int:
     if args.command in {"status", "report"}:
         rows = observations.observations()
         report = build_burnin_report(rows)
+        current_rows = [row for row in rows if row.burnin_epoch == report.BURNIN_EPOCH]
         _write_status_cache(state_root, report.model_dump(mode="json"))
         payload = report.model_dump(mode="json")
         if args.command == "status":
             payload = {
                 "BURNIN_STATUS": report.BURNIN_STATUS.value,
+                "BURNIN_EPOCH": report.BURNIN_EPOCH,
                 "valid_cycles": report.valid_cycles,
                 "distinct_trading_days": report.distinct_trading_days,
-                "first_observation_at": (rows[0].cycle_started_at.isoformat() if rows else None),
-                "last_observation_at": rows[-1].completed_at.isoformat() if rows else None,
+                "first_observation_at": (
+                    current_rows[0].cycle_started_at.isoformat() if current_rows else None
+                ),
+                "last_observation_at": (
+                    current_rows[-1].completed_at.isoformat() if current_rows else None
+                ),
                 "safety_violations": sum(
-                    row.status == BurninObservationStatus.SAFETY_VIOLATION for row in rows
+                    row.status == BurninObservationStatus.SAFETY_VIOLATION for row in current_rows
                 ),
                 "current_blockers": [
                     row.operation_status_code
-                    for row in rows
+                    for row in current_rows
                     if row.status != BurninObservationStatus.PASS
                 ],
                 "last_observation_id": report.last_observation_id,
@@ -185,6 +219,8 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--state-root", default=str(DEFAULT_BIN_STATE_ROOT))
     calendar = subparsers.add_parser("calendar-status")
     calendar.add_argument("--date", default=None)
+    universe = subparsers.add_parser("universe-status")
+    universe.add_argument("--max-universe", type=int, default=10)
     return parser
 
 

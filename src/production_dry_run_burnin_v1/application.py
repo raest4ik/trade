@@ -250,7 +250,8 @@ def build_burnin_report(
     policy: BurninPolicy | None = None,
 ) -> BurninReport:
     fixed = policy or BurninPolicy()
-    primary = [row for row in observations if row.attempt_type == BurninAttemptType.PRIMARY]
+    compatible = [row for row in observations if row.burnin_epoch == fixed.burnin_epoch]
+    primary = [row for row in compatible if row.attempt_type == BurninAttemptType.PRIMARY]
     distinct_days = len(
         {row.market_date for row in primary if row.session.status == MoexSessionStatus.OPEN}
     )
@@ -271,16 +272,16 @@ def build_burnin_report(
     )
     agent_rate = _rate(sum(row.agent_decision_status == "VALID" for row in primary), len(primary))
     risk_rate = _rate(sum(row.risk_plan_created for row in primary), len(primary))
-    future = sum(row.future_quote_count for row in observations)
-    paper_mutations = sum(row.safety.PAPER_PORTFOLIO_MUTATIONS for row in observations)
+    future = sum(row.future_quote_count for row in compatible)
+    paper_mutations = sum(row.safety.PAPER_PORTFOLIO_MUTATIONS for row in compatible)
     real_mutations = sum(
         row.safety.REAL_BROKER_MUTATIONS
         + row.safety.REAL_ORDERS_SENT
         + row.safety.REAL_ORDERS_CANCELLED
         + row.safety.REAL_POSITIONS_CHANGED
-        for row in observations
+        for row in compatible
     )
-    holdout = sum(row.safety.OLD_FUTURE_HOLDOUT_OPENED for row in observations)
+    holdout = sum(row.safety.OLD_FUTURE_HOLDOUT_OPENED for row in compatible)
     complete = (
         distinct_days >= fixed.min_distinct_moex_trading_days
         and len(primary) >= fixed.min_primary_cycles
@@ -289,7 +290,7 @@ def build_burnin_report(
     zero_safety = future == 0 and paper_mutations == 0 and real_mutations == 0 and holdout == 0
     source_clock_pass = all(
         row.max_source_clock_delta_seconds <= fixed.max_source_clock_skew_seconds
-        for row in observations
+        for row in compatible
     )
     ready = (
         complete
@@ -301,14 +302,14 @@ def build_burnin_report(
         and risk_rate >= fixed.min_risk_completion_rate
         and zero_safety
         and source_clock_pass
-        and all(row.paper_ledger_unchanged for row in observations)
+        and all(row.paper_ledger_unchanged for row in compatible)
     )
     safety_violation = not zero_safety or any(
-        row.status == BurninObservationStatus.SAFETY_VIOLATION for row in observations
+        row.status == BurninObservationStatus.SAFETY_VIOLATION for row in compatible
     )
     burnin_status = (
         BurninStatus.NOT_STARTED
-        if not observations
+        if not compatible
         else BurninStatus.FAIL
         if safety_violation
         else BurninStatus.PASS
@@ -318,27 +319,26 @@ def build_burnin_report(
         else BurninStatus.IN_PROGRESS
     )
     actions: Counter[str] = Counter()
-    for row in observations:
+    for row in compatible:
         actions.update(row.proposal_action_counts)
     actions["NO_ACTION"] = sum(
-        row.operation_status == PaperOperationStatus.NO_ACTION.value for row in observations
+        row.operation_status == PaperOperationStatus.NO_ACTION.value for row in compatible
     )
-    actions["risk_rejection_count"] = sum(row.risk_rejected_count for row in observations)
-    actions["risk_reduction_count"] = sum(row.risk_reduced_count for row in observations)
-    tool_total = sum(row.tool_call_count for row in observations)
+    actions["risk_rejection_count"] = sum(row.risk_rejected_count for row in compatible)
+    actions["risk_reduction_count"] = sum(row.risk_reduced_count for row in compatible)
+    tool_total = sum(row.tool_call_count for row in compatible)
     tool_failures = sum(
-        call.get("status") not in {"SUCCESS", "OK"}
-        for row in observations
-        for call in row.tool_calls
+        call.get("status") not in {"SUCCESS", "OK"} for row in compatible for call in row.tool_calls
     )
     degraded = sum(row.operation_status == PaperOperationStatus.DEGRADED.value for row in primary)
-    timeout_count = sum("TIMEOUT" in row.status_code for row in observations)
+    timeout_count = sum("TIMEOUT" in row.status_code for row in compatible)
     model_error_count = sum(
         row.status_code.startswith("AGENT_MODEL_") and "TIMEOUT" not in row.status_code
-        for row in observations
+        for row in compatible
     )
     return BurninReport(
         BURNIN_POLICY_VERSION=fixed.policy_version,
+        BURNIN_EPOCH=fixed.burnin_epoch,
         BURNIN_COLLECTION_STATUS=(
             BurninCollectionStatus.COMPLETE if complete else BurninCollectionStatus.IN_PROGRESS
         ),
@@ -383,7 +383,7 @@ def build_burnin_report(
         holdout_violation_count=holdout,
         proposal_statistics=dict(sorted(actions.items())),
         safety_behavior="PASS" if zero_safety else "FAIL",
-        last_observation_id=observations[-1].observation_id if observations else None,
+        last_observation_id=compatible[-1].observation_id if compatible else None,
     )
 
 
@@ -457,6 +457,7 @@ def _observation_from_run(
         record_sha="PENDING",
         observation_id=observation_id,
         burnin_observation_id=observation_id,
+        burnin_epoch=policy.burnin_epoch,
         trading_date=trading_date,
         market_date=trading_date,
         operation_slot=operation_slot,
@@ -583,6 +584,7 @@ def _empty_observation(
         record_sha="PENDING",
         observation_id=observation_id,
         burnin_observation_id=observation_id,
+        burnin_epoch=policy.burnin_epoch,
         trading_date=trading_date,
         market_date=trading_date,
         operation_slot=operation_slot,
