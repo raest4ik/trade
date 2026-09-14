@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 BURNIN_POLICY_VERSION = "production-dry-run-burnin-v1"
 BURNIN_ARTIFACT_VERSION = "production-dry-run-burnin-v1"
 BURNIN_OBSERVATION_SCHEMA_VERSION = "production-dry-run-burnin-observation-v1"
+PRE_FIX_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-1"
+CURRENT_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-2"
 PRIMARY_OPERATION_SLOT = "BURNIN_EOD"
 
 
@@ -47,6 +49,7 @@ class BurninPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     policy_version: str = BURNIN_POLICY_VERSION
+    burnin_epoch: str = CURRENT_BURNIN_EPOCH
     min_distinct_moex_trading_days: int = Field(default=5, ge=1)
     min_primary_cycles: int = Field(default=5, ge=1)
     max_blocked_primary_cycle_rate: float = Field(default=0.20, ge=0.0, le=1.0)
@@ -127,6 +130,7 @@ class BurninObservation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     schema_version: str = BURNIN_OBSERVATION_SCHEMA_VERSION
+    burnin_epoch: str = PRE_FIX_BURNIN_EPOCH
     sequence: int = Field(ge=1)
     previous_record_sha: str | None
     record_sha: str
@@ -240,6 +244,7 @@ class BurninReport(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     BURNIN_POLICY_VERSION: str
+    BURNIN_EPOCH: str
     BURNIN_COLLECTION_STATUS: BurninCollectionStatus
     BURNIN_STATUS: BurninStatus
     PRODUCTION_DRY_RUN_BURNIN_READY: str

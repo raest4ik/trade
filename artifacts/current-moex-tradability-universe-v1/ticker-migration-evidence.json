@@ -1,0 +1,19 @@
+{
+  "fixture_only": true,
+  "historical_ticker_rewritten": false,
+  "migrations": [
+    {
+      "current_instrument_identity": "RU000A0JQUZ6:PJSC_RUSAGRO_GROUP_COMMON_SHARE",
+      "current_ticker": "RAGR",
+      "legacy_instrument_identity": "US7496552057:ROS_AGRO_PLC_GDR",
+      "legacy_ticker": "AGRO",
+      "relation": "ISSUER_SUCCESSION_WITH_DISTINCT_INSTRUMENT_IDENTITIES",
+      "silent_substitution_allowed": false,
+      "sources": [
+        "https://www.rusagrogroup.ru/investors/shares/",
+        "https://www.rusagrogroup.ru/investors/news-events/press-releases/single-view/article/1384/",
+        "https://www.rusagrogroup.ru/investors/news-events/press-releases/single-view/article/1396/"
+      ]
+    }
+  ]
+}

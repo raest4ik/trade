@@ -1,0 +1,16 @@
+{
+  "BURNIN_EPOCH_ISOLATION": "PASS",
+  "min_market_fresh_rate": 0.95,
+  "min_trading_days": 5,
+  "min_valid_cycles": 5,
+  "post_fix_distinct_trading_days": 0,
+  "post_fix_epoch": "production-dry-run-burnin-v1-epoch-2",
+  "post_fix_status": "NOT_STARTED",
+  "post_fix_valid_cycles": 0,
+  "pre_fix_epoch": "production-dry-run-burnin-v1-epoch-1",
+  "pre_fix_observations_preserved": [
+    "burnin-observation-a9d4b91cb1f309a2be23dc5c",
+    "burnin-observation-25ee81a6663646145d9a8fe4"
+  ],
+  "thresholds_changed": false
+}

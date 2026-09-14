@@ -1,0 +1,7 @@
+{
+  "HELD_POSITION_VISIBILITY_PRESERVED": "YES",
+  "candidate_gate_applies_to_new_exposure_candidates_only": true,
+  "defensive_sell_policy_changed": false,
+  "held_ineligible_instrument_retained": true,
+  "incomplete_held_mark_buy_policy": "REJECT_PORTFOLIO_MARK_INCOMPLETE"
+}

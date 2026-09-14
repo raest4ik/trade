@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from src.free_live_issuer_accumulation.domain import sha256_payload
 from src.production_dry_run_burnin_v1.domain import (
+    PRE_FIX_BURNIN_EPOCH,
     BurninAttemptType,
     BurninObservation,
 )
@@ -45,7 +46,10 @@ class BurninSingleFlightLock(AbstractContextManager["BurninSingleFlightLock"]):
 
 
 def observation_record_sha(observation: BurninObservation) -> str:
-    return sha256_payload(observation.model_dump(mode="json", exclude={"record_sha"}))
+    excluded = {"record_sha"}
+    if observation.burnin_epoch == PRE_FIX_BURNIN_EPOCH:
+        excluded.add("burnin_epoch")
+    return sha256_payload(observation.model_dump(mode="json", exclude=excluded))
 
 
 def chain_observation(
