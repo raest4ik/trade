@@ -1,0 +1,79 @@
+{
+  "classifications": [
+    {
+      "board": null,
+      "candidate_eligible": false,
+      "canonical_status": "CANONICAL_INSTRUMENT",
+      "current_moex_status": "INELIGIBLE_NO_SECURITY_ROW",
+      "fetched_at": "2026-09-14T12:00:00Z",
+      "lot_size": null,
+      "payload_sha": "785fb184ea544fe009b784e34c0df946390c62829d8810767a1cdd85c879d581",
+      "reason": "NO_CURRENT_MOEX_SECURITY_ROW",
+      "security_status": null,
+      "source": "MOEX_ISS_CURRENT_TQBR_BOARD",
+      "ticker": "AGRO",
+      "trading_status": null
+    },
+    {
+      "board": null,
+      "candidate_eligible": false,
+      "canonical_status": "CANONICAL_INSTRUMENT",
+      "current_moex_status": "INELIGIBLE_NO_SECURITY_ROW",
+      "fetched_at": "2026-09-14T12:00:00Z",
+      "lot_size": null,
+      "payload_sha": "785fb184ea544fe009b784e34c0df946390c62829d8810767a1cdd85c879d581",
+      "reason": "NO_CURRENT_MOEX_SECURITY_ROW",
+      "security_status": null,
+      "source": "MOEX_ISS_CURRENT_TQBR_BOARD",
+      "ticker": "ALNU",
+      "trading_status": null
+    },
+    {
+      "board": "TQBR",
+      "candidate_eligible": false,
+      "canonical_status": "CANONICAL_INSTRUMENT",
+      "current_moex_status": "INELIGIBLE_TRADING_DISABLED",
+      "fetched_at": "2026-09-14T12:00:00Z",
+      "lot_size": 100,
+      "payload_sha": "785fb184ea544fe009b784e34c0df946390c62829d8810767a1cdd85c879d581",
+      "reason": "CURRENT_TRADING_DISABLED",
+      "security_status": "N",
+      "source": "MOEX_ISS_CURRENT_TQBR_BOARD",
+      "ticker": "AMEZ",
+      "trading_status": "B"
+    },
+    {
+      "board": "TQBR",
+      "candidate_eligible": true,
+      "canonical_status": "CANONICAL_INSTRUMENT",
+      "current_moex_status": "ELIGIBLE",
+      "fetched_at": "2026-09-14T12:00:00Z",
+      "lot_size": 1,
+      "payload_sha": "785fb184ea544fe009b784e34c0df946390c62829d8810767a1cdd85c879d581",
+      "reason": "CURRENT_MOEX_TRADABLE",
+      "security_status": "A",
+      "source": "MOEX_ISS_CURRENT_TQBR_BOARD",
+      "ticker": "RAGR",
+      "trading_status": "T"
+    },
+    {
+      "board": "TQBR",
+      "candidate_eligible": true,
+      "canonical_status": "CANONICAL_INSTRUMENT",
+      "current_moex_status": "ELIGIBLE",
+      "fetched_at": "2026-09-14T12:00:00Z",
+      "lot_size": 10,
+      "payload_sha": "785fb184ea544fe009b784e34c0df946390c62829d8810767a1cdd85c879d581",
+      "reason": "CURRENT_MOEX_TRADABLE",
+      "security_status": "A",
+      "source": "MOEX_ISS_CURRENT_TQBR_BOARD",
+      "ticker": "SBER",
+      "trading_status": "T"
+    }
+  ],
+  "fetched_at": "2026-09-14T12:00:00Z",
+  "payload_sha": "785fb184ea544fe009b784e34c0df946390c62829d8810767a1cdd85c879d581",
+  "policy_version": "current-moex-tradability-policy-v1",
+  "source": "MOEX_ISS_CURRENT_TQBR_BOARD",
+  "source_time": "2026-09-14T12:00:00Z"
+}

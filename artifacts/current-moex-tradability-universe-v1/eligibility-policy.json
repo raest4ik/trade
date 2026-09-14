@@ -1,0 +1,15 @@
+{
+  "candidate_requirements": [
+    "CURRENT_SECURITY_ROW",
+    "BOARD_TQBR",
+    "POSITIVE_LOT_SIZE",
+    "ACTIVE_SECURITY_STATUS",
+    "NOT_EXPLICITLY_TRADING_DISABLED",
+    "CURRENT_MARKETDATA_ROW"
+  ],
+  "hardcoded_ticker_blacklist": false,
+  "historical_mapping_sufficient": false,
+  "non_null_last_required_for_structural_eligibility": false,
+  "policy_version": "current-moex-tradability-policy-v1",
+  "unknown_fails_closed": true
+}
