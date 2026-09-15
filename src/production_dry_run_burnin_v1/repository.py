@@ -15,6 +15,25 @@ from src.production_dry_run_burnin_v1.domain import (
     BurninObservation,
 )
 
+LEGACY_SESSION_V2_FIELDS = (
+    "session_policy_version",
+    "calendar_date",
+    "market",
+    "board",
+    "session_kind",
+    "moex_business_date",
+    "scheduled_open_at",
+    "scheduled_close_at",
+    "source_url",
+    "source_id",
+    "source_published_at",
+    "schedule_version",
+    "effective_at",
+    "runtime_status",
+    "runtime_source",
+    "runtime_evidence_sha",
+)
+
 
 class BurninLedgerIntegrityError(ValueError):
     pass
@@ -53,24 +72,7 @@ def observation_record_sha(observation: BurninObservation) -> str:
     if observation.session.session_policy_version is None:
         legacy_session = cast("dict[str, object]", payload["session"])
         assert isinstance(legacy_session, dict)
-        for field in (
-            "session_policy_version",
-            "calendar_date",
-            "market",
-            "board",
-            "session_kind",
-            "moex_business_date",
-            "scheduled_open_at",
-            "scheduled_close_at",
-            "source_url",
-            "source_id",
-            "source_published_at",
-            "schedule_version",
-            "effective_at",
-            "runtime_status",
-            "runtime_source",
-            "runtime_evidence_sha",
-        ):
+        for field in LEGACY_SESSION_V2_FIELDS:
             legacy_session.pop(field, None)
     return sha256_payload(payload)
 
