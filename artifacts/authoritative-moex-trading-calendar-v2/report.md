@@ -3,7 +3,7 @@
 Deterministic fixture evidence. It is not a live MOEX snapshot.
 
 - session policy: authoritative-moex-trading-calendar-v2
-- artifact code SHA: d138cac62c8125fd7ee3f180d28045880f5aa21a
+- artifact code SHA: ca94b208eb7fc9034fa7226d1990e207dd280843
 - artifact SHA: b37721c7c96fc44d2fa3ff05d1ac412f599ff2b3fa3f4a77b52ee9484eed52b7
 - official planned source: MOEX trading calendar
 - optional runtime source: market-wide MOEX ISS TQBR state
