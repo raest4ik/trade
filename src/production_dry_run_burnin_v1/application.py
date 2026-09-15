@@ -253,7 +253,11 @@ def build_burnin_report(
     compatible = [row for row in observations if row.burnin_epoch == fixed.burnin_epoch]
     primary = [row for row in compatible if row.attempt_type == BurninAttemptType.PRIMARY]
     distinct_days = len(
-        {row.market_date for row in primary if row.session.status == MoexSessionStatus.OPEN}
+        {
+            row.session.moex_business_date or row.market_date
+            for row in primary
+            if row.session.status == MoexSessionStatus.OPEN
+        }
     )
     passes = sum(_valid_cycle(row) for row in primary)
     blocked = sum(row.status == BurninObservationStatus.BLOCKED_EXPECTED for row in primary)

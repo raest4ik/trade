@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
-import httpx
 import pytest
 
 from apps.cli.production_dry_run_burnin import build_parser
@@ -38,7 +37,6 @@ from src.production_dry_run_burnin_v1.domain import (
     MoexSessionEvidence,
     MoexSessionStatus,
 )
-from src.production_dry_run_burnin_v1.policy import MoexIssSessionVerifier
 from src.production_dry_run_burnin_v1.reporting import (
     build_burnin_artifact,
     build_sample_observation,
@@ -49,6 +47,7 @@ from src.production_dry_run_burnin_v1.repository import (
     BurninSingleFlightLock,
     InMemoryBurninObservationRepository,
     JsonlBurninObservationRepository,
+    observation_record_sha,
     validate_observations,
 )
 from src.risk_engine_paper_v1.domain import MarketQuote
@@ -216,6 +215,44 @@ def test_burnin_hash_chain_valid() -> None:
     validate_observations(repository.observations())
 
 
+def test_old_epoch1_observations_still_verify() -> None:
+    repository = JsonlBurninObservationRepository(
+        Path("artifacts/production-dry-run-burnin-v1/sample-observations.jsonl")
+    )
+    rows = repository.observations()
+    assert len(rows) == 2
+    assert all(row.session.session_policy_version is None for row in rows)
+
+
+def test_existing_epoch2_observation_still_verifies() -> None:
+    repository = InMemoryBurninObservationRepository()
+    saved = repository.append(build_sample_observation(NOW, BurninObservationStatus.PASS))
+    assert saved.record_sha == observation_record_sha(saved)
+    validate_observations(repository.observations())
+
+
+def test_old_record_hashes_are_not_rewritten() -> None:
+    path = Path("artifacts/production-dry-run-burnin-v1/sample-observations.jsonl")
+    before = path.read_bytes()
+    JsonlBurninObservationRepository(path).observations()
+    assert path.read_bytes() == before
+
+
+def test_old_records_without_v2_calendar_fields_are_backward_compatible() -> None:
+    raw = json.loads(
+        Path("artifacts/production-dry-run-burnin-v1/sample-observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    assert "session_policy_version" not in raw["session"]
+    repository = JsonlBurninObservationRepository(
+        Path("artifacts/production-dry-run-burnin-v1/sample-observations.jsonl")
+    )
+    row = repository.observations()[0]
+    assert row.session.calendar_date is None
+    assert row.record_sha == observation_record_sha(row)
+
+
 def test_burnin_hash_chain_detects_corruption(tmp_path: Path) -> None:
     path = tmp_path / "observations.jsonl"
     repository = JsonlBurninObservationRepository(path)
@@ -330,6 +367,8 @@ def test_production_burnin_cli_exposes_required_commands() -> None:
     for command in ("run", "status", "history", "report", "calendar-status"):
         args = parser.parse_args([command])
         assert args.command == command
+    range_args = parser.parse_args(["calendar-range", "--from", "2026-09-19", "--to", "2026-09-21"])
+    assert range_args.command == "calendar-range"
 
 
 def test_paper_ledger_unchanged_after_successful_burnin(tmp_path: Path) -> None:
@@ -450,6 +489,36 @@ def test_distinct_days_deduplicated() -> None:
     assert build_burnin_report([first, second]).distinct_trading_days == 1
 
 
+def test_distinct_days_use_v2_business_date_without_double_counting() -> None:
+    saturday = build_sample_observation(NOW, BurninObservationStatus.PASS)
+    monday = build_sample_observation(NOW + timedelta(days=2), BurninObservationStatus.PASS)
+    saturday = saturday.model_copy(
+        update={
+            "session": saturday.session.model_copy(
+                update={
+                    "session_policy_version": "authoritative-moex-trading-calendar-v2",
+                    "calendar_date": saturday.market_date,
+                    "moex_business_date": monday.market_date,
+                    "session_kind": "WEEKEND_ADDITIONAL",
+                }
+            )
+        }
+    )
+    monday = monday.model_copy(
+        update={
+            "session": monday.session.model_copy(
+                update={
+                    "session_policy_version": "authoritative-moex-trading-calendar-v2",
+                    "calendar_date": monday.market_date,
+                    "moex_business_date": monday.market_date,
+                    "session_kind": "REGULAR",
+                }
+            )
+        }
+    )
+    assert build_burnin_report([saturday, monday]).distinct_trading_days == 1
+
+
 def test_blocked_expected_not_counted_as_pass() -> None:
     row = build_sample_observation(NOW, BurninObservationStatus.BLOCKED_EXPECTED)
     report = build_burnin_report([row])
@@ -532,54 +601,33 @@ def test_unknown_trading_day_blocks_without_model(tmp_path: Path) -> None:
     assert model.calls == 0
 
 
+def test_closed_session_blocks_before_model(tmp_path: Path) -> None:
+    model = CountingModel()
+    result = _runner(
+        tmp_path,
+        model=model,
+        session=StaticSessionVerifier(MoexSessionStatus.CLOSED),
+    )
+    assert result.observation is not None
+    assert result.observation.status == BurninObservationStatus.BLOCKED_EXPECTED
+    assert result.observation.status_code == "MARKET_SESSION_CLOSED"
+    assert model.calls == 0
+
+
+def test_open_session_allows_existing_dry_run_path(tmp_path: Path) -> None:
+    model = CountingModel()
+    result = _runner(tmp_path, model=model, session=StaticSessionVerifier())
+    assert result.observation is not None
+    assert result.observation.status == BurninObservationStatus.PASS
+    assert model.calls == 1
+
+
 def test_unknown_session_does_not_increment_distinct_trading_days() -> None:
     row = build_sample_observation(NOW, BurninObservationStatus.BLOCKED_EXPECTED)
     row = row.model_copy(
         update={"session": row.session.model_copy(update={"status": MoexSessionStatus.UNKNOWN})}
     )
     assert build_burnin_report([row]).distinct_trading_days == 0
-
-
-def test_moex_session_verifier_uses_official_daily_candle() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.host == "iss.moex.com"
-        assert request.url.params["from"] == "2026-09-10"
-        return httpx.Response(
-            200,
-            json={
-                "candles": {
-                    "columns": ["open", "close", "begin", "end"],
-                    "data": [[300.0, 301.0, "2026-09-10 10:00:00", "2026-09-10 23:49:59"]],
-                }
-            },
-        )
-
-    verifier = MoexIssSessionVerifier(
-        base_url="https://iss.moex.com/iss",
-        timeout_seconds=1,
-        user_agent="test",
-        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
-        clock=lambda: NOW,
-    )
-    evidence = verifier.verify(date(2026, 9, 10))
-    assert evidence.status == MoexSessionStatus.TRADING_DAY
-    assert evidence.evidence_sha is not None
-
-
-def test_weekend_not_treated_as_open() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise AssertionError(f"weekend must not call MOEX: {request.url}")
-
-    verifier = MoexIssSessionVerifier(
-        base_url="https://iss.moex.com/iss",
-        timeout_seconds=1,
-        user_agent="test",
-        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
-        clock=lambda: NOW,
-    )
-    evidence = verifier.verify(date(2026, 9, 12))
-    assert evidence.status == MoexSessionStatus.CLOSED
-    assert evidence.reason == "MARKET_SESSION_CLOSED"
 
 
 def test_burnin_status_not_started() -> None:

@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from src.ai_trading_agent_v1.application import AgentRunConfig, build_allowed_universe, git_sha
 from src.free_live_issuer_accumulation.domain import sha256_payload
@@ -63,13 +64,38 @@ def run(args: argparse.Namespace) -> int:
         return 0
     if args.command == "calendar-status":
         settings = get_settings()
-        requested = date.fromisoformat(args.date) if args.date else datetime.now(UTC).date()
+        requested = (
+            date.fromisoformat(args.date)
+            if args.date
+            else datetime.now(ZoneInfo("Europe/Moscow")).date()
+        )
         evidence = MoexIssSessionVerifier(
             base_url=settings.moex_iss_base_url,
             timeout_seconds=settings.moex_http_timeout_seconds,
+            max_retries=settings.moex_http_max_retries,
             user_agent=settings.moex_http_user_agent,
         ).verify(requested)
         print(evidence.model_dump_json(indent=2))
+        return 0
+    if args.command == "calendar-range":
+        settings = get_settings()
+        first = date.fromisoformat(args.from_date)
+        last = date.fromisoformat(args.to_date)
+        if last < first or (last - first).days > 366:
+            raise SystemExit("calendar range must be ordered and at most 367 days")
+        verifier = MoexIssSessionVerifier(
+            base_url=settings.moex_iss_base_url,
+            timeout_seconds=settings.moex_http_timeout_seconds,
+            max_retries=settings.moex_http_max_retries,
+            user_agent=settings.moex_http_user_agent,
+        )
+        dates: list[date] = []
+        current = first
+        while current <= last:
+            dates.append(current)
+            current += timedelta(days=1)
+        rows = [row.model_dump(mode="json") for row in verifier.verify_many(dates)]
+        print(json.dumps(rows, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
     state_root = Path(args.state_root)
     observations = JsonlBurninObservationRepository(state_root / "observations.jsonl")
@@ -183,6 +209,7 @@ def _run_once(
         session_verifier=MoexIssSessionVerifier(
             base_url=settings.moex_iss_base_url,
             timeout_seconds=settings.moex_http_timeout_seconds,
+            max_retries=settings.moex_http_max_retries,
             user_agent=settings.moex_http_user_agent,
         ),
         operation_state_root=operation_root,
@@ -219,6 +246,9 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--state-root", default=str(DEFAULT_BIN_STATE_ROOT))
     calendar = subparsers.add_parser("calendar-status")
     calendar.add_argument("--date", default=None)
+    calendar_range = subparsers.add_parser("calendar-range")
+    calendar_range.add_argument("--from", dest="from_date", required=True)
+    calendar_range.add_argument("--to", dest="to_date", required=True)
     universe = subparsers.add_parser("universe-status")
     universe.add_argument("--max-universe", type=int, default=10)
     return parser

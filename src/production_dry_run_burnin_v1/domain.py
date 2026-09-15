@@ -124,6 +124,22 @@ class MoexSessionEvidence(BaseModel):
     checked_at: datetime
     evidence_sha: str | None = None
     reason: str | None = None
+    session_policy_version: str | None = None
+    calendar_date: str | None = None
+    market: str | None = None
+    board: str | None = None
+    session_kind: str | None = None
+    moex_business_date: str | None = None
+    scheduled_open_at: datetime | None = None
+    scheduled_close_at: datetime | None = None
+    source_url: str | None = None
+    source_id: str | None = None
+    source_published_at: datetime | None = None
+    schedule_version: str | None = None
+    effective_at: datetime | None = None
+    runtime_status: str | None = None
+    runtime_source: str | None = None
+    runtime_evidence_sha: str | None = None
 
 
 class BurninObservation(BaseModel):
