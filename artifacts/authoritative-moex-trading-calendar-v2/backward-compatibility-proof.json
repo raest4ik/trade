@@ -1,0 +1,13 @@
+{
+  "FIXTURE_ONLY": true,
+  "OLD_EPOCH1_LEDGER_VERIFIED": "PASS",
+  "legacy_bytes_rewritten": false,
+  "legacy_ledger": "artifacts/production-dry-run-burnin-v1/sample-observations.jsonl",
+  "legacy_ledger_sha256": "61b15674afd034e67917c5586e2b2b6e95217717e91b9240ff8ee3a77879f0a9",
+  "legacy_record_shas": [
+    "2da98ce94c50eae444d9404ceedf363acc6f6ff4922ccb6a8e86b1bdd613e35f",
+    "d88e0366e6a8565c90cfafef459d5c7aefd4b31c8c890fe9a4536aa898b832a8"
+  ],
+  "legacy_records_verified": 2,
+  "legacy_v2_fields_required": false
+}
