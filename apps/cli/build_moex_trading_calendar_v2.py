@@ -15,11 +15,13 @@ def main() -> None:
     parser.add_argument("--output-root", type=str, default=str(DEFAULT_OUTPUT_ROOT))
     parser.add_argument("--base-main-sha", required=True)
     parser.add_argument("--code-sha", default=None)
+    parser.add_argument("--ledger-path", type=Path, default=None)
     args = parser.parse_args()
     manifest = build_calendar_artifact(
         Path(args.output_root),
         base_main_sha=args.base_main_sha,
         code_sha=args.code_sha or git_sha(),
+        **({"ledger_path": args.ledger_path} if args.ledger_path is not None else {}),
     )
     print(manifest)
 

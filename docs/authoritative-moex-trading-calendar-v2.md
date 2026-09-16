@@ -46,6 +46,12 @@ enable a scheduler, paper execution, or real execution.
 ## Operational freeze
 
 Merging this PR changes production session semantics. It must remain unmerged
-while production dry-run burn-in epoch 2 is active unless an explicit
-requalification decision is made. Calendar checks are read-only and must not
-write to the live burn-in state.
+until an explicit requalification decision is made. Epoch 2 contains PRIMARY
+records from more than one code SHA and is therefore non-qualifying. This PR
+advances the qualification pointer to epoch 3, which starts with zero valid
+cycles and zero distinct trading days after merge. Calendar checks are read-only
+and must not write to the live burn-in state.
+
+The Code SHA Homogeneity Guard anchors a qualification epoch to the code SHA of
+its first PRIMARY record. A later PRIMARY with another SHA is rejected before
+session verification, model invocation, paper operation, or ledger append.

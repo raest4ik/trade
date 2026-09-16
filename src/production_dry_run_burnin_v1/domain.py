@@ -9,7 +9,8 @@ BURNIN_POLICY_VERSION = "production-dry-run-burnin-v1"
 BURNIN_ARTIFACT_VERSION = "production-dry-run-burnin-v1"
 BURNIN_OBSERVATION_SCHEMA_VERSION = "production-dry-run-burnin-observation-v1"
 PRE_FIX_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-1"
-CURRENT_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-2"
+MIXED_CODE_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-2"
+CURRENT_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-3"
 PRIMARY_OPERATION_SLOT = "BURNIN_EOD"
 
 
@@ -265,6 +266,10 @@ class BurninReport(BaseModel):
     BURNIN_STATUS: BurninStatus
     PRODUCTION_DRY_RUN_BURNIN_READY: str
     BURNIN_LEDGER_INTEGRITY: str
+    CODE_SHA_HOMOGENEITY: str
+    QUALIFICATION_STATUS: str
+    qualification_code_sha: str | None = None
+    observed_code_shas: list[str] = Field(default_factory=list)
     distinct_trading_days: int
     valid_cycles: int
     cycle_count: int

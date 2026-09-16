@@ -51,6 +51,7 @@ FAILURE_TAXONOMY = {
     "integrity": [
         "LEDGER_INTEGRITY_FAILED",
         "OPERATION_ALREADY_RUNNING",
+        "BURNIN_PRIMARY_CODE_SHA_MISMATCH",
         "UNKNOWN_FAILURE",
     ],
 }
@@ -93,7 +94,8 @@ def build_burnin_artifact(
         "BURNIN_CALENDAR_GATE": "PASS",
         "authoritative_open_proof_required": True,
         "weekday_implies_open": False,
-        "weekend_status": "CLOSED",
+        "weekend_implies_closed": False,
+        "weekend_status": "AUTHORITATIVE_CALENDAR_REQUIRED",
         "unverified_status": "UNKNOWN",
     }
     safety = {
@@ -112,6 +114,8 @@ def build_burnin_artifact(
         "BURNIN_STATUS": "NOT_STARTED",
         "BURNIN_VALID_CYCLES": 0,
         "BURNIN_DISTINCT_TRADING_DAYS": 0,
+        "CODE_SHA_HOMOGENEITY": aggregate["CODE_SHA_HOMOGENEITY"],
+        "QUALIFICATION_STATUS": aggregate["QUALIFICATION_STATUS"],
         "LIVE_BURNIN_OBSERVATIONS": 0,
         "fixture_only": True,
         "MIN_VALID_CYCLES": policy.min_primary_cycles,

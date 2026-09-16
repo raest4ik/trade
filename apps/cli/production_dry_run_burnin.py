@@ -21,6 +21,7 @@ from src.production_dry_run_burnin_v1.domain import BurninObservationStatus, Bur
 from src.production_dry_run_burnin_v1.policy import MoexIssSessionVerifier
 from src.production_dry_run_burnin_v1.repository import (
     BurninAlreadyRunningError,
+    BurninCodeShaHomogeneityError,
     BurninLedgerIntegrityError,
     BurninSingleFlightLock,
     JsonlBurninObservationRepository,
@@ -138,6 +139,10 @@ def run(args: argparse.Namespace) -> int:
             payload = {
                 "BURNIN_STATUS": report.BURNIN_STATUS.value,
                 "BURNIN_EPOCH": report.BURNIN_EPOCH,
+                "CODE_SHA_HOMOGENEITY": report.CODE_SHA_HOMOGENEITY,
+                "QUALIFICATION_STATUS": report.QUALIFICATION_STATUS,
+                "qualification_code_sha": report.qualification_code_sha,
+                "observed_code_shas": report.observed_code_shas,
                 "valid_cycles": report.valid_cycles,
                 "distinct_trading_days": report.distinct_trading_days,
                 "first_observation_at": (
@@ -171,6 +176,16 @@ def run(args: argparse.Namespace) -> int:
     except BurninAlreadyRunningError:
         print(json.dumps({"status": "BURNIN_ALREADY_RUNNING"}))
         return 2
+    except BurninCodeShaHomogeneityError as exc:
+        print(
+            json.dumps(
+                {
+                    "status": "BURNIN_PRIMARY_CODE_SHA_MISMATCH",
+                    "reason": str(exc),
+                }
+            )
+        )
+        return 4
 
 
 def _run_once(

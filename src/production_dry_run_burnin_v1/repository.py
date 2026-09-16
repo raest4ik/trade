@@ -43,6 +43,10 @@ class BurninAlreadyRunningError(RuntimeError):
     pass
 
 
+class BurninCodeShaHomogeneityError(RuntimeError):
+    pass
+
+
 class BurninSingleFlightLock(AbstractContextManager["BurninSingleFlightLock"]):
     def __init__(self, path: Path) -> None:
         self.path = path
@@ -92,6 +96,24 @@ def chain_observation(
     return chained.model_copy(update={"record_sha": observation_record_sha(chained)})
 
 
+def assert_primary_code_sha_homogeneity(
+    observations: list[BurninObservation],
+    *,
+    burnin_epoch: str,
+    code_sha: str,
+) -> None:
+    existing_shas = {
+        row.code_sha
+        for row in observations
+        if row.burnin_epoch == burnin_epoch and row.attempt_type == BurninAttemptType.PRIMARY
+    }
+    if existing_shas and existing_shas != {code_sha}:
+        raise BurninCodeShaHomogeneityError(
+            "BURNIN_PRIMARY_CODE_SHA_MISMATCH:"
+            f"epoch={burnin_epoch}:expected={','.join(sorted(existing_shas))}:actual={code_sha}"
+        )
+
+
 def validate_observations(observations: list[BurninObservation]) -> None:
     ids: set[str] = set()
     primary_ids: set[str] = set()
@@ -138,6 +160,12 @@ class InMemoryBurninObservationRepository:
 
     def append(self, observation: BurninObservation) -> BurninObservation:
         existing = self.observations()
+        if observation.attempt_type == BurninAttemptType.PRIMARY:
+            assert_primary_code_sha_homogeneity(
+                existing,
+                burnin_epoch=observation.burnin_epoch,
+                code_sha=observation.code_sha,
+            )
         chained = chain_observation(observation, existing)
         validate_observations([*existing, chained])
         self._observations.append(chained)
@@ -182,6 +210,12 @@ class JsonlBurninObservationRepository(InMemoryBurninObservationRepository):
 
     def append(self, observation: BurninObservation) -> BurninObservation:
         existing = self.observations()
+        if observation.attempt_type == BurninAttemptType.PRIMARY:
+            assert_primary_code_sha_homogeneity(
+                existing,
+                burnin_epoch=observation.burnin_epoch,
+                code_sha=observation.code_sha,
+            )
         chained = chain_observation(observation, existing)
         validate_observations([*existing, chained])
         self.path.parent.mkdir(parents=True, exist_ok=True)

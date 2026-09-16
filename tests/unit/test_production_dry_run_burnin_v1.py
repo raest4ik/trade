@@ -31,8 +31,13 @@ from src.production_dry_run_burnin_v1.application import (
     run_burnin_once,
 )
 from src.production_dry_run_burnin_v1.domain import (
+    CURRENT_BURNIN_EPOCH,
+    MIXED_CODE_BURNIN_EPOCH,
+    PRE_FIX_BURNIN_EPOCH,
     BurninAttemptType,
+    BurninObservation,
     BurninObservationStatus,
+    BurninPolicy,
     BurninSafety,
     MoexSessionEvidence,
     MoexSessionStatus,
@@ -43,10 +48,12 @@ from src.production_dry_run_burnin_v1.reporting import (
 )
 from src.production_dry_run_burnin_v1.repository import (
     BurninAlreadyRunningError,
+    BurninCodeShaHomogeneityError,
     BurninLedgerIntegrityError,
     BurninSingleFlightLock,
     InMemoryBurninObservationRepository,
     JsonlBurninObservationRepository,
+    chain_observation,
     observation_record_sha,
     validate_observations,
 )
@@ -166,6 +173,7 @@ def _runner(
     retry_index: int = 0,
     retry_reason: str | None = None,
     operation_runner: Any = None,
+    code_sha: str = "test-code",
 ) -> Any:
     selected_run = run or _operation_run()
     selected_model = model or CountingModel()
@@ -191,7 +199,7 @@ def _runner(
         observation_repository=observations or InMemoryBurninObservationRepository(),
         session_verifier=session or StaticSessionVerifier(),
         operation_state_root=tmp_path / "operation",
-        code_sha="test-code",
+        code_sha=code_sha,
         retry_index=retry_index,
         retry_reason=retry_reason,
         clock=lambda: NOW + timedelta(seconds=5),
@@ -213,6 +221,74 @@ def test_burnin_hash_chain_valid() -> None:
     repository = InMemoryBurninObservationRepository()
     repository.append(build_sample_observation(NOW, BurninObservationStatus.PASS))
     validate_observations(repository.observations())
+
+
+def test_four_existing_records_remain_readable_without_byte_rewrite(tmp_path: Path) -> None:
+    specifications = (
+        (NOW - timedelta(days=3), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
+        (NOW - timedelta(days=2), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
+        (NOW - timedelta(days=1), MIXED_CODE_BURNIN_EPOCH, "code-a"),
+        (NOW, MIXED_CODE_BURNIN_EPOCH, "code-b"),
+    )
+    rows: list[BurninObservation] = []
+    for started, epoch, code_sha in specifications:
+        candidate = build_sample_observation(started, BurninObservationStatus.PASS).model_copy(
+            update={"burnin_epoch": epoch, "code_sha": code_sha}
+        )
+        rows.append(chain_observation(candidate, rows))
+    path = tmp_path / "observations.jsonl"
+    path.write_text(
+        "".join(row.model_dump_json() + "\n" for row in rows),
+        encoding="utf-8",
+        newline="\n",
+    )
+    before = path.read_bytes()
+    restored = JsonlBurninObservationRepository(path).observations()
+    assert len(restored) == 4
+    assert path.read_bytes() == before
+    assert observation_record_sha(restored[-1]) == restored[-1].record_sha
+
+
+def test_repository_rejects_mixed_code_primary_without_writing(tmp_path: Path) -> None:
+    path = tmp_path / "observations.jsonl"
+    repository = JsonlBurninObservationRepository(path)
+    repository.append(build_sample_observation(NOW, BurninObservationStatus.PASS))
+    before = path.read_bytes()
+    mismatched = build_sample_observation(
+        NOW + timedelta(days=1), BurninObservationStatus.PASS
+    ).model_copy(update={"code_sha": "different-code"})
+    with pytest.raises(BurninCodeShaHomogeneityError, match="PRIMARY_CODE_SHA_MISMATCH"):
+        repository.append(mismatched)
+    assert path.read_bytes() == before
+
+
+def test_primary_code_sha_guard_blocks_before_session_model_and_operation(tmp_path: Path) -> None:
+    observations = InMemoryBurninObservationRepository()
+    observations.append(
+        build_sample_observation(NOW - timedelta(days=1), BurninObservationStatus.PASS)
+    )
+    model = CountingModel()
+    session = StaticSessionVerifier()
+    operation_called = False
+
+    def operation_runner(**_kwargs: Any) -> PaperOperationRun:
+        nonlocal operation_called
+        operation_called = True
+        return _operation_run()
+
+    with pytest.raises(BurninCodeShaHomogeneityError, match="PRIMARY_CODE_SHA_MISMATCH"):
+        _runner(
+            tmp_path,
+            observations=observations,
+            model=model,
+            session=session,
+            operation_runner=operation_runner,
+            code_sha="different-code",
+        )
+    assert session.calls == 0
+    assert model.calls == 0
+    assert operation_called is False
+    assert len(observations.observations()) == 1
 
 
 def test_old_epoch1_observations_still_verify() -> None:
@@ -517,6 +593,43 @@ def test_distinct_days_use_v2_business_date_without_double_counting() -> None:
         }
     )
     assert build_burnin_report([saturday, monday]).distinct_trading_days == 1
+
+
+def test_epoch2_mixed_code_is_explicitly_non_qualifying() -> None:
+    first = build_sample_observation(NOW, BurninObservationStatus.PASS).model_copy(
+        update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-a"}
+    )
+    second = build_sample_observation(
+        NOW + timedelta(days=1), BurninObservationStatus.PASS
+    ).model_copy(update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-b"})
+    report = build_burnin_report(
+        [first, second],
+        BurninPolicy(burnin_epoch=MIXED_CODE_BURNIN_EPOCH),
+    )
+    assert report.CODE_SHA_HOMOGENEITY == "FAIL"
+    assert report.QUALIFICATION_STATUS == "NON_QUALIFYING_MIXED_CODE"
+    assert report.observed_code_shas == ["code-a", "code-b"]
+    assert report.valid_cycles == 0
+    assert report.distinct_trading_days == 0
+    assert report.BURNIN_STATUS.value == "FAIL"
+
+
+def test_epoch3_starts_zero_zero_with_only_older_epoch_records() -> None:
+    rows = [
+        build_sample_observation(NOW, BurninObservationStatus.PASS).model_copy(
+            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-a"}
+        ),
+        build_sample_observation(NOW + timedelta(days=1), BurninObservationStatus.PASS).model_copy(
+            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-b"}
+        ),
+    ]
+    report = build_burnin_report(rows)
+    assert report.BURNIN_EPOCH == CURRENT_BURNIN_EPOCH
+    assert report.CODE_SHA_HOMOGENEITY == "NOT_STARTED"
+    assert report.QUALIFICATION_STATUS == "NOT_STARTED"
+    assert report.valid_cycles == 0
+    assert report.distinct_trading_days == 0
+    assert report.BURNIN_STATUS.value == "NOT_STARTED"
 
 
 def test_blocked_expected_not_counted_as_pass() -> None:
