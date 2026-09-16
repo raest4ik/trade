@@ -1,13 +1,30 @@
 {
-  "FIXTURE_ONLY": true,
-  "OLD_EPOCH1_LEDGER_VERIFIED": "PASS",
-  "legacy_bytes_rewritten": false,
-  "legacy_ledger": "artifacts/production-dry-run-burnin-v1/sample-observations.jsonl",
-  "legacy_ledger_sha256": "61b15674afd034e67917c5586e2b2b6e95217717e91b9240ff8ee3a77879f0a9",
-  "legacy_record_shas": [
-    "2da98ce94c50eae444d9404ceedf363acc6f6ff4922ccb6a8e86b1bdd613e35f",
-    "d88e0366e6a8565c90cfafef459d5c7aefd4b31c8c890fe9a4536aa898b832a8"
+  "CURRENT_BURNIN_EPOCH": "production-dry-run-burnin-v1-epoch-3",
+  "CURRENT_CODE_SHA_HOMOGENEITY": "NOT_STARTED",
+  "CURRENT_DISTINCT_TRADING_DAYS": 0,
+  "CURRENT_EPOCH2_LEDGER_VERIFIED": "PASS",
+  "CURRENT_QUALIFICATION_STATUS": "NOT_STARTED",
+  "CURRENT_VALID_CYCLES": 0,
+  "EPOCH_2_CODE_SHA_HOMOGENEITY": "FAIL",
+  "EPOCH_2_DISTINCT_TRADING_DAYS": 0,
+  "EPOCH_2_OBSERVED_CODE_SHAS": [
+    "6cdaacaf05df67c39f566c696d4533dd04729369",
+    "792d4b5a0f48de875fcb18f1faa938427d7472e2"
   ],
-  "legacy_records_verified": 2,
-  "legacy_v2_fields_required": false
+  "EPOCH_2_QUALIFICATION_STATUS": "NON_QUALIFYING_MIXED_CODE",
+  "EPOCH_2_VALID_CYCLES": 0,
+  "FIXTURE_ONLY": false,
+  "OLD_EPOCH1_LEDGER_VERIFIED": "PASS",
+  "READ_ONLY_LIVE_LEDGER_SNAPSHOT": true,
+  "ledger": "state/production-dry-run-burnin-v1/observations.jsonl",
+  "ledger_bytes_rewritten": false,
+  "ledger_records_verified": 4,
+  "ledger_sha256": "7ff2eb301023214f7644412767e3b951318c9abfb9b5b5a6e3fd5454a477e2dc",
+  "legacy_v2_fields_required": false,
+  "record_shas": [
+    "6ffb173ff80aa2f32bcc68ee74a190937bc63d6e4f362244258a4b6b5b0c7861",
+    "34bf458798b119cf9eb5c1efe9c18cd3af552e46be7aac8da524a330ebd6fa6d",
+    "1110f82d9d7842a4d71c94ceddfd2c7899da6f163b9e3c19dde7cabb089a9fae",
+    "e4e83952b28efe75783bd3fb3209d72372aca800d792c9bf745a4e81382c807a"
+  ]
 }
