@@ -1,0 +1,15 @@
+{
+  "FIXTURE_ONLY": true,
+  "SESSION_POLICY_VERSION": "authoritative-moex-trading-calendar-v2",
+  "board": "TQBR",
+  "business_date_rule": "official additional weekend/holiday session maps to the next authoritative regular stock-market trading date",
+  "market": "stock",
+  "planned_source": "MOEX_OFFICIAL_TRADING_CALENDAR",
+  "planned_source_url": "https://www.moex.com/ru/tradingcalendar",
+  "runtime_role": "OPTIONAL_CURRENT_MARKET_WIDE_CONFIRMATION",
+  "runtime_source": "MOEX_ISS_CURRENT_TQBR_BOARD",
+  "timezone": "Europe/Moscow",
+  "unknown_fails_closed": true,
+  "weekday_fallback": false,
+  "weekend_fallback": false
+}

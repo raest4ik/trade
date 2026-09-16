@@ -34,7 +34,11 @@ from src.production_dry_run_burnin_v1.domain import (
     MoexSessionStatus,
 )
 from src.production_dry_run_burnin_v1.policy import MoexSessionVerifier
-from src.production_dry_run_burnin_v1.repository import BurninObservationRepository
+from src.production_dry_run_burnin_v1.repository import (
+    BurninCodeShaHomogeneityError,
+    BurninObservationRepository,
+    assert_primary_code_sha_homogeneity,
+)
 from src.risk_engine_paper_v1.application import (
     initial_paper_portfolio,
     portfolio_state_sha,
@@ -97,6 +101,7 @@ def run_burnin_once(
 ) -> BurninRunResult:
     fixed_policy = policy or BurninPolicy()
     paper_policy = operation_policy or PaperOperationPolicy()
+    resolved_code_sha = code_sha or git_sha()
     _assert_safety_policy(fixed_policy, paper_policy)
     now = clock or (lambda: datetime.now(UTC))
     cycle_start = _utc(cycle_started_at)
@@ -125,10 +130,21 @@ def run_burnin_once(
             status="ALREADY_OBSERVED",
             existing_observation_id=existing.observation_id,
         )
+    if attempt_type == BurninAttemptType.PRIMARY:
+        assert_primary_code_sha_homogeneity(
+            observation_repository.observations(),
+            burnin_epoch=fixed_policy.burnin_epoch,
+            code_sha=resolved_code_sha,
+        )
 
     before = _paper_snapshot(paper_repository, cycle_start)
     recovered = audit_repository.completed_run(operation_id)
     if recovered is not None:
+        if attempt_type == BurninAttemptType.PRIMARY and recovered.code_sha != resolved_code_sha:
+            raise BurninCodeShaHomogeneityError(
+                "BURNIN_RECOVERED_PRIMARY_CODE_SHA_MISMATCH:"
+                f"expected={resolved_code_sha}:actual={recovered.code_sha}"
+            )
         after = _paper_snapshot(paper_repository, cycle_start)
         observation = _observation_from_run(
             run=recovered,
@@ -169,7 +185,7 @@ def run_burnin_once(
             trading_date=trading_date.isoformat(),
             cycle_started_at=cycle_start,
             completed_at=completed,
-            code_sha=code_sha or git_sha(),
+            code_sha=resolved_code_sha,
             model_id=model.model_id,
             before=before,
             session=session,
@@ -190,7 +206,7 @@ def run_burnin_once(
             paper_repository=paper_repository,
             audit_repository=audit_repository,
             state_root=operation_state_root,
-            code_sha=code_sha or git_sha(),
+            code_sha=resolved_code_sha,
             policy=paper_policy,
             risk_policy=risk_policy or RiskPolicy(),
             operation_slot=operation_slot,
@@ -229,7 +245,7 @@ def run_burnin_once(
             trading_date=trading_date.isoformat(),
             cycle_started_at=cycle_start,
             completed_at=completed,
-            code_sha=code_sha or git_sha(),
+            code_sha=resolved_code_sha,
             model_id=model.model_id,
             before=before,
             after=after,
@@ -252,10 +268,27 @@ def build_burnin_report(
     fixed = policy or BurninPolicy()
     compatible = [row for row in observations if row.burnin_epoch == fixed.burnin_epoch]
     primary = [row for row in compatible if row.attempt_type == BurninAttemptType.PRIMARY]
-    distinct_days = len(
-        {row.market_date for row in primary if row.session.status == MoexSessionStatus.OPEN}
+    observed_code_shas = sorted({row.code_sha for row in primary})
+    code_sha_homogeneity = (
+        "NOT_STARTED" if not primary else "PASS" if len(observed_code_shas) == 1 else "FAIL"
+    )
+    qualification_status = (
+        "NOT_STARTED"
+        if not primary
+        else "NON_QUALIFYING_MIXED_CODE"
+        if code_sha_homogeneity == "FAIL"
+        else "QUALIFYING"
+    )
+    observed_distinct_days = len(
+        {
+            row.session.moex_business_date or row.market_date
+            for row in primary
+            if row.session.status == MoexSessionStatus.OPEN
+        }
     )
     passes = sum(_valid_cycle(row) for row in primary)
+    qualifying_passes = passes if code_sha_homogeneity == "PASS" else 0
+    distinct_days = observed_distinct_days if code_sha_homogeneity == "PASS" else 0
     blocked = sum(row.status == BurninObservationStatus.BLOCKED_EXPECTED for row in primary)
     failed = len(primary) - passes - blocked
     total_quotes = sum(
@@ -283,7 +316,8 @@ def build_burnin_report(
     )
     holdout = sum(row.safety.OLD_FUTURE_HOLDOUT_OPENED for row in compatible)
     complete = (
-        distinct_days >= fixed.min_distinct_moex_trading_days
+        code_sha_homogeneity == "PASS"
+        and distinct_days >= fixed.min_distinct_moex_trading_days
         and len(primary) >= fixed.min_primary_cycles
     )
     blocked_rate = _rate(blocked, len(primary))
@@ -303,6 +337,7 @@ def build_burnin_report(
         and zero_safety
         and source_clock_pass
         and all(row.paper_ledger_unchanged for row in compatible)
+        and code_sha_homogeneity == "PASS"
     )
     safety_violation = not zero_safety or any(
         row.status == BurninObservationStatus.SAFETY_VIOLATION for row in compatible
@@ -310,6 +345,8 @@ def build_burnin_report(
     burnin_status = (
         BurninStatus.NOT_STARTED
         if not compatible
+        else BurninStatus.FAIL
+        if code_sha_homogeneity == "FAIL"
         else BurninStatus.FAIL
         if safety_violation
         else BurninStatus.PASS
@@ -345,8 +382,12 @@ def build_burnin_report(
         BURNIN_STATUS=burnin_status,
         PRODUCTION_DRY_RUN_BURNIN_READY="YES",
         BURNIN_LEDGER_INTEGRITY="PASS",
+        CODE_SHA_HOMOGENEITY=code_sha_homogeneity,
+        QUALIFICATION_STATUS=qualification_status,
+        qualification_code_sha=(observed_code_shas[0] if len(observed_code_shas) == 1 else None),
+        observed_code_shas=observed_code_shas,
         distinct_trading_days=distinct_days,
-        valid_cycles=passes,
+        valid_cycles=qualifying_passes,
         cycle_count=len(primary),
         successful_cycle_count=passes,
         blocked_cycle_count=blocked,

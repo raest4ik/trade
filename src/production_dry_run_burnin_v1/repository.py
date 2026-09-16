@@ -4,7 +4,7 @@ import json
 import os
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from pydantic import ValidationError
 
@@ -15,12 +15,35 @@ from src.production_dry_run_burnin_v1.domain import (
     BurninObservation,
 )
 
+LEGACY_SESSION_V2_FIELDS = (
+    "session_policy_version",
+    "calendar_date",
+    "market",
+    "board",
+    "session_kind",
+    "moex_business_date",
+    "scheduled_open_at",
+    "scheduled_close_at",
+    "source_url",
+    "source_id",
+    "source_published_at",
+    "schedule_version",
+    "effective_at",
+    "runtime_status",
+    "runtime_source",
+    "runtime_evidence_sha",
+)
+
 
 class BurninLedgerIntegrityError(ValueError):
     pass
 
 
 class BurninAlreadyRunningError(RuntimeError):
+    pass
+
+
+class BurninCodeShaHomogeneityError(RuntimeError):
     pass
 
 
@@ -49,7 +72,13 @@ def observation_record_sha(observation: BurninObservation) -> str:
     excluded = {"record_sha"}
     if observation.burnin_epoch == PRE_FIX_BURNIN_EPOCH:
         excluded.add("burnin_epoch")
-    return sha256_payload(observation.model_dump(mode="json", exclude=excluded))
+    payload = observation.model_dump(mode="json", exclude=excluded)
+    if observation.session.session_policy_version is None:
+        legacy_session = cast("dict[str, object]", payload["session"])
+        assert isinstance(legacy_session, dict)
+        for field in LEGACY_SESSION_V2_FIELDS:
+            legacy_session.pop(field, None)
+    return sha256_payload(payload)
 
 
 def chain_observation(
@@ -65,6 +94,24 @@ def chain_observation(
         }
     )
     return chained.model_copy(update={"record_sha": observation_record_sha(chained)})
+
+
+def assert_primary_code_sha_homogeneity(
+    observations: list[BurninObservation],
+    *,
+    burnin_epoch: str,
+    code_sha: str,
+) -> None:
+    existing_shas = {
+        row.code_sha
+        for row in observations
+        if row.burnin_epoch == burnin_epoch and row.attempt_type == BurninAttemptType.PRIMARY
+    }
+    if existing_shas and existing_shas != {code_sha}:
+        raise BurninCodeShaHomogeneityError(
+            "BURNIN_PRIMARY_CODE_SHA_MISMATCH:"
+            f"epoch={burnin_epoch}:expected={','.join(sorted(existing_shas))}:actual={code_sha}"
+        )
 
 
 def validate_observations(observations: list[BurninObservation]) -> None:
@@ -113,6 +160,12 @@ class InMemoryBurninObservationRepository:
 
     def append(self, observation: BurninObservation) -> BurninObservation:
         existing = self.observations()
+        if observation.attempt_type == BurninAttemptType.PRIMARY:
+            assert_primary_code_sha_homogeneity(
+                existing,
+                burnin_epoch=observation.burnin_epoch,
+                code_sha=observation.code_sha,
+            )
         chained = chain_observation(observation, existing)
         validate_observations([*existing, chained])
         self._observations.append(chained)
@@ -157,6 +210,12 @@ class JsonlBurninObservationRepository(InMemoryBurninObservationRepository):
 
     def append(self, observation: BurninObservation) -> BurninObservation:
         existing = self.observations()
+        if observation.attempt_type == BurninAttemptType.PRIMARY:
+            assert_primary_code_sha_homogeneity(
+                existing,
+                burnin_epoch=observation.burnin_epoch,
+                code_sha=observation.code_sha,
+            )
         chained = chain_observation(observation, existing)
         validate_observations([*existing, chained])
         self.path.parent.mkdir(parents=True, exist_ok=True)

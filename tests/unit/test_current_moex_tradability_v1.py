@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -36,7 +36,10 @@ from src.production_dry_run_burnin_v1.domain import (
     BurninStatus,
 )
 from src.production_dry_run_burnin_v1.reporting import build_sample_observation
-from src.production_dry_run_burnin_v1.repository import observation_record_sha
+from src.production_dry_run_burnin_v1.repository import (
+    LEGACY_SESSION_V2_FIELDS,
+    observation_record_sha,
+)
 from src.production_readonly_adapters_v1.context import ProductionPaperOperationContextProvider
 from src.production_readonly_adapters_v1.domain import FreshMarketSnapshot
 from src.risk_engine_paper_v1.application import initial_paper_portfolio
@@ -380,6 +383,9 @@ def test_pre_fix_observations_preserved() -> None:
     current = build_sample_observation(NOW, status=BurninObservationStatus.PASS)
     payload = current.model_dump(mode="json")
     payload.pop("burnin_epoch")
+    session = cast("dict[str, Any]", payload["session"])
+    for field in LEGACY_SESSION_V2_FIELDS:
+        session.pop(field)
     payload["record_sha"] = sha256_payload(
         {key: value for key, value in payload.items() if key != "record_sha"}
     )

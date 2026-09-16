@@ -1,0 +1,26 @@
+{
+  "FIXTURE_ONLY": true,
+  "evidence": {
+    "board": "TQBR",
+    "calendar_date": "2026-09-12",
+    "checked_at": "2026-09-15T12:00:00Z",
+    "effective_at": null,
+    "evidence_sha": "d861f0128443df11ca8e8a4fa95854effe41bc252f3ac88a3907ff5b2b31e5f9",
+    "market": "stock",
+    "moex_business_date": null,
+    "policy_version": "authoritative-moex-trading-calendar-v2",
+    "reason": "AUTHORITATIVE_SCHEDULE_CLOSED",
+    "runtime_evidence_sha": null,
+    "runtime_source": null,
+    "runtime_status": "NOT_APPLICABLE",
+    "schedule_version": null,
+    "scheduled_close_at": null,
+    "scheduled_open_at": null,
+    "session_kind": "CLOSED",
+    "source": "MOEX_OFFICIAL_TRADING_CALENDAR",
+    "source_id": "offDays.stock",
+    "source_published_at": null,
+    "source_url": "https://www.moex.com/ru/tradingcalendar",
+    "status": "CLOSED"
+  }
+}

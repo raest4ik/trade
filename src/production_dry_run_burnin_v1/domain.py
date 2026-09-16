@@ -9,7 +9,8 @@ BURNIN_POLICY_VERSION = "production-dry-run-burnin-v1"
 BURNIN_ARTIFACT_VERSION = "production-dry-run-burnin-v1"
 BURNIN_OBSERVATION_SCHEMA_VERSION = "production-dry-run-burnin-observation-v1"
 PRE_FIX_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-1"
-CURRENT_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-2"
+MIXED_CODE_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-2"
+CURRENT_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-3"
 PRIMARY_OPERATION_SLOT = "BURNIN_EOD"
 
 
@@ -124,6 +125,22 @@ class MoexSessionEvidence(BaseModel):
     checked_at: datetime
     evidence_sha: str | None = None
     reason: str | None = None
+    session_policy_version: str | None = None
+    calendar_date: str | None = None
+    market: str | None = None
+    board: str | None = None
+    session_kind: str | None = None
+    moex_business_date: str | None = None
+    scheduled_open_at: datetime | None = None
+    scheduled_close_at: datetime | None = None
+    source_url: str | None = None
+    source_id: str | None = None
+    source_published_at: datetime | None = None
+    schedule_version: str | None = None
+    effective_at: datetime | None = None
+    runtime_status: str | None = None
+    runtime_source: str | None = None
+    runtime_evidence_sha: str | None = None
 
 
 class BurninObservation(BaseModel):
@@ -249,6 +266,10 @@ class BurninReport(BaseModel):
     BURNIN_STATUS: BurninStatus
     PRODUCTION_DRY_RUN_BURNIN_READY: str
     BURNIN_LEDGER_INTEGRITY: str
+    CODE_SHA_HOMOGENEITY: str
+    QUALIFICATION_STATUS: str
+    qualification_code_sha: str | None = None
+    observed_code_shas: list[str] = Field(default_factory=list)
     distinct_trading_days: int
     valid_cycles: int
     cycle_count: int

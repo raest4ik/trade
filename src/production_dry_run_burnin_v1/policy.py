@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import UTC, date, datetime
-from typing import Any, Protocol, cast
+from collections.abc import Callable, Sequence
+from datetime import date, datetime
+from typing import Protocol
 
 import httpx
 
-from src.free_live_issuer_accumulation.domain import sha256_payload
+from src.moex_trading_calendar_v2.domain import CALENDAR_SOURCE_URL, MoexSessionEvidenceV2
+from src.moex_trading_calendar_v2.moex import MoexTradingCalendarResolver
 from src.production_dry_run_burnin_v1.domain import MoexSessionEvidence, MoexSessionStatus
-
-MOEX_SESSION_SOURCE = "MOEX_ISS_TQBR_DAILY_CANDLE"
 
 
 class MoexSessionVerifier(Protocol):
@@ -17,7 +16,7 @@ class MoexSessionVerifier(Protocol):
 
 
 class MoexIssSessionVerifier:
-    """Confirms a TQBR trading day from an official daily candle, fail closed otherwise."""
+    """Backward-compatible burn-in adapter for the authoritative V2 calendar."""
 
     def __init__(
         self,
@@ -26,90 +25,55 @@ class MoexIssSessionVerifier:
         timeout_seconds: float,
         user_agent: str,
         reference_ticker: str = "SBER",
+        max_retries: int = 0,
+        calendar_url: str = CALENDAR_SOURCE_URL,
         http_client: httpx.Client | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
-        parsed = httpx.URL(base_url.rstrip("/"))
-        if parsed.scheme != "https" or parsed.host != "iss.moex.com":
-            raise ValueError("MOEX ISS base URL is not allowed")
-        self._base_url = str(parsed).rstrip("/")
-        self._timeout = timeout_seconds
-        self._user_agent = user_agent
-        self._ticker = reference_ticker.strip().upper()
-        self._client = http_client
-        self._clock = clock or (lambda: datetime.now(UTC))
+        del reference_ticker
+        self._resolver = MoexTradingCalendarResolver(
+            calendar_url=calendar_url,
+            runtime_base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+            user_agent=user_agent,
+            http_client=http_client,
+            clock=clock,
+        )
 
     def verify(self, trading_date: date) -> MoexSessionEvidence:
-        checked_at = self._clock().astimezone(UTC)
-        if trading_date.weekday() >= 5:
-            return MoexSessionEvidence(
-                trading_date=trading_date.isoformat(),
-                status=MoexSessionStatus.CLOSED,
-                source="MOEX_WEEKEND_RULE",
-                checked_at=checked_at,
-                reason="MARKET_SESSION_CLOSED",
-            )
-        try:
-            payload = self._request(trading_date)
-            table = cast("dict[str, Any]", payload["candles"])
-            columns = cast("list[str]", table["columns"])
-            rows = cast("list[list[Any]]", table["data"])
-            begin_index = columns.index("begin")
-            matched = any(
-                str(row[begin_index]).startswith(trading_date.isoformat()) for row in rows
-            )
-            if matched:
-                return MoexSessionEvidence(
-                    trading_date=trading_date.isoformat(),
-                    status=MoexSessionStatus.OPEN,
-                    source=MOEX_SESSION_SOURCE,
-                    checked_at=checked_at,
-                    evidence_sha=sha256_payload(payload),
-                )
-            return MoexSessionEvidence(
-                trading_date=trading_date.isoformat(),
-                status=MoexSessionStatus.UNKNOWN,
-                source=MOEX_SESSION_SOURCE,
-                checked_at=checked_at,
-                evidence_sha=sha256_payload(payload),
-                reason="MOEX_SESSION_STATUS_UNKNOWN",
-            )
-        except (httpx.HTTPError, KeyError, TypeError, ValueError):
-            return MoexSessionEvidence(
-                trading_date=trading_date.isoformat(),
-                status=MoexSessionStatus.UNKNOWN,
-                source=MOEX_SESSION_SOURCE,
-                checked_at=checked_at,
-                reason="MOEX_SESSION_STATUS_UNKNOWN",
-            )
+        return _adapt(self._resolver.resolve(trading_date))
 
-    def _request(self, trading_date: date) -> dict[str, Any]:
-        endpoint = (
-            f"{self._base_url}/engines/stock/markets/shares/boards/TQBR/"
-            f"securities/{self._ticker}/candles.json"
-        )
-        params = {
-            "from": trading_date.isoformat(),
-            "till": trading_date.isoformat(),
-            "interval": "24",
-            "iss.meta": "off",
-            "iss.only": "candles",
-        }
-        if self._client is not None:
-            response = self._client.get(
-                endpoint,
-                params=params,
-                headers={"User-Agent": self._user_agent},
-            )
-        else:
-            response = httpx.get(
-                endpoint,
-                params=params,
-                headers={"User-Agent": self._user_agent},
-                timeout=self._timeout,
-                follow_redirects=False,
-            )
-        response.raise_for_status()
-        if len(response.content) > 1_000_000:
-            raise ValueError("MOEX_SESSION_RESPONSE_TOO_LARGE")
-        return cast("dict[str, Any]", response.json())
+    def verify_many(self, trading_dates: Sequence[date]) -> list[MoexSessionEvidence]:
+        return [_adapt(evidence) for evidence in self._resolver.resolve_many(trading_dates)]
+
+
+def _adapt(evidence: MoexSessionEvidenceV2) -> MoexSessionEvidence:
+    return MoexSessionEvidence(
+        trading_date=evidence.calendar_date.isoformat(),
+        status=MoexSessionStatus(evidence.status.value),
+        source=evidence.source,
+        checked_at=evidence.checked_at,
+        evidence_sha=evidence.evidence_sha,
+        reason=evidence.reason,
+        session_policy_version=evidence.policy_version,
+        calendar_date=evidence.calendar_date.isoformat(),
+        market=evidence.market,
+        board=evidence.board,
+        session_kind=evidence.session_kind.value,
+        moex_business_date=(
+            evidence.moex_business_date.isoformat()
+            if evidence.moex_business_date is not None
+            else None
+        ),
+        scheduled_open_at=evidence.scheduled_open_at,
+        scheduled_close_at=evidence.scheduled_close_at,
+        source_url=evidence.source_url,
+        source_id=evidence.source_id,
+        source_published_at=evidence.source_published_at,
+        schedule_version=evidence.schedule_version,
+        effective_at=evidence.effective_at,
+        runtime_status=evidence.runtime_status.value,
+        runtime_source=evidence.runtime_source,
+        runtime_evidence_sha=evidence.runtime_evidence_sha,
+    )
