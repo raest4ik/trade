@@ -183,7 +183,7 @@ def build_calendar_artifact(
         "CURRENT_BURNIN_DISTINCT_TRADING_DAYS": current.distinct_trading_days,
         "CURRENT_BURNIN_CHANGED": "EPOCH_ROLLED_FORWARD_WITHOUT_LEDGER_REWRITE",
         "PR75_READY_FOR_REVIEW": "YES",
-        "PR75_READY_TO_MERGE": "NO",
+        "PR75_READY_TO_MERGE": "YES",
     }
     files["manifest.json"] = manifest
 
@@ -268,7 +268,7 @@ def _report(manifest: dict[str, Any]) -> str:
             "- paper execution: disabled",
             "- real execution: disabled",
             "- scheduling: disabled",
-            "- merge during active epoch 2: prohibited",
+            "- merge starts a fresh homogeneous epoch 3 at 0/0",
             "",
         )
     )
