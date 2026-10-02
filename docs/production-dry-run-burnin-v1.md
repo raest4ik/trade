@@ -42,6 +42,26 @@ MAX_SOURCE_CLOCK_SKEW_SECONDS=5
 
 All paper, real, future-data, and holdout violation counters must be zero.
 
+## Epoch-3 safety failure and epoch-4 transition
+
+Epoch `production-dry-run-burnin-v1-epoch-3` is permanently non-qualifying. Its fifth
+PRIMARY observation on 2026-10-02 immutably recorded `SAFETY_VIOLATION` with
+`FUTURE_MARKET_QUOTE`: the AQUA source timestamp exceeded `decision_as_of` by 0.400851
+seconds. Windows Time Service evidence at the incident showed an unsynchronized host
+clock (Leap Indicator 3, Stratum 0).
+
+The host clock was subsequently repaired and verified synchronized (Leap Indicator 0,
+Stratum 5, source `time.windows.com`; observed stripchart offsets approximately -0.0002
+to -0.0139 seconds). This operational repair does not alter the historical observation,
+the hash chain, the `FUTURE_MARKET_QUOTE` classification, or the fixed 5.0-second source
+clock-skew ceiling.
+
+New qualification evidence belongs to `production-dry-run-burnin-v1-epoch-4`. The epoch
+starts at `BURNIN_STATUS=NOT_STARTED`, `CODE_SHA_HOMOGENEITY=NOT_STARTED`,
+`QUALIFICATION_STATUS=NOT_STARTED`, zero valid cycles, and zero distinct trading days.
+Epochs 1-3 remain readable as immutable history. Starting epoch 4 does not enable paper
+execution, real execution, or scheduling.
+
 ## Run once
 
 ```powershell

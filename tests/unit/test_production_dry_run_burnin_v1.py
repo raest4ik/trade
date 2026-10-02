@@ -34,6 +34,7 @@ from src.production_dry_run_burnin_v1.domain import (
     CURRENT_BURNIN_EPOCH,
     MIXED_CODE_BURNIN_EPOCH,
     PRE_FIX_BURNIN_EPOCH,
+    SAFETY_FAILED_BURNIN_EPOCH,
     BurninAttemptType,
     BurninObservation,
     BurninObservationStatus,
@@ -223,12 +224,17 @@ def test_burnin_hash_chain_valid() -> None:
     validate_observations(repository.observations())
 
 
-def test_four_existing_records_remain_readable_without_byte_rewrite(tmp_path: Path) -> None:
+def test_nine_historical_records_remain_readable_without_byte_rewrite(tmp_path: Path) -> None:
     specifications = (
-        (NOW - timedelta(days=3), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
-        (NOW - timedelta(days=2), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
-        (NOW - timedelta(days=1), MIXED_CODE_BURNIN_EPOCH, "code-a"),
-        (NOW, MIXED_CODE_BURNIN_EPOCH, "code-b"),
+        (NOW - timedelta(days=8), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
+        (NOW - timedelta(days=7), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
+        (NOW - timedelta(days=6), MIXED_CODE_BURNIN_EPOCH, "code-a"),
+        (NOW - timedelta(days=5), MIXED_CODE_BURNIN_EPOCH, "code-b"),
+        (NOW - timedelta(days=4), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW - timedelta(days=3), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW - timedelta(days=2), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW - timedelta(days=1), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW, SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
     )
     rows: list[BurninObservation] = []
     for started, epoch, code_sha in specifications:
@@ -244,8 +250,9 @@ def test_four_existing_records_remain_readable_without_byte_rewrite(tmp_path: Pa
     )
     before = path.read_bytes()
     restored = JsonlBurninObservationRepository(path).observations()
-    assert len(restored) == 4
+    assert len(restored) == 9
     assert path.read_bytes() == before
+    validate_observations(restored)
     assert observation_record_sha(restored[-1]) == restored[-1].record_sha
 
 
@@ -614,13 +621,57 @@ def test_epoch2_mixed_code_is_explicitly_non_qualifying() -> None:
     assert report.BURNIN_STATUS.value == "FAIL"
 
 
-def test_epoch3_starts_zero_zero_with_only_older_epoch_records() -> None:
+def test_epoch3_future_quote_safety_violation_is_preserved_and_non_qualifying() -> None:
+    rows = [
+        build_sample_observation(
+            NOW + timedelta(days=index), BurninObservationStatus.PASS
+        ).model_copy(
+            update={
+                "burnin_epoch": SAFETY_FAILED_BURNIN_EPOCH,
+                "code_sha": "epoch-3-code",
+            }
+        )
+        for index in range(5)
+    ]
+    rows[-1] = rows[-1].model_copy(
+        update={
+            "status": BurninObservationStatus.SAFETY_VIOLATION,
+            "status_code": "FUTURE_MARKET_QUOTE",
+            "future_quote_count": 1,
+            "max_source_clock_delta_seconds": 0.400851,
+            "reasons": ["FUTURE_MARKET_QUOTE"],
+        }
+    )
+    report = build_burnin_report(
+        rows,
+        BurninPolicy(burnin_epoch=SAFETY_FAILED_BURNIN_EPOCH),
+    )
+    assert rows[-1].status == BurninObservationStatus.SAFETY_VIOLATION
+    assert rows[-1].status_code == "FUTURE_MARKET_QUOTE"
+    assert rows[-1].max_source_clock_delta_seconds == 0.400851
+    assert report.CODE_SHA_HOMOGENEITY == "PASS"
+    assert report.QUALIFICATION_STATUS == "NON_QUALIFYING_SAFETY_VIOLATION"
+    assert report.future_data_violation_count == 1
+    assert report.BURNIN_STATUS.value == "FAIL"
+
+
+def test_epoch4_starts_zero_zero_with_all_historical_epochs() -> None:
     rows = [
         build_sample_observation(NOW, BurninObservationStatus.PASS).model_copy(
-            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-a"}
+            update={"burnin_epoch": PRE_FIX_BURNIN_EPOCH, "code_sha": "legacy-code"}
         ),
         build_sample_observation(NOW + timedelta(days=1), BurninObservationStatus.PASS).model_copy(
-            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-b"}
+            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-a"}
+        ),
+        build_sample_observation(
+            NOW + timedelta(days=2), BurninObservationStatus.SAFETY_VIOLATION
+        ).model_copy(
+            update={
+                "burnin_epoch": SAFETY_FAILED_BURNIN_EPOCH,
+                "code_sha": "epoch-3-code",
+                "status_code": "FUTURE_MARKET_QUOTE",
+                "future_quote_count": 1,
+            }
         ),
     ]
     report = build_burnin_report(rows)
@@ -630,6 +681,31 @@ def test_epoch3_starts_zero_zero_with_only_older_epoch_records() -> None:
     assert report.valid_cycles == 0
     assert report.distinct_trading_days == 0
     assert report.BURNIN_STATUS.value == "NOT_STARTED"
+
+
+def test_epoch4_preserves_fixed_thresholds_and_disabled_execution() -> None:
+    policy = BurninPolicy()
+    fixed_thresholds = {
+        "min_distinct_moex_trading_days": policy.min_distinct_moex_trading_days,
+        "min_primary_cycles": policy.min_primary_cycles,
+        "max_blocked_primary_cycle_rate": policy.max_blocked_primary_cycle_rate,
+        "min_market_fresh_rate": policy.min_market_fresh_rate,
+        "min_research_ready_rate": policy.min_research_ready_rate,
+        "min_agent_valid_rate": policy.min_agent_valid_rate,
+        "min_risk_completion_rate": policy.min_risk_completion_rate,
+        "max_source_clock_skew_seconds": policy.max_source_clock_skew_seconds,
+    }
+    assert json.dumps(fixed_thresholds, sort_keys=True, separators=(",", ":")) == (
+        '{"max_blocked_primary_cycle_rate":0.2,"max_source_clock_skew_seconds":5.0,'
+        '"min_agent_valid_rate":0.9,"min_distinct_moex_trading_days":5,'
+        '"min_market_fresh_rate":0.95,"min_primary_cycles":5,'
+        '"min_research_ready_rate":0.9,"min_risk_completion_rate":0.9}'
+    )
+    assert policy.burnin_epoch == CURRENT_BURNIN_EPOCH
+    assert policy.paper_execution_enabled is False
+    assert policy.real_execution_enabled is False
+    assert policy.paper_operation_schedule_enabled is False
+    assert BurninSafety().violation_count() == 0
 
 
 def test_blocked_expected_not_counted_as_pass() -> None:

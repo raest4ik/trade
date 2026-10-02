@@ -18,5 +18,5 @@ as explicit metadata and never silently rewrites historical `AGRO` records.
 
 Use `python -m apps.cli.production_burnin universe-status` for a read-only live classification.
 Burn-in observations created before this gate are preserved as epoch 1 evidence. Final post-fix
-acceptance starts in `production-dry-run-burnin-v1-epoch-3` and still requires five valid PRIMARY
+acceptance restarts in `production-dry-run-burnin-v1-epoch-4` and still requires five valid PRIMARY
 cycles across five distinct confirmed MOEX trading days.

@@ -342,6 +342,8 @@ def build_burnin_report(
     safety_violation = not zero_safety or any(
         row.status == BurninObservationStatus.SAFETY_VIOLATION for row in compatible
     )
+    if primary and code_sha_homogeneity == "PASS" and safety_violation:
+        qualification_status = "NON_QUALIFYING_SAFETY_VIOLATION"
     burnin_status = (
         BurninStatus.NOT_STARTED
         if not compatible
