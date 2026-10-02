@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import platform
+import re
+import subprocess
 import time
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -30,6 +33,7 @@ from src.production_dry_run_burnin_v1.domain import (
     BurninRunResult,
     BurninSafety,
     BurninStatus,
+    HostClockPreflightResult,
     MoexSessionEvidence,
     MoexSessionStatus,
 )
@@ -79,6 +83,52 @@ class TimedAgentModel:
             self.latency_ms += max(0, round((self._monotonic() - started) * 1000))
 
 
+def windows_host_clock_preflight() -> HostClockPreflightResult:
+    if platform.system() != "Windows":
+        return HostClockPreflightResult(
+            status="NOT_REQUIRED_NON_WINDOWS",
+            synchronized=True,
+        )
+    try:
+        completed = subprocess.run(
+            ["w32tm", "/query", "/status"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return HostClockPreflightResult(
+            status="HOST_CLOCK_UNSYNCHRONIZED",
+            synchronized=False,
+        )
+    leap_indicator, stratum = _parse_w32tm_status(completed.stdout)
+    synchronized = (
+        completed.returncode == 0
+        and leap_indicator is not None
+        and leap_indicator != 3
+        and stratum is not None
+        and stratum > 0
+    )
+    return HostClockPreflightResult(
+        status="SYNCHRONIZED" if synchronized else "HOST_CLOCK_UNSYNCHRONIZED",
+        synchronized=synchronized,
+        leap_indicator=leap_indicator,
+        stratum=stratum,
+    )
+
+
+def _parse_w32tm_status(output: str) -> tuple[int | None, int | None]:
+    values: list[int] = []
+    for line in output.splitlines():
+        match = re.match(r"^\s*[^:]+:\s*(-?\d+)", line)
+        if match:
+            values.append(int(match.group(1)))
+        if len(values) == 2:
+            return values[0], values[1]
+    return None, None
+
+
 def run_burnin_once(
     *,
     cycle_started_at: datetime,
@@ -98,6 +148,7 @@ def run_burnin_once(
     clock: Callable[[], datetime] | None = None,
     monotonic: Callable[[], float] = time.monotonic,
     operation_runner: Callable[..., PaperOperationRun] = run_paper_operation,
+    host_clock_preflight: Callable[[], HostClockPreflightResult] = windows_host_clock_preflight,
 ) -> BurninRunResult:
     fixed_policy = policy or BurninPolicy()
     paper_policy = operation_policy or PaperOperationPolicy()
@@ -109,6 +160,10 @@ def run_burnin_once(
     attempt_type = BurninAttemptType.RETRY if retry_index else BurninAttemptType.PRIMARY
     if attempt_type == BurninAttemptType.RETRY and not retry_reason:
         raise ValueError("RETRY_REASON_REQUIRED")
+    if attempt_type == BurninAttemptType.PRIMARY:
+        clock_status = host_clock_preflight()
+        if not clock_status.synchronized:
+            return BurninRunResult(status="HOST_CLOCK_UNSYNCHRONIZED")
     operation_slot = (
         fixed_policy.primary_operation_slot
         if retry_index == 0

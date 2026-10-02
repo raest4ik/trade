@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -29,6 +30,7 @@ from src.paper_trading_operation_v1.repository import InMemoryOperationAuditRepo
 from src.production_dry_run_burnin_v1.application import (
     build_burnin_report,
     run_burnin_once,
+    windows_host_clock_preflight,
 )
 from src.production_dry_run_burnin_v1.domain import (
     CURRENT_BURNIN_EPOCH,
@@ -40,6 +42,7 @@ from src.production_dry_run_burnin_v1.domain import (
     BurninObservationStatus,
     BurninPolicy,
     BurninSafety,
+    HostClockPreflightResult,
     MoexSessionEvidence,
     MoexSessionStatus,
 )
@@ -175,6 +178,7 @@ def _runner(
     retry_reason: str | None = None,
     operation_runner: Any = None,
     code_sha: str = "test-code",
+    host_clock_preflight: Any = None,
 ) -> Any:
     selected_run = run or _operation_run()
     selected_model = model or CountingModel()
@@ -205,6 +209,15 @@ def _runner(
         retry_reason=retry_reason,
         clock=lambda: NOW + timedelta(seconds=5),
         operation_runner=operation_runner or fake_operation_runner,
+        host_clock_preflight=host_clock_preflight
+        or (
+            lambda: HostClockPreflightResult(
+                status="SYNCHRONIZED",
+                synchronized=True,
+                leap_indicator=0,
+                stratum=5,
+            )
+        ),
     )
 
 
@@ -296,6 +309,127 @@ def test_primary_code_sha_guard_blocks_before_session_model_and_operation(tmp_pa
     assert model.calls == 0
     assert operation_called is False
     assert len(observations.observations()) == 1
+
+
+def test_synchronized_windows_clock_allows_primary_burnin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="Leap Indicator: 0(no warning)\nStratum: 5 (secondary reference)\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.platform.system",
+        lambda: "Windows",
+    )
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.subprocess.run",
+        fake_run,
+    )
+    session = StaticSessionVerifier()
+    model = CountingModel()
+    result = _runner(
+        tmp_path,
+        session=session,
+        model=model,
+        host_clock_preflight=windows_host_clock_preflight,
+    )
+    assert calls == [["w32tm", "/query", "/status"]]
+    assert result.observation is not None
+    assert session.calls == 1
+    assert model.calls == 1
+
+
+@pytest.mark.parametrize(("leap_indicator", "stratum"), [(3, 5), (0, 0)])
+def test_unsynchronized_windows_clock_aborts_without_consuming_primary_slot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    leap_indicator: int,
+    stratum: int,
+) -> None:
+    def fake_run(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(f"Leap Indicator: {leap_indicator}\nStratum: {stratum} (clock status)\n"),
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.platform.system",
+        lambda: "Windows",
+    )
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.subprocess.run",
+        fake_run,
+    )
+    observations = InMemoryBurninObservationRepository()
+    session = StaticSessionVerifier()
+    model = CountingModel()
+    operation_called = False
+
+    def operation_runner(**_kwargs: Any) -> PaperOperationRun:
+        nonlocal operation_called
+        operation_called = True
+        return _operation_run()
+
+    result = _runner(
+        tmp_path,
+        observations=observations,
+        session=session,
+        model=model,
+        operation_runner=operation_runner,
+        host_clock_preflight=windows_host_clock_preflight,
+    )
+    assert result.status == "HOST_CLOCK_UNSYNCHRONIZED"
+    assert result.observation is None
+    assert observations.observations() == []
+    assert session.calls == 0
+    assert model.calls == 0
+    assert operation_called is False
+
+    resumed = _runner(
+        tmp_path,
+        observations=observations,
+        host_clock_preflight=lambda: HostClockPreflightResult(
+            status="SYNCHRONIZED",
+            synchronized=True,
+            leap_indicator=0,
+            stratum=5,
+        ),
+    )
+    assert resumed.observation is not None
+    assert len(observations.observations()) == 1
+
+
+def test_non_windows_clock_preflight_does_not_invoke_w32tm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.platform.system",
+        lambda: "Linux",
+    )
+
+    def unexpected_run(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("w32tm must not run outside Windows")
+
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.subprocess.run",
+        unexpected_run,
+    )
+    result = windows_host_clock_preflight()
+    assert result.status == "NOT_REQUIRED_NON_WINDOWS"
+    assert result.synchronized is True
+    assert result.leap_indicator is None
+    assert result.stratum is None
 
 
 def test_old_epoch1_observations_still_verify() -> None:

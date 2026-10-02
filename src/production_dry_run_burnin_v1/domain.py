@@ -258,6 +258,15 @@ class BurninRunResult(BaseModel):
     existing_observation_id: str | None = None
 
 
+class HostClockPreflightResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: str
+    synchronized: bool
+    leap_indicator: int | None = None
+    stratum: int | None = None
+
+
 class BurninReport(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
