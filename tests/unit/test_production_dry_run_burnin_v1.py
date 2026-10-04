@@ -68,8 +68,16 @@ NOW = datetime(2026, 9, 10, 15, 0, tzinfo=UTC)
 
 
 class StaticSessionVerifier:
-    def __init__(self, status: MoexSessionStatus = MoexSessionStatus.TRADING_DAY) -> None:
+    def __init__(
+        self,
+        status: MoexSessionStatus = MoexSessionStatus.TRADING_DAY,
+        *,
+        checked_at: datetime = NOW,
+        runtime_status: str = "OPEN",
+    ) -> None:
         self.status = status
+        self.checked_at = checked_at
+        self.runtime_status = runtime_status
         self.calls = 0
 
     def verify(self, trading_date: Any) -> MoexSessionEvidence:
@@ -78,12 +86,15 @@ class StaticSessionVerifier:
             trading_date=trading_date.isoformat(),
             status=self.status,
             source="TEST",
-            checked_at=NOW,
+            checked_at=self.checked_at,
             reason=(
                 None
                 if self.status == MoexSessionStatus.TRADING_DAY
                 else "MOEX_SESSION_STATUS_UNKNOWN"
             ),
+            scheduled_open_at=NOW - timedelta(hours=1),
+            scheduled_close_at=NOW + timedelta(hours=1),
+            runtime_status=self.runtime_status,
         )
 
 
@@ -237,7 +248,7 @@ def test_burnin_hash_chain_valid() -> None:
     validate_observations(repository.observations())
 
 
-def test_nine_historical_records_remain_readable_without_byte_rewrite(tmp_path: Path) -> None:
+def test_ten_historical_records_remain_readable_without_byte_rewrite(tmp_path: Path) -> None:
     specifications = (
         (NOW - timedelta(days=8), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
         (NOW - timedelta(days=7), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
@@ -248,6 +259,7 @@ def test_nine_historical_records_remain_readable_without_byte_rewrite(tmp_path: 
         (NOW - timedelta(days=2), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
         (NOW - timedelta(days=1), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
         (NOW, SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW + timedelta(days=1), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
     )
     rows: list[BurninObservation] = []
     for started, epoch, code_sha in specifications:
@@ -263,7 +275,7 @@ def test_nine_historical_records_remain_readable_without_byte_rewrite(tmp_path: 
     )
     before = path.read_bytes()
     restored = JsonlBurninObservationRepository(path).observations()
-    assert len(restored) == 9
+    assert len(restored) == 10
     assert path.read_bytes() == before
     validate_observations(restored)
     assert observation_record_sha(restored[-1]) == restored[-1].record_sha
@@ -556,7 +568,7 @@ def test_recovery_from_operation_audit_does_not_recall_model(tmp_path: Path) -> 
     assert result.observation.status_code == "RECOVERED_FROM_OPERATION_AUDIT"
     assert result.observation.model_calls == 0
     assert model.calls == 0
-    assert session.calls == 0
+    assert session.calls == 1
 
 
 def test_burnin_runner_cannot_enable_paper_execution(tmp_path: Path) -> None:
@@ -939,10 +951,77 @@ def test_closed_session_blocks_before_model(tmp_path: Path) -> None:
 
 def test_open_session_allows_existing_dry_run_path(tmp_path: Path) -> None:
     model = CountingModel()
-    result = _runner(tmp_path, model=model, session=StaticSessionVerifier())
+    session = StaticSessionVerifier(runtime_status="OPEN")
+    result = _runner(tmp_path, model=model, session=session)
     assert result.observation is not None
     assert result.observation.status == BurninObservationStatus.PASS
+    assert session.calls == 1
     assert model.calls == 1
+
+
+@pytest.mark.parametrize("runtime_status", ["CLOSED", "UNKNOWN", "NOT_APPLICABLE"])
+def test_inactive_runtime_session_blocks_without_consuming_primary_slot(
+    tmp_path: Path,
+    runtime_status: str,
+) -> None:
+    observations = InMemoryBurninObservationRepository()
+    model = CountingModel()
+    operation_called = False
+
+    def operation_runner(**_kwargs: Any) -> PaperOperationRun:
+        nonlocal operation_called
+        operation_called = True
+        return _operation_run()
+
+    result = _runner(
+        tmp_path,
+        observations=observations,
+        model=model,
+        session=StaticSessionVerifier(runtime_status=runtime_status),
+        operation_runner=operation_runner,
+    )
+    assert result.status == "MARKET_SESSION_NOT_ACTIVE"
+    assert result.observation is None
+    assert observations.observations() == []
+    assert model.calls == 0
+    assert operation_called is False
+
+    resumed = _runner(
+        tmp_path,
+        observations=observations,
+        session=StaticSessionVerifier(runtime_status="OPEN"),
+    )
+    assert resumed.observation is not None
+    assert len(observations.observations()) == 1
+
+
+def test_outside_scheduled_window_blocks_without_model_operation_or_observation(
+    tmp_path: Path,
+) -> None:
+    observations = InMemoryBurninObservationRepository()
+    model = CountingModel()
+    operation_called = False
+
+    def operation_runner(**_kwargs: Any) -> PaperOperationRun:
+        nonlocal operation_called
+        operation_called = True
+        return _operation_run()
+
+    result = _runner(
+        tmp_path,
+        observations=observations,
+        model=model,
+        session=StaticSessionVerifier(
+            checked_at=NOW + timedelta(hours=2),
+            runtime_status="OPEN",
+        ),
+        operation_runner=operation_runner,
+    )
+    assert result.status == "MARKET_SESSION_NOT_ACTIVE"
+    assert result.observation is None
+    assert observations.observations() == []
+    assert model.calls == 0
+    assert operation_called is False
 
 
 def test_unknown_session_does_not_increment_distinct_trading_days() -> None:

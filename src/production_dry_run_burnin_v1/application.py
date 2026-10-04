@@ -129,6 +129,23 @@ def _parse_w32tm_status(output: str) -> tuple[int | None, int | None]:
     return None, None
 
 
+def _current_session_is_active(session: MoexSessionEvidence) -> bool:
+    checked_at = session.checked_at
+    scheduled_open = session.scheduled_open_at
+    scheduled_close = session.scheduled_close_at
+    timestamps = (checked_at, scheduled_open, scheduled_close)
+    if session.runtime_status != "OPEN" or any(value is None for value in timestamps):
+        return False
+    if any(value.tzinfo is None or value.utcoffset() is None for value in timestamps if value):
+        return False
+    assert scheduled_open is not None
+    assert scheduled_close is not None
+    try:
+        return scheduled_open <= checked_at <= scheduled_close
+    except TypeError:
+        return False
+
+
 def run_burnin_once(
     *,
     cycle_started_at: datetime,
@@ -192,6 +209,10 @@ def run_burnin_once(
             code_sha=resolved_code_sha,
         )
 
+    session = session_verifier.verify(trading_date)
+    if session.status == MoexSessionStatus.OPEN and not _current_session_is_active(session):
+        return BurninRunResult(status="MARKET_SESSION_NOT_ACTIVE")
+
     before = _paper_snapshot(paper_repository, cycle_start)
     recovered = audit_repository.completed_run(operation_id)
     if recovered is not None:
@@ -222,7 +243,6 @@ def run_burnin_once(
         appended = observation_repository.append(observation)
         return BurninRunResult(status=observation.status.value, observation=appended)
 
-    session = session_verifier.verify(trading_date)
     if session.status != MoexSessionStatus.OPEN:
         reason = (
             "MARKET_SESSION_CLOSED"
