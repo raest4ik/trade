@@ -51,10 +51,14 @@ exceptions, manifests, fixtures, or artifacts. Missing variables fail closed and
 missing environment-variable name.
 
 TLS verification requires `SSL_TBANK_VERIFY=True`. The project pins the official T-Invest Python
-SDK `1.49.3` from the explicit official T-Bank package index and loads its bundled
+SDK `1.49.3` as the optional `tinvest` extra from the explicit official T-Bank package index and
+loads its bundled
 `RussianTrustedRootCA.pem` into a normal verified `SSLContext`. System trust roots remain active,
 hostname verification remains enabled, and `CERT_REQUIRED` remains mandatory. The application
 does not disable certificate validation or expose the SDK's trading services.
+
+Install this optional integration explicitly with `uv sync --extra tinvest`. The default project
+and MOEX-only production burn-in do not install or resolve the T-Invest SDK.
 
 `TInvestReadOnlyClient` exposes only instrument lookup, indicative lookup, historical candles, and
 trading schedules. It has no generic arbitrary-endpoint method and no Orders, StopOrders,
