@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 import json
 import math
 import ssl
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
-from importlib.metadata import version
 from itertools import pairwise
 from pathlib import Path
 from typing import cast
@@ -60,6 +60,28 @@ from src.tinvest_market.policy import (
 from src.tinvest_market.reporting import compare_moex_targets, write_feature_artifacts
 
 
+class _MockDistribution:
+    def __init__(self, name: str, certificate: Path) -> None:
+        assert name == "t-tech-investments"
+        self._certificate = certificate
+
+    def locate_file(self, path: str) -> Path:
+        assert path == "t_tech/invest/certs/RussianTrustedRootCA.pem"
+        return self._certificate
+
+
+def _temporary_test_ca(tmp_path: Path) -> Path:
+    certificates = ssl.create_default_context().get_ca_certs(binary_form=True)
+    assert certificates
+    certificate = tmp_path / "test-root-ca.pem"
+    certificate.write_text(
+        ssl.DER_cert_to_PEM_cert(certificates[0]),
+        encoding="ascii",
+        newline="\n",
+    )
+    return certificate
+
+
 def test_missing_tokens_fail_closed_with_env_name_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(READONLY_TOKEN_ENV, raising=False)
     monkeypatch.delenv(SANDBOX_TOKEN_ENV, raising=False)
@@ -80,15 +102,60 @@ def test_token_repr_and_errors_never_disclose_secret(monkeypatch: pytest.MonkeyP
     assert secret not in str(TInvestAuthError("TINVEST_AUTH_FAILED"))
 
 
-def test_tbank_tls_requires_explicit_verified_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tbank_tls_requires_explicit_verified_mode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     monkeypatch.delenv(TBANK_TLS_VERIFY_ENV, raising=False)
     with pytest.raises(RuntimeError, match=TBANK_TLS_VERIFY_ENV):
         tbank_tls_context()
+
+    certificate = _temporary_test_ca(tmp_path)
+
+    def installed_distribution(name: str) -> _MockDistribution:
+        return _MockDistribution(name, certificate)
+
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        installed_distribution,
+    )
     monkeypatch.setenv(TBANK_TLS_VERIFY_ENV, "True")
     context = tbank_tls_context()
     assert context.verify_mode == ssl.CERT_REQUIRED
     assert context.check_hostname is True
-    assert version("t-tech-investments") == "1.49.3"
+
+
+def test_tbank_tls_fails_closed_without_optional_distribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(TBANK_TLS_VERIFY_ENV, "True")
+
+    def missing_distribution(name: str) -> None:
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(importlib.metadata, "distribution", missing_distribution)
+    with pytest.raises(RuntimeError, match="TINVEST_OPTIONAL_DEPENDENCY_REQUIRED"):
+        tbank_tls_context()
+
+
+def test_tbank_tls_fails_closed_without_bundled_certificate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv(TBANK_TLS_VERIFY_ENV, "True")
+    missing = tmp_path / "missing-ca.pem"
+
+    def distribution_without_certificate(name: str) -> _MockDistribution:
+        return _MockDistribution(name, missing)
+
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distribution",
+        distribution_without_certificate,
+    )
+    with pytest.raises(RuntimeError, match="TINVEST_CA_CERTIFICATE_UNAVAILABLE"):
+        tbank_tls_context()
 
 
 async def test_client_uses_exact_readonly_rest_path_and_sanitizes_auth() -> None:

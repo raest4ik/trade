@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -29,16 +30,19 @@ from src.paper_trading_operation_v1.repository import InMemoryOperationAuditRepo
 from src.production_dry_run_burnin_v1.application import (
     build_burnin_report,
     run_burnin_once,
+    windows_host_clock_preflight,
 )
 from src.production_dry_run_burnin_v1.domain import (
     CURRENT_BURNIN_EPOCH,
     MIXED_CODE_BURNIN_EPOCH,
     PRE_FIX_BURNIN_EPOCH,
+    SAFETY_FAILED_BURNIN_EPOCH,
     BurninAttemptType,
     BurninObservation,
     BurninObservationStatus,
     BurninPolicy,
     BurninSafety,
+    HostClockPreflightResult,
     MoexSessionEvidence,
     MoexSessionStatus,
 )
@@ -64,8 +68,16 @@ NOW = datetime(2026, 9, 10, 15, 0, tzinfo=UTC)
 
 
 class StaticSessionVerifier:
-    def __init__(self, status: MoexSessionStatus = MoexSessionStatus.TRADING_DAY) -> None:
+    def __init__(
+        self,
+        status: MoexSessionStatus = MoexSessionStatus.TRADING_DAY,
+        *,
+        checked_at: datetime = NOW,
+        runtime_status: str = "OPEN",
+    ) -> None:
         self.status = status
+        self.checked_at = checked_at
+        self.runtime_status = runtime_status
         self.calls = 0
 
     def verify(self, trading_date: Any) -> MoexSessionEvidence:
@@ -74,12 +86,15 @@ class StaticSessionVerifier:
             trading_date=trading_date.isoformat(),
             status=self.status,
             source="TEST",
-            checked_at=NOW,
+            checked_at=self.checked_at,
             reason=(
                 None
                 if self.status == MoexSessionStatus.TRADING_DAY
                 else "MOEX_SESSION_STATUS_UNKNOWN"
             ),
+            scheduled_open_at=NOW - timedelta(hours=1),
+            scheduled_close_at=NOW + timedelta(hours=1),
+            runtime_status=self.runtime_status,
         )
 
 
@@ -174,6 +189,7 @@ def _runner(
     retry_reason: str | None = None,
     operation_runner: Any = None,
     code_sha: str = "test-code",
+    host_clock_preflight: Any = None,
 ) -> Any:
     selected_run = run or _operation_run()
     selected_model = model or CountingModel()
@@ -204,6 +220,15 @@ def _runner(
         retry_reason=retry_reason,
         clock=lambda: NOW + timedelta(seconds=5),
         operation_runner=operation_runner or fake_operation_runner,
+        host_clock_preflight=host_clock_preflight
+        or (
+            lambda: HostClockPreflightResult(
+                status="SYNCHRONIZED",
+                synchronized=True,
+                leap_indicator=0,
+                stratum=5,
+            )
+        ),
     )
 
 
@@ -223,12 +248,18 @@ def test_burnin_hash_chain_valid() -> None:
     validate_observations(repository.observations())
 
 
-def test_four_existing_records_remain_readable_without_byte_rewrite(tmp_path: Path) -> None:
+def test_ten_historical_records_remain_readable_without_byte_rewrite(tmp_path: Path) -> None:
     specifications = (
-        (NOW - timedelta(days=3), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
-        (NOW - timedelta(days=2), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
-        (NOW - timedelta(days=1), MIXED_CODE_BURNIN_EPOCH, "code-a"),
-        (NOW, MIXED_CODE_BURNIN_EPOCH, "code-b"),
+        (NOW - timedelta(days=8), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
+        (NOW - timedelta(days=7), PRE_FIX_BURNIN_EPOCH, "legacy-code"),
+        (NOW - timedelta(days=6), MIXED_CODE_BURNIN_EPOCH, "code-a"),
+        (NOW - timedelta(days=5), MIXED_CODE_BURNIN_EPOCH, "code-b"),
+        (NOW - timedelta(days=4), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW - timedelta(days=3), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW - timedelta(days=2), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW - timedelta(days=1), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW, SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
+        (NOW + timedelta(days=1), SAFETY_FAILED_BURNIN_EPOCH, "epoch-3-code"),
     )
     rows: list[BurninObservation] = []
     for started, epoch, code_sha in specifications:
@@ -244,8 +275,9 @@ def test_four_existing_records_remain_readable_without_byte_rewrite(tmp_path: Pa
     )
     before = path.read_bytes()
     restored = JsonlBurninObservationRepository(path).observations()
-    assert len(restored) == 4
+    assert len(restored) == 10
     assert path.read_bytes() == before
+    validate_observations(restored)
     assert observation_record_sha(restored[-1]) == restored[-1].record_sha
 
 
@@ -289,6 +321,127 @@ def test_primary_code_sha_guard_blocks_before_session_model_and_operation(tmp_pa
     assert model.calls == 0
     assert operation_called is False
     assert len(observations.observations()) == 1
+
+
+def test_synchronized_windows_clock_allows_primary_burnin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout="Leap Indicator: 0(no warning)\nStratum: 5 (secondary reference)\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.platform.system",
+        lambda: "Windows",
+    )
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.subprocess.run",
+        fake_run,
+    )
+    session = StaticSessionVerifier()
+    model = CountingModel()
+    result = _runner(
+        tmp_path,
+        session=session,
+        model=model,
+        host_clock_preflight=windows_host_clock_preflight,
+    )
+    assert calls == [["w32tm", "/query", "/status"]]
+    assert result.observation is not None
+    assert session.calls == 1
+    assert model.calls == 1
+
+
+@pytest.mark.parametrize(("leap_indicator", "stratum"), [(3, 5), (0, 0)])
+def test_unsynchronized_windows_clock_aborts_without_consuming_primary_slot(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    leap_indicator: int,
+    stratum: int,
+) -> None:
+    def fake_run(command: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=(f"Leap Indicator: {leap_indicator}\nStratum: {stratum} (clock status)\n"),
+            stderr="",
+        )
+
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.platform.system",
+        lambda: "Windows",
+    )
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.subprocess.run",
+        fake_run,
+    )
+    observations = InMemoryBurninObservationRepository()
+    session = StaticSessionVerifier()
+    model = CountingModel()
+    operation_called = False
+
+    def operation_runner(**_kwargs: Any) -> PaperOperationRun:
+        nonlocal operation_called
+        operation_called = True
+        return _operation_run()
+
+    result = _runner(
+        tmp_path,
+        observations=observations,
+        session=session,
+        model=model,
+        operation_runner=operation_runner,
+        host_clock_preflight=windows_host_clock_preflight,
+    )
+    assert result.status == "HOST_CLOCK_UNSYNCHRONIZED"
+    assert result.observation is None
+    assert observations.observations() == []
+    assert session.calls == 0
+    assert model.calls == 0
+    assert operation_called is False
+
+    resumed = _runner(
+        tmp_path,
+        observations=observations,
+        host_clock_preflight=lambda: HostClockPreflightResult(
+            status="SYNCHRONIZED",
+            synchronized=True,
+            leap_indicator=0,
+            stratum=5,
+        ),
+    )
+    assert resumed.observation is not None
+    assert len(observations.observations()) == 1
+
+
+def test_non_windows_clock_preflight_does_not_invoke_w32tm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.platform.system",
+        lambda: "Linux",
+    )
+
+    def unexpected_run(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("w32tm must not run outside Windows")
+
+    monkeypatch.setattr(
+        "src.production_dry_run_burnin_v1.application.subprocess.run",
+        unexpected_run,
+    )
+    result = windows_host_clock_preflight()
+    assert result.status == "NOT_REQUIRED_NON_WINDOWS"
+    assert result.synchronized is True
+    assert result.leap_indicator is None
+    assert result.stratum is None
 
 
 def test_old_epoch1_observations_still_verify() -> None:
@@ -415,7 +568,7 @@ def test_recovery_from_operation_audit_does_not_recall_model(tmp_path: Path) -> 
     assert result.observation.status_code == "RECOVERED_FROM_OPERATION_AUDIT"
     assert result.observation.model_calls == 0
     assert model.calls == 0
-    assert session.calls == 0
+    assert session.calls == 1
 
 
 def test_burnin_runner_cannot_enable_paper_execution(tmp_path: Path) -> None:
@@ -614,13 +767,57 @@ def test_epoch2_mixed_code_is_explicitly_non_qualifying() -> None:
     assert report.BURNIN_STATUS.value == "FAIL"
 
 
-def test_epoch3_starts_zero_zero_with_only_older_epoch_records() -> None:
+def test_epoch3_future_quote_safety_violation_is_preserved_and_non_qualifying() -> None:
+    rows = [
+        build_sample_observation(
+            NOW + timedelta(days=index), BurninObservationStatus.PASS
+        ).model_copy(
+            update={
+                "burnin_epoch": SAFETY_FAILED_BURNIN_EPOCH,
+                "code_sha": "epoch-3-code",
+            }
+        )
+        for index in range(5)
+    ]
+    rows[-1] = rows[-1].model_copy(
+        update={
+            "status": BurninObservationStatus.SAFETY_VIOLATION,
+            "status_code": "FUTURE_MARKET_QUOTE",
+            "future_quote_count": 1,
+            "max_source_clock_delta_seconds": 0.400851,
+            "reasons": ["FUTURE_MARKET_QUOTE"],
+        }
+    )
+    report = build_burnin_report(
+        rows,
+        BurninPolicy(burnin_epoch=SAFETY_FAILED_BURNIN_EPOCH),
+    )
+    assert rows[-1].status == BurninObservationStatus.SAFETY_VIOLATION
+    assert rows[-1].status_code == "FUTURE_MARKET_QUOTE"
+    assert rows[-1].max_source_clock_delta_seconds == 0.400851
+    assert report.CODE_SHA_HOMOGENEITY == "PASS"
+    assert report.QUALIFICATION_STATUS == "NON_QUALIFYING_SAFETY_VIOLATION"
+    assert report.future_data_violation_count == 1
+    assert report.BURNIN_STATUS.value == "FAIL"
+
+
+def test_epoch4_starts_zero_zero_with_all_historical_epochs() -> None:
     rows = [
         build_sample_observation(NOW, BurninObservationStatus.PASS).model_copy(
-            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-a"}
+            update={"burnin_epoch": PRE_FIX_BURNIN_EPOCH, "code_sha": "legacy-code"}
         ),
         build_sample_observation(NOW + timedelta(days=1), BurninObservationStatus.PASS).model_copy(
-            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-b"}
+            update={"burnin_epoch": MIXED_CODE_BURNIN_EPOCH, "code_sha": "code-a"}
+        ),
+        build_sample_observation(
+            NOW + timedelta(days=2), BurninObservationStatus.SAFETY_VIOLATION
+        ).model_copy(
+            update={
+                "burnin_epoch": SAFETY_FAILED_BURNIN_EPOCH,
+                "code_sha": "epoch-3-code",
+                "status_code": "FUTURE_MARKET_QUOTE",
+                "future_quote_count": 1,
+            }
         ),
     ]
     report = build_burnin_report(rows)
@@ -630,6 +827,31 @@ def test_epoch3_starts_zero_zero_with_only_older_epoch_records() -> None:
     assert report.valid_cycles == 0
     assert report.distinct_trading_days == 0
     assert report.BURNIN_STATUS.value == "NOT_STARTED"
+
+
+def test_epoch4_preserves_fixed_thresholds_and_disabled_execution() -> None:
+    policy = BurninPolicy()
+    fixed_thresholds = {
+        "min_distinct_moex_trading_days": policy.min_distinct_moex_trading_days,
+        "min_primary_cycles": policy.min_primary_cycles,
+        "max_blocked_primary_cycle_rate": policy.max_blocked_primary_cycle_rate,
+        "min_market_fresh_rate": policy.min_market_fresh_rate,
+        "min_research_ready_rate": policy.min_research_ready_rate,
+        "min_agent_valid_rate": policy.min_agent_valid_rate,
+        "min_risk_completion_rate": policy.min_risk_completion_rate,
+        "max_source_clock_skew_seconds": policy.max_source_clock_skew_seconds,
+    }
+    assert json.dumps(fixed_thresholds, sort_keys=True, separators=(",", ":")) == (
+        '{"max_blocked_primary_cycle_rate":0.2,"max_source_clock_skew_seconds":5.0,'
+        '"min_agent_valid_rate":0.9,"min_distinct_moex_trading_days":5,'
+        '"min_market_fresh_rate":0.95,"min_primary_cycles":5,'
+        '"min_research_ready_rate":0.9,"min_risk_completion_rate":0.9}'
+    )
+    assert policy.burnin_epoch == CURRENT_BURNIN_EPOCH
+    assert policy.paper_execution_enabled is False
+    assert policy.real_execution_enabled is False
+    assert policy.paper_operation_schedule_enabled is False
+    assert BurninSafety().violation_count() == 0
 
 
 def test_blocked_expected_not_counted_as_pass() -> None:
@@ -729,10 +951,77 @@ def test_closed_session_blocks_before_model(tmp_path: Path) -> None:
 
 def test_open_session_allows_existing_dry_run_path(tmp_path: Path) -> None:
     model = CountingModel()
-    result = _runner(tmp_path, model=model, session=StaticSessionVerifier())
+    session = StaticSessionVerifier(runtime_status="OPEN")
+    result = _runner(tmp_path, model=model, session=session)
     assert result.observation is not None
     assert result.observation.status == BurninObservationStatus.PASS
+    assert session.calls == 1
     assert model.calls == 1
+
+
+@pytest.mark.parametrize("runtime_status", ["CLOSED", "UNKNOWN", "NOT_APPLICABLE"])
+def test_inactive_runtime_session_blocks_without_consuming_primary_slot(
+    tmp_path: Path,
+    runtime_status: str,
+) -> None:
+    observations = InMemoryBurninObservationRepository()
+    model = CountingModel()
+    operation_called = False
+
+    def operation_runner(**_kwargs: Any) -> PaperOperationRun:
+        nonlocal operation_called
+        operation_called = True
+        return _operation_run()
+
+    result = _runner(
+        tmp_path,
+        observations=observations,
+        model=model,
+        session=StaticSessionVerifier(runtime_status=runtime_status),
+        operation_runner=operation_runner,
+    )
+    assert result.status == "MARKET_SESSION_NOT_ACTIVE"
+    assert result.observation is None
+    assert observations.observations() == []
+    assert model.calls == 0
+    assert operation_called is False
+
+    resumed = _runner(
+        tmp_path,
+        observations=observations,
+        session=StaticSessionVerifier(runtime_status="OPEN"),
+    )
+    assert resumed.observation is not None
+    assert len(observations.observations()) == 1
+
+
+def test_outside_scheduled_window_blocks_without_model_operation_or_observation(
+    tmp_path: Path,
+) -> None:
+    observations = InMemoryBurninObservationRepository()
+    model = CountingModel()
+    operation_called = False
+
+    def operation_runner(**_kwargs: Any) -> PaperOperationRun:
+        nonlocal operation_called
+        operation_called = True
+        return _operation_run()
+
+    result = _runner(
+        tmp_path,
+        observations=observations,
+        model=model,
+        session=StaticSessionVerifier(
+            checked_at=NOW + timedelta(hours=2),
+            runtime_status="OPEN",
+        ),
+        operation_runner=operation_runner,
+    )
+    assert result.status == "MARKET_SESSION_NOT_ACTIVE"
+    assert result.observation is None
+    assert observations.observations() == []
+    assert model.calls == 0
+    assert operation_called is False
 
 
 def test_unknown_session_does_not_increment_distinct_trading_days() -> None:
