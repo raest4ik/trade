@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import importlib.metadata
 import os
 import ssl
 from dataclasses import dataclass, field
-from importlib.metadata import distribution
+from pathlib import Path
 
 READONLY_TOKEN_ENV = "TINVEST_READONLY_TOKEN"
 SANDBOX_TOKEN_ENV = "TINVEST_SANDBOX_TOKEN"
@@ -44,11 +45,23 @@ def token_presence() -> dict[str, bool]:
 def tbank_tls_context() -> ssl.SSLContext:
     if os.getenv(TBANK_TLS_VERIFY_ENV, "").strip().lower() != "true":
         raise RuntimeError(TBANK_TLS_VERIFY_ENV)
-    certificate = distribution("t-tech-investments").locate_file(
-        "t_tech/invest/certs/RussianTrustedRootCA.pem"
-    )
+    try:
+        certificate = Path(
+            str(
+                importlib.metadata.distribution("t-tech-investments").locate_file(
+                    "t_tech/invest/certs/RussianTrustedRootCA.pem"
+                )
+            )
+        )
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise RuntimeError("TINVEST_OPTIONAL_DEPENDENCY_REQUIRED") from exc
+    if not certificate.is_file():
+        raise RuntimeError("TINVEST_CA_CERTIFICATE_UNAVAILABLE")
     context = ssl.create_default_context()
-    context.load_verify_locations(cafile=str(certificate))
+    try:
+        context.load_verify_locations(cafile=str(certificate))
+    except (OSError, ssl.SSLError) as exc:
+        raise RuntimeError("TINVEST_CA_CERTIFICATE_UNAVAILABLE") from exc
     if context.verify_mode != ssl.CERT_REQUIRED or not context.check_hostname:
         raise RuntimeError("TINVEST_TLS_VERIFICATION_REQUIRED")
     return context

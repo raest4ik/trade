@@ -10,7 +10,8 @@ BURNIN_ARTIFACT_VERSION = "production-dry-run-burnin-v1"
 BURNIN_OBSERVATION_SCHEMA_VERSION = "production-dry-run-burnin-observation-v1"
 PRE_FIX_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-1"
 MIXED_CODE_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-2"
-CURRENT_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-3"
+SAFETY_FAILED_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-3"
+CURRENT_BURNIN_EPOCH = "production-dry-run-burnin-v1-epoch-4"
 PRIMARY_OPERATION_SLOT = "BURNIN_EOD"
 
 
@@ -255,6 +256,15 @@ class BurninRunResult(BaseModel):
     status: str
     observation: BurninObservation | None = None
     existing_observation_id: str | None = None
+
+
+class HostClockPreflightResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: str
+    synchronized: bool
+    leap_indicator: int | None = None
+    stratum: int | None = None
 
 
 class BurninReport(BaseModel):
